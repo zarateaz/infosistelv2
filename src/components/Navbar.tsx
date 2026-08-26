@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { SocialLinks } from "@/components/SocialLinks";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -30,14 +31,17 @@ export function Navbar() {
             className="h-7 w-auto object-contain"
           />
         </a>
-        <a
-          href="https://wa.me/51964648202"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-full border border-border-strong px-5 py-2 text-xs font-bold uppercase tracking-wider text-fg transition-colors hover:border-accent hover:text-accent"
-        >
-          WhatsApp
-        </a>
+        <div className="flex items-center gap-3">
+          <SocialLinks className="hidden sm:flex" />
+          <a
+            href="https://wa.me/51964648202"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-border-strong px-5 py-2 text-xs font-bold uppercase tracking-wider text-fg transition-colors hover:border-accent hover:text-accent"
+          >
+            WhatsApp
+          </a>
+        </div>
       </div>
     </header>
   );

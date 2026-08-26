@@ -1,11 +1,12 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — "Grafito Cálido + Ámbar".
+ * Design tokens — "Grafito + Azul Infosistel".
  * Single, deliberate dark theme (no light/dark toggle): warm graphite
- * surfaces, one disciplined amber accent used only for interactive/CTA
- * moments, never as decoration. Distinct on purpose from the old
- * Infosistel's blue/violet/cyan "aurora" identity.
+ * surfaces, one disciplined blue accent used only for interactive/CTA
+ * moments, never as decoration. Sampled straight from the client logo
+ * (public/brand/infosistel-logo.png, ~#0aa8fe) so the wordmark and the UI
+ * accent read as the same brand, not two different blues.
  */
 :root {
   --bg: #14171c;
@@ -16,10 +17,10 @@
   --border: rgba(245, 239, 230, 0.08);
   --border-strong: rgba(245, 239, 230, 0.16);
 
-  --accent: #ff7a29;
-  --accent-hover: #ff9350;
-  --accent-pressed: #e0651a;
-  --accent-fg: #14171c;
+  --accent: #0aa8fe;
+  --accent-hover: #4dc0ff;
+  --accent-pressed: #0384c9;
+  --accent-fg: #0b1520;
 
   --radius-lg: 1.5rem;
   --radius-md: 1rem;

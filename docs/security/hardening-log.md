@@ -78,11 +78,26 @@ vive en el código, y **cómo verificarlo**.
   reconocimiento (defensa en profundidad, no es una vulnerabilidad por sí sola).
 - **Dónde**: `next.config.ts`.
 
+### 8. Rate limiting en el endpoint del chatbot (`/api/chat`)
+- **Qué**: máximo 20 mensajes por IP cada 5 minutos (`lib/rateLimit.ts`, mismo patrón in-memory
+  namespaced que se usará luego en login/pedidos). Además: si falta `ANTHROPIC_API_KEY` el
+  endpoint responde 503 en vez de fallar de forma confusa, y el historial de conversación enviado
+  al modelo se recorta a los últimos 20 mensajes.
+- **Por qué**: OWASP API Security Top 10 — API4:2023 (Unrestricted Resource Consumption). Cada
+  mensaje al chatbot cuesta dinero real (API de Anthropic); sin límite, un script puede vaciar la
+  cuenta del negocio con requests automatizados. El recorte del historial también acota el tamaño
+  de cada request (mitigación adicional de costo/abuso).
+- **Dónde**: `src/lib/rateLimit.ts`, `src/app/api/chat/route.ts`.
+- **Verificación**: enviar 21 requests seguidos desde el mismo origen al endpoint debe devolver
+  `429` con cabecera `Retry-After` en el request 21.
+
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)
 - Autenticación del panel admin (JWT, hash de contraseñas, rate limiting) — Fase 3.
 - Cifrado de datos personales (DNI/teléfono) e índice de búsqueda ciego — Fase 4.
 - Recalculo de precios en servidor para pedidos de la tienda — Fase 2.
+- Herramienta `buscarProductos` para el chatbot, una vez exista el catálogo (Fase 2) — para que no
+  tenga que derivar cada pregunta de precio/stock a WhatsApp.
 - Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
   la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local.

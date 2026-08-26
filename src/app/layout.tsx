@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Inter, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import ChatBot from "@/components/ChatBotLazy";
 import "./globals.css";
 
 const display = Plus_Jakarta_Sans({
@@ -41,6 +42,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-bg text-fg font-sans">
         {children}
+        <ChatBot />
       </body>
     </html>
   );
