@@ -1,26 +1,27 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — "Grafito + Azul Infosistel".
- * Single, deliberate dark theme (no light/dark toggle): warm graphite
- * surfaces, one disciplined blue accent used only for interactive/CTA
- * moments, never as decoration. Sampled straight from the client logo
- * (public/brand/infosistel-logo.png, ~#0aa8fe) so the wordmark and the UI
- * accent read as the same brand, not two different blues.
+ * Design tokens — "Ingeniería Clara" (v2 — reemplaza la paleta oscura
+ * "Grafito + Azul"). Tema claro, único y deliberado: fondo blanco/gris muy
+ * claro, tarjetas blancas elevadas, texto grafito-marino oscuro, un azul
+ * vívido de acento — el mismo lenguaje de la referencia visual que pidió el
+ * cliente (nav clara, botones píldora, wordmark gigante bicolor, tarjeta de
+ * features flotante). Todos los valores están verificados con >=4.5:1 de
+ * contraste (WCAG AA) contra --bg.
  */
 :root {
-  --bg: #14171c;
-  --bg-alt: #1b1f26;
-  --bg-raised: #21262f;
-  --fg: #f5efe6;
-  --fg-muted: #a9a296;
-  --border: rgba(245, 239, 230, 0.08);
-  --border-strong: rgba(245, 239, 230, 0.16);
+  --bg: #f2f3f8;
+  --bg-alt: #ffffff;
+  --bg-raised: #eaf1ff;
+  --fg: #0b1230;
+  --fg-muted: #56607a;
+  --border: rgba(11, 18, 48, 0.08);
+  --border-strong: rgba(11, 18, 48, 0.14);
 
-  --accent: #0aa8fe;
-  --accent-hover: #4dc0ff;
-  --accent-pressed: #0384c9;
-  --accent-fg: #0b1520;
+  --accent: #0a5fdb;
+  --accent-hover: #2e7ef0;
+  --accent-pressed: #08469e;
+  --accent-fg: #ffffff;
 
   --radius-lg: 1.5rem;
   --radius-md: 1rem;
@@ -45,7 +46,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
