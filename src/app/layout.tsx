@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Inter, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import ChatBot from "@/components/ChatBotLazy";
+import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 import "./globals.css";
 
 const display = Plus_Jakarta_Sans({
@@ -41,7 +43,9 @@ export default async function RootLayout({
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-bg text-fg font-sans">
+        <Navbar />
         {children}
+        <Footer />
         <ChatBot />
       </body>
     </html>

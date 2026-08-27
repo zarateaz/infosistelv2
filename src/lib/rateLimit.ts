@@ -75,13 +75,21 @@ export function checkRateLimit(
 }
 
 /**
- * Real client IP from a Next.js Request — trusts ONLY x-real-ip (set by
- * Nginx from $remote_addr). Returns "unknown" for direct/local connections
- * that bypass Nginx (e.g. `npm run dev`), which the rate limiter then just
- * treats as one shared bucket.
+ * Real client IP — trusts ONLY x-real-ip (set by Nginx from $remote_addr).
+ * Returns "unknown" for direct/local connections that bypass Nginx (e.g.
+ * `npm run dev`), which the rate limiter then just treats as one shared
+ * bucket. Accepts either a `Request` (API routes) or the `next/headers()`
+ * result (Server Actions) — both expose the same `.get(name)` shape.
  */
-export function getClientIP(request: Request): string {
-  const xRealIP = request.headers.get("x-real-ip");
+type HeadersLike = { get(name: string): string | null };
+
+export function getClientIP(source: Request | HeadersLike): string {
+  // Duck-type on an actually-callable `.get` rather than "does a `headers`
+  // property exist" — Next's ReadonlyHeaders has its own internal `headers`
+  // field, so that check was true for BOTH cases and grabbed the wrong thing.
+  const headers: HeadersLike =
+    typeof (source as HeadersLike).get === "function" ? (source as HeadersLike) : (source as Request).headers;
+  const xRealIP = headers.get("x-real-ip");
   if (xRealIP) return xRealIP.trim().split(",")[0].trim();
   return "unknown";
 }

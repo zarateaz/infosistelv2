@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { ShoppingCart } from "lucide-react";
 import { SocialLinks } from "@/components/SocialLinks";
 
 export function Navbar() {
@@ -21,7 +23,7 @@ export function Navbar() {
       }`}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-10">
-        <a href="#" className="flex items-center">
+        <Link href="/" className="flex items-center">
           <Image
             src="/brand/infosistel-logo.png"
             alt="Infosistel"
@@ -30,9 +32,23 @@ export function Navbar() {
             priority
             className="h-7 w-auto object-contain"
           />
-        </a>
+        </Link>
+
+        <nav className="hidden items-center gap-6 md:flex">
+          <Link href="/tienda" className="text-sm font-bold text-fg-muted transition-colors hover:text-fg">
+            Tienda
+          </Link>
+        </nav>
+
         <div className="flex items-center gap-3">
           <SocialLinks className="hidden sm:flex" />
+          <Link
+            href="/tienda"
+            aria-label="Ir a la tienda"
+            className="rounded-full p-2 text-fg-muted transition-colors hover:text-accent md:hidden"
+          >
+            <ShoppingCart size={20} />
+          </Link>
           <a
             href="https://wa.me/51964648202"
             target="_blank"

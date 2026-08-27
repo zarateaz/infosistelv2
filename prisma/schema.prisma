@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +8,47 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  category    String
+  description String
+  price       Float
+  stock       Int      @default(0)
+  image       String? // path under /public, e.g. "/img/products/x.webp" — null renders a category icon placeholder
+  costPrice   Float?   @default(0) // admin-only field, never sent to public API responses
+  isFeatured  Boolean  @default(false)
+  onSale      Boolean  @default(false)
+  salePrice   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  customerName  String
+  customerPhone String
+  total         Float // always server-calculated at creation time — never trust a client-sent total
+  date          DateTime    @default(now())
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String? // reference to Product for server-side price verification
+  name      String
+  category  String
+  quantity  Int     @default(1)
+  unitPrice Float? // price verified against the DB at order time, not client-supplied
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }

@@ -64,3 +64,11 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
