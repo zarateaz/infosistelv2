@@ -123,6 +123,18 @@ vive en el código, y **cómo verificarlo**.
 - **Verificación**: inspeccionar la respuesta de `getProducts()` en las herramientas de red del
   navegador — no debe aparecer `costPrice` en ningún producto.
 
+### 12. `frame-src` acotado exclusivamente a Google Maps
+- **Qué**: se agregó `frame-src https://www.google.com;` a la CSP (`src/proxy.ts`) para permitir
+  el `<iframe>` del mapa de ubicación en la sección de contacto (`ContactCta.tsx`). Sin
+  `frame-src`, la directiva cae a `default-src 'self'` y bloquea cualquier iframe externo — el
+  mapa no cargaba silenciosamente (sin request de red, sin error visible en consola de la página).
+- **Por qué**: mantener el principio de mínimo privilegio de la CSP — en vez de abrir `frame-src`
+  a cualquier origen, se permite solo el dominio exacto que sirve el embed de Google Maps.
+- **Dónde**: `src/proxy.ts`, `src/components/sections/ContactCta.tsx`.
+- **Verificación**: con DevTools abierto, la consola no debe mostrar errores de
+  "Refused to frame ... because it violates the following Content Security Policy directive" al
+  cargar `/#contacto`.
+
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)

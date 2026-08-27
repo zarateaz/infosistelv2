@@ -20,6 +20,7 @@ export function proxy(request: NextRequest) {
     img-src 'self' blob: data:;
     font-src 'self';
     object-src 'none';
+    frame-src https://www.google.com;
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';

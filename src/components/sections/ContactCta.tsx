@@ -56,6 +56,18 @@ export function ContactCta() {
                 ))}
               </dl>
             </div>
+
+            <div className="mt-12 overflow-hidden rounded-[var(--radius-md)] border border-border">
+              <iframe
+                src="https://www.google.com/maps?q=Av.+Gir%C3%A1ldez+274,+Huancayo,+Peru&output=embed"
+                width="100%"
+                height="360"
+                style={{ border: 0, display: "block" }}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title="Ubicación de Infosistel en Av. Giráldez 274, Huancayo"
+              />
+            </div>
           </div>
         </Reveal>
       </div>
