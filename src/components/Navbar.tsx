@@ -32,12 +32,12 @@ export function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-10">
         <Link href="/" className="flex shrink-0 items-center">
           <Image
-            src="/brand/infosistel-logo.png"
+            src="/brand/infosistel-logo-v2.png"
             alt="Infosistel"
-            width={1912 * 0.09}
-            height={229 * 0.09}
+            width={335}
+            height={53}
             priority
-            className="h-7 w-auto object-contain"
+            className="h-8 w-auto object-contain"
           />
         </Link>
 
