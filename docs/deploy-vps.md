@@ -67,10 +67,11 @@ Dos caminos razonables:
   reales antes del primer deploy, y corriendo `npx prisma db seed` una sola vez.
 
 Crea tu cuenta de administrador real (no uses "admin" de prueba) antes de dar por terminado el
-despliegue:
+despliegue. `tsx` no carga `.env` solo — sin `--env-file`, este comando escribiría el admin en un
+`dev.db` relativo al directorio donde lo corras, no en tu base de datos real de `DATABASE_URL`:
 
 ```bash
-npx tsx scripts/create-admin.ts <tu-usuario> <tu-contraseña>
+npx tsx --env-file=.env scripts/create-admin.ts <tu-usuario> <tu-contraseña>
 ```
 
 ## 3. Probar en un puerto aparte (recomendado, no te saltes esto)
@@ -96,7 +97,7 @@ Prueba manualmente desde tu navegador vía un túnel SSH (`ssh -L 3010:localhost
 o agregando temporalmente un `server_name` de prueba en nginx apuntando al puerto 3010. Verifica
 en especial:
 - Login de admin (`/admin/login`) con la cuenta que crees vía
-  `npx tsx scripts/create-admin.ts <usuario> <password>`.
+  `npx tsx --env-file=.env scripts/create-admin.ts <usuario> <password>`.
 - Crear un producto con foto (confirma que `PRODUCT_IMAGES_DIR` funciona).
 - Un pedido de prueba desde `/tienda` (confirma cifrado del teléfono).
 

@@ -141,7 +141,11 @@ vive en el código, y **cómo verificarlo**.
 
 ### 13. Login de admin: scrypt + JWT de sesión + rate limiting + anti-enumeración
 - **Qué**: cuenta de administrador única (modelo `Admin`, sin registro público — se crea con
-  `npx tsx scripts/create-admin.ts <usuario> <password>`). La contraseña se guarda como
+  `npx tsx --env-file=.env scripts/create-admin.ts <usuario> <password>` — el flag es necesario:
+  `tsx` no carga `.env` solo, y sin él el script cae a su valor por defecto `file:./dev.db`, que
+  en local *coincide* con el `.env` de desarrollo pero en el VPS, con `DATABASE_URL` como ruta
+  absoluta, crearía la cuenta en la base de datos equivocada sin ningún error visible). La
+  contraseña se guarda como
   `salt:hash` con `scrypt` (`node:crypto`, no bcrypt/argon2 — sin dependencia nativa nueva que
   auditar, mismo criterio que la entrada #5). Al autenticar, se firma un JWT de sesión
   (`jose`, HS256, 8h de expiración) guardado en una cookie `httpOnly; sameSite=lax;
