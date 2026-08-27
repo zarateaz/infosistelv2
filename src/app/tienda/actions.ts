@@ -2,8 +2,9 @@
 
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { sanitizeName, sanitizePhone, sanitizeInt } from "@/lib/sanitize";
+import { sanitizeName, sanitizePhone, sanitizeInt, digitsOnly } from "@/lib/sanitize";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
+import { encryptPII, blindIndex } from "@/lib/crypto";
 import type { Product, Category } from "@/types";
 
 export async function getProducts(): Promise<Product[]> {
@@ -78,10 +79,14 @@ export async function createOrder(input: unknown) {
     orderItems.push({ productId: product.id, name: product.name, category: product.category, quantity, unitPrice });
   }
 
+  // Fase 4: the phone never touches the database in plaintext. The blind
+  // index (HMAC of the digits-only number) is what a future admin lookup
+  // ("find this customer's past orders") would search on instead.
   const order = await prisma.order.create({
     data: {
       customerName,
-      customerPhone,
+      customerPhone: encryptPII(customerPhone),
+      customerPhoneIndex: blindIndex(digitsOnly(customerPhone)),
       total: serverTotal,
       items: { create: orderItems },
     },

@@ -11,6 +11,15 @@ const envSchema = z.object({
   JWT_SECRET: z
     .string()
     .min(32, "JWT_SECRET must be at least 32 characters (see .env.example: openssl rand -base64 64)"),
+  // Fase 4 — cifrado de PII (lib/crypto.ts). 32 bytes hex = 64 chars.
+  ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, "ENCRYPTION_KEY must be 64 hex chars (see .env.example: openssl rand -hex 32)"),
+  // Fase 4 — índice de búsqueda ciego (lib/crypto.ts). NEVER rotate once
+  // real data has been indexed with it.
+  DNI_HMAC_SECRET: z
+    .string()
+    .min(32, "DNI_HMAC_SECRET must be at least 32 hex chars (see .env.example: openssl rand -hex 32)"),
 });
 
 const parsed = envSchema.safeParse(process.env);

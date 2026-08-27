@@ -33,13 +33,16 @@ model Product {
 }
 
 model Order {
-  id            String      @id @default(cuid())
-  customerName  String
-  customerPhone String
-  total         Float // always server-calculated at creation time — never trust a client-sent total
-  date          DateTime    @default(now())
-  items         OrderItem[]
-  createdAt     DateTime    @default(now())
+  id                 String      @id @default(cuid())
+  customerName       String
+  customerPhone      String // AES-256-GCM ciphertext ("iv:authTag:cipher", hex) — see lib/crypto.ts. Never read/write raw.
+  customerPhoneIndex String // HMAC-SHA256 blind index of the digits-only phone, for exact-match lookup without decrypting
+  total              Float // always server-calculated at creation time — never trust a client-sent total
+  date               DateTime    @default(now())
+  items              OrderItem[]
+  createdAt          DateTime    @default(now())
+
+  @@index([customerPhoneIndex])
 }
 
 model OrderItem {

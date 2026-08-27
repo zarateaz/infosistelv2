@@ -6,7 +6,11 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 const SESSION_KEY = "infosistel-preloaded";
 const HERO_IMAGE_SRC = "/img/hero-shield.png";
-const MIN_VISIBLE_MS = 1500;
+// Hard ceiling: no matter what fails upstream (a stalled asset promise, a
+// paused GSAP ticker in a backgrounded tab, anything), the site must
+// become visible by this point. A loading screen that can get stuck
+// forever is worse than one that skips its own animation.
+const SAFETY_TIMEOUT_MS = 6000;
 
 // Same three-color split as the Hero wordmark, flattened into individual
 // letters so each one can be animated on/off independently.
@@ -98,7 +102,6 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
 
     document.body.style.overflow = "hidden";
     let cancelled = false;
-    const startedAt = performance.now();
 
     const letters = letterRefs.current.filter(Boolean) as HTMLSpanElement[];
     gsap.set(letters, {
@@ -113,36 +116,60 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
     gsap.set(sparkRef.current, { opacity: 0, left: "0%" });
     gsap.set(taglineRef.current, { opacity: 0, y: 10 });
 
-    const entrance = gsap.timeline();
-    entrance
-      .to(letters, {
-        opacity: 1,
-        x: 0,
-        y: 0,
-        rotate: 0,
-        filter: "blur(0px)",
-        duration: 0.75,
-        stagger: { each: 0.045, from: "center" },
-        ease: "back.out(1.8)",
-      })
-      .to(glowRef.current, { opacity: 1, scale: 1.4, duration: 0.5, ease: "power2.out" }, "-=0.5")
-      .to(glowRef.current, { opacity: 0, duration: 0.6, ease: "power2.in" }, "-=0.1")
-      .to(sparkRef.current, { opacity: 1, duration: 0.1 }, "-=0.55")
-      .to(lineRef.current, { scaleX: 1, duration: 0.55, ease: "power3.inOut" }, "<")
-      .to(sparkRef.current, { left: "100%", duration: 0.55, ease: "power3.inOut" }, "<")
-      .to(sparkRef.current, { opacity: 0, duration: 0.15 })
-      .to(taglineRef.current, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, "-=0.15");
-
-    waitForRealAssets().then(() => {
-      if (cancelled) return;
-      const elapsed = performance.now() - startedAt;
-      const remaining = Math.max(0, MIN_VISIBLE_MS - elapsed);
-      gsap.delayedCall(remaining / 1000, runExitAnimation);
+    // Exit only fires once BOTH the entrance has visually finished (via its
+    // own onComplete, not a guessed duration) AND real assets are ready —
+    // whichever takes longer. This is what the old MIN_VISIBLE_MS-minus-
+    // elapsed math was trying to approximate, and got wrong: if assets
+    // resolved fast, `gsap.delayedCall(remaining, runExitAnimation)` could
+    // fire WHILE the entrance was still mid-flight, and GSAP silently
+    // overwrote the in-flight letter tweens — leaving them parked at
+    // whatever they'd reached and the timeline's own onComplete (which
+    // drives `finish()`) never called, because that tween got cut short by
+    // the overwrite instead of completing. Net effect: the wordmark sits
+    // there fully visible forever. Waiting for the real onComplete removes
+    // that race outright.
+    let entrance: gsap.core.Timeline;
+    const entranceDone = new Promise<void>((resolve) => {
+      entrance = gsap.timeline({ onComplete: resolve });
+      entrance
+        .to(letters, {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          rotate: 0,
+          filter: "blur(0px)",
+          duration: 0.75,
+          stagger: { each: 0.045, from: "center" },
+          ease: "back.out(1.8)",
+        })
+        .to(glowRef.current, { opacity: 1, scale: 1.4, duration: 0.5, ease: "power2.out" }, "-=0.5")
+        .to(glowRef.current, { opacity: 0, duration: 0.6, ease: "power2.in" }, "-=0.1")
+        .to(sparkRef.current, { opacity: 1, duration: 0.1 }, "-=0.55")
+        .to(lineRef.current, { scaleX: 1, duration: 0.55, ease: "power3.inOut" }, "<")
+        .to(sparkRef.current, { left: "100%", duration: 0.55, ease: "power3.inOut" }, "<")
+        .to(sparkRef.current, { opacity: 0, duration: 0.15 })
+        .to(taglineRef.current, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, "-=0.15");
     });
+
+    Promise.all([entranceDone, waitForRealAssets()])
+      .then(() => {
+        if (!cancelled) runExitAnimation();
+      })
+      .catch(() => {
+        if (!cancelled) runExitAnimation();
+      });
+
+    // Native setTimeout, not gsap.delayedCall — this must fire even if
+    // GSAP's own rAF-driven ticker is the thing that's stuck, so it can't
+    // share a failure mode with whatever it's guarding against.
+    const safetyTimer = window.setTimeout(() => {
+      if (!cancelled) runExitAnimation();
+    }, SAFETY_TIMEOUT_MS);
 
     return () => {
       cancelled = true;
-      entrance.kill();
+      entrance?.kill();
+      window.clearTimeout(safetyTimer);
     };
   }, [alreadySeen, reducedMotion, onComplete, finish, runExitAnimation]);
 

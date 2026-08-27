@@ -18,6 +18,12 @@ export function sanitizePhone(input: unknown): string {
   return input.replace(/[^0-9+\-\s()]/g, "").slice(0, 20).trim();
 }
 
+/** Digits only, for the phone blind index (lib/crypto.ts) — so "987 654
+ *  321" and "(987)654-321" hash to the same lookup value. */
+export function digitsOnly(input: string): string {
+  return input.replace(/\D/g, "");
+}
+
 export function sanitizeInt(input: unknown, min = 0, max = 100_000): number | null {
   const n = parseInt(String(input), 10);
   if (isNaN(n)) return null;

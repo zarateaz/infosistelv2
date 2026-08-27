@@ -174,10 +174,38 @@ vive en el código, y **cómo verificarlo**.
 
 ---
 
+## Fase 4 — Cifrado de datos personales
+
+### 15. Teléfono del cliente cifrado en reposo (AES-256-GCM) + índice ciego para búsqueda
+- **Qué**: `Order.customerPhone` deja de guardarse en texto plano — `createOrder`
+  (`src/app/tienda/actions.ts`) lo cifra con AES-256-GCM (`lib/crypto.ts`, `node:crypto`, sin
+  dependencia nueva — mismo criterio que scrypt en la entrada #13) antes de escribirlo. Cada valor
+  guarda su propio IV aleatorio y un authTag (GCM detecta manipulación, no solo confidencialidad).
+  Como el ciphertext es no-determinista, una búsqueda exacta ("¿este cliente ya pidió antes?") no
+  puede comparar contra él directamente — se guarda además `customerPhoneIndex`, un HMAC-SHA256
+  del teléfono (solo dígitos) con un secreto separado (`DNI_HMAC_SECRET`), indexado en la tabla,
+  que sí permite un lookup exacto sin descifrar ninguna fila.
+- **Por qué**: OWASP Top 10 A02:2021 – Cryptographic Failures. Un dump de la base de datos (backup
+  filtrado, acceso no autorizado al VPS) no debe exponer directamente el celular real de un
+  cliente. El nombre del cliente se deja sin cifrar deliberadamente — no forma parte del alcance
+  que ya definía este documento ("DNI/teléfono"), y cifrar más de lo necesario sin un caso de uso
+  real solo agrega complejidad.
+- **Dónde**: `src/lib/crypto.ts`, `src/lib/sanitize.ts` (`digitsOnly`), `src/app/tienda/actions.ts`,
+  `prisma/schema.prisma` (`Order.customerPhone`, `Order.customerPhoneIndex`).
+- **Verificación**: `sqlite3 dev.db "SELECT customerPhone FROM \"Order\";"` debe mostrar
+  `iv:authTag:ciphertext` en hex, nunca un número de teléfono legible; `decryptPII()` sobre ese
+  valor debe devolver el teléfono original exacto; dos formatos distintos del mismo número
+  (`"987 654 321"` vs `"987654321"`) deben producir el mismo `customerPhoneIndex`.
+
+---
+
 ## Pendiente (fases siguientes — no implementado aún)
 - Contenido real del panel admin (catálogo, pedidos, escáner de inventario) — la Fase 3 hasta
-  ahora solo cubre la autenticación, no las pantallas de gestión.
-- Cifrado de datos personales (DNI/teléfono) e índice de búsqueda ciego — Fase 4.
+  ahora solo cubre la autenticación, no las pantallas de gestión. El lookup por
+  `customerPhoneIndex` (Fase 4) queda listo para cuando ese panel exista.
+- Campo DNI y su propio cifrado/índice — la Fase 4 hasta ahora solo cubre el teléfono, que era el
+  único dato personal que ya existía en el esquema; agregar DNI real cuando el checkout/panel lo
+  requiera.
 - Herramienta `buscarProductos` para el chatbot, ahora que el catálogo ya existe — para que no
   tenga que derivar cada pregunta de precio/stock a WhatsApp.
 - Fotografía real de producto (hoy las tarjetas muestran un ícono de categoría, sin fotos) — se
