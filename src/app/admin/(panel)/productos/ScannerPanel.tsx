@@ -2,8 +2,9 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Barcode, Camera, Loader2, CheckCircle2 } from "lucide-react";
+import { Barcode, Camera, ScanLine, Loader2, CheckCircle2 } from "lucide-react";
 import { lookupBarcode, recognizeProductImage } from "./scan-actions";
+import { CameraScanner } from "./CameraScanner";
 
 export interface ScanFill {
   name?: string;
@@ -12,10 +13,8 @@ export interface ScanFill {
   barcode?: string;
 }
 
-/** Barcode entry + AI photo recognition, used only when creating a new
- *  product. A physical USB barcode scanner just types digits and hits
- *  Enter — no camera needed — so the barcode field is a plain text input
- *  the admin can also type into by hand. */
+/** Barcode entry (typed, USB-scanner keyboard input, or live camera) + AI
+ *  photo recognition, used only when creating a new product. */
 export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const [barcode, setBarcode] = useState("");
   const [barcodeStatus, setBarcodeStatus] = useState<
@@ -25,17 +24,18 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     | { kind: "found" }
     | { kind: "not-found" }
   >({ kind: "idle" });
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const [imageStatus, setImageStatus] = useState<
     { kind: "idle" } | { kind: "loading" } | { kind: "done" } | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleBarcodeSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const clean = barcode.trim();
+  async function runBarcodeLookup(code: string) {
+    const clean = code.trim();
     if (!clean) return;
 
+    setBarcode(clean);
     setBarcodeStatus({ kind: "loading" });
     const result = await lookupBarcode(clean);
 
@@ -50,6 +50,16 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
 
     onFill({ barcode: clean, ...result.suggestion });
     setBarcodeStatus(result.suggestion ? { kind: "found" } : { kind: "not-found" });
+  }
+
+  function handleBarcodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    runBarcodeLookup(barcode);
+  }
+
+  function handleCameraDetected(code: string) {
+    setCameraOpen(false);
+    runBarcodeLookup(code);
   }
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -86,7 +96,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           <input
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
-            placeholder="Escanea o escribe el código de barras"
+            placeholder="Escanea (USB), escribe, o usa la cámara"
             autoComplete="off"
             className="w-full rounded-xl border border-border bg-bg py-2.5 pl-10 pr-4 text-sm text-fg outline-none focus:border-accent"
           />
@@ -97,6 +107,15 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           className="rounded-full border border-border-strong px-5 py-2.5 text-sm font-bold text-fg transition-colors hover:border-accent hover:text-accent disabled:opacity-60"
         >
           {barcodeStatus.kind === "loading" ? "Buscando..." : "Buscar"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCameraOpen(true)}
+          className="inline-flex items-center gap-2 rounded-full border border-border-strong px-5 py-2.5 text-sm font-bold text-fg transition-colors hover:border-accent hover:text-accent"
+        >
+          <ScanLine size={15} />
+          Usar cámara
         </button>
 
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border-strong px-5 py-2.5 text-sm font-bold text-fg transition-colors hover:border-accent hover:text-accent">
@@ -145,6 +164,10 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       )}
       {imageStatus.kind === "error" && (
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>
+      )}
+
+      {cameraOpen && (
+        <CameraScanner onDetected={handleCameraDetected} onClose={() => setCameraOpen(false)} />
       )}
     </div>
   );

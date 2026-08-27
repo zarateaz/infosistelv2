@@ -50,3 +50,9 @@ next-env.d.ts
 *.db-journal
 *.db-wal
 *.db-shm
+
+# product photos uploaded through the admin panel (upload-actions.ts) —
+# runtime data, not source. On the VPS this needs to live outside the
+# deploy directory (or survive redeploys some other way), same reasoning
+# as dev.db never being committed.
+/public/img/products/

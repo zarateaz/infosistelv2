@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductFormState, AdminProduct } from "./actions";
 import { ScannerPanel, type ScanFill } from "./ScannerPanel";
+import { ImageUploadField } from "./ImageUploadField";
 
 const initialState: ProductFormState = {};
 
@@ -25,6 +26,7 @@ export function ProductForm({
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(action, initialState);
   const [onSale, setOnSale] = useState(product?.onSale ?? false);
+  const [imageUploading, setImageUploading] = useState(false);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLInputElement>(null);
@@ -159,21 +161,7 @@ export function ProductForm({
             />
           </div>
 
-          <div className="sm:col-span-2">
-            <label className={labelClass} htmlFor="image">
-              Ruta de imagen
-            </label>
-            <input
-              id="image"
-              name="image"
-              defaultValue={product?.image ?? ""}
-              placeholder="/img/products/ejemplo.webp"
-              className={inputClass}
-            />
-            <p className="mt-1.5 text-xs text-fg-muted">
-              Déjalo vacío para mostrar el ícono de la categoría.
-            </p>
-          </div>
+          <ImageUploadField defaultValue={product?.image} onUploadingChange={setImageUploading} />
         </div>
 
         <div className="flex flex-wrap items-center gap-6">
@@ -225,10 +213,10 @@ export function ProductForm({
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || imageUploading}
             className="rounded-full bg-accent px-7 py-3 text-sm font-bold text-accent-fg transition-opacity disabled:opacity-60"
           >
-            {isPending ? "Guardando..." : "Guardar"}
+            {isPending ? "Guardando..." : imageUploading ? "Subiendo imagen..." : "Guardar"}
           </button>
           <button
             type="button"

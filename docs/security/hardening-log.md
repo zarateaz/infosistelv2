@@ -212,30 +212,67 @@ vive en el código, y **cómo verificarlo**.
   de `/tienda` sin ningún cambio de código; buscar un pedido por un celular que no existe debe
   devolver 0 resultados sin lanzar error.
 
-### 17. Escáner de inventario: código de barras + reconocimiento por foto con IA
-- **Qué**: en "Nuevo producto", un campo de código de barras (el escáner físico USB que usará la
-  tienda es HID — escribe dígitos y Enter, no necesita cámara ni permiso del navegador) busca
-  primero en la base local (`Product.barcode`, columna `@unique`); si ya existe, lleva directo a
-  editar ese producto en vez de dejar crear un duplicado — esto es lo que de verdad importa día a
-  día (reabastecer stock). Si no existe localmente, intenta una base pública de UPC gratuita
-  (best-effort: timeout de 5s, cualquier fallo se trata como "no encontrado", nunca bloquea el
-  flujo). Además, "Reconocer con IA" deja subir una foto de la caja/etiqueta y usa Claude
-  (`generateObject`, mismo proveedor que el chatbot — sin agregar otra API) para leer marca/
-  modelo/especificaciones y sugerir nombre, descripción y categoría (restringida por `zod.enum`
-  a las categorías que ya existen, para no inventar una nueva por error de lectura). La foto nunca
-  se sube a disco ni se guarda — solo viaja como base64 al modelo y se descarta.
+### 17. Escáner de inventario: código de barras (USB o cámara) + reconocimiento por foto con IA
+- **Qué**: en "Nuevo producto", un campo de código de barras acepta tanto un escáner físico USB
+  (HID — escribe dígitos y Enter, sin permisos de navegador) como escritura manual o una **cámara
+  en vivo** (`@zxing/browser`, botón "Usar cámara"). Busca primero en la base local
+  (`Product.barcode`, columna `@unique`); si ya existe, lleva directo a editar ese producto en vez
+  de dejar crear un duplicado — esto es lo que de verdad importa día a día (reabastecer stock). Si
+  no existe localmente, intenta una base pública de UPC gratuita (best-effort: timeout de 5s,
+  cualquier fallo se trata como "no encontrado", nunca bloquea el flujo). Además, "Reconocer con
+  IA" deja subir una foto de la caja/etiqueta y usa Claude (`generateObject`, mismo proveedor que
+  el chatbot — sin agregar otra API) para leer marca/modelo/especificaciones y sugerir nombre,
+  descripción y categoría (restringida por `zod.enum` a las categorías que ya existen, para no
+  inventar una nueva por error de lectura). Esa foto de reconocimiento nunca se sube a disco ni se
+  guarda — solo viaja como base64 al modelo y se descarta.
 - **Por qué**: cierra el alcance original de la Fase 3 ("catálogo, pedidos, escáner de
   inventario"). El límite real y ya documentado en el proyecto anterior se mantiene: la mayoría
   del inventario (cables genéricos, repuestos B2B) simplemente no tiene ficha en bases públicas de
   UPC — por eso el reconocimiento por foto es la vía que de verdad funciona para ese caso. Rate
   limit de 20 fotos / 5 min por IP en `recognizeProductImage` — cuesta dinero real por llamada
   aunque esté detrás del login admin.
+- **Cámara y Permissions-Policy**: la cabecera global ya venía con `camera=()` (entrada #1,
+  comentario "revisit when the barcode-scanner admin feature actually needs `camera=(self)`" —
+  este es ese momento). En vez de aflojarla para todo el sitio, `next.config.ts` agrega un segundo
+  bloque de `headers()` con `source: "/admin/:path*"` que sobreescribe solo ahí con
+  `camera=(self)` — el sitio público sigue sin poder pedir cámara nunca.
 - **Dónde**: `src/app/admin/(panel)/productos/scan-actions.ts`, `ScannerPanel.tsx`,
-  `prisma/schema.prisma` (`Product.barcode`).
+  `CameraScanner.tsx`, `prisma/schema.prisma` (`Product.barcode`), `next.config.ts`.
 - **Verificación**: escanear un código ya guardado debe llevar a editar ese producto, no a crear
   uno nuevo; intentar guardar dos productos con el mismo código de barras debe rechazar el segundo
-  con "Ya existe un producto con ese código de barras" en vez de un error de servidor sin
-  explicación.
+  con "Ya existe un producto con ese código de barras"; pedir la cámara desde cualquier página
+  fuera de `/admin` debe fallar por política del navegador, nunca solo por falta de hardware.
+
+### 18. Subida real de fotos de producto (reemplaza el campo de ruta manual)
+- **Qué**: "Imagen del producto" ahora es un subida de archivo real (PNG/JPEG/WEBP, máx. 8MB) en
+  vez de un input de texto con la ruta. `uploadProductImage` (Server Action) reprocesa todo con
+  `sharp` — no solo guarda el archivo tal cual: aplica la orientación EXIF y luego la descarta,
+  redimensiona a máx. 1200×1200 y reconvierte a WEBP con nombre `randomUUID()`. Ese re-encodeo es
+  también la validación de contenido: un archivo renombrado que no sea una imagen real falla ahí,
+  antes de tocar disco. Reemplazar o borrar la foto de un producto limpia el archivo anterior
+  (`deleteProductImageIfManaged`) — pero solo si el path cae bajo `/img/products/` con el patrón
+  exacto de nombre que este código genera, nunca una ruta que alguien haya escrito a mano en una
+  fase anterior.
+- **Bug real encontrado y corregido en el camino**: Next.js limita el body de un Server Action a
+  1MB por defecto. Una foto de ~1.8MB en base64 (+33% de overhead) lo supera con facilidad, y la
+  falla — antes de este fix — era **silenciosa**: el campo oculto de la imagen se quedaba con el
+  valor viejo, sin ningún mensaje, y guardar el producto conservaba la foto anterior sin avisar.
+  Se corrigió en dos frentes: `next.config.ts` sube `experimental.serverActions.bodySizeLimit` a
+  `12mb` (cubre el tope de 8MB en crudo más el overhead de base64), y `ImageUploadField` ahora
+  envuelve la subida en `try/catch` real — cualquier fallo (éste u otro) muestra un mensaje en vez
+  de fallar en silencio. Además, "Guardar" se deshabilita mientras una imagen sigue subiendo, para
+  que nunca sea posible guardar con el campo todavía apuntando al valor anterior.
+- **Por qué**: la subida por ruta manual asumía que alguien ya había copiado el archivo a
+  `/public` a mano — inviable para el uso real del panel. La falla silenciosa del límite de body
+  es exactamente el tipo de bug que rompe confianza en un formulario: parece que guardó bien y no
+  guardó lo que se esperaba.
+- **Dónde**: `src/app/admin/(panel)/productos/upload-actions.ts`, `ImageUploadField.tsx`,
+  `next.config.ts`, `.gitignore` (`/public/img/products/` — contenido subido en runtime, no
+  código fuente; igual que `dev.db`, necesita vivir fuera del directorio de deploy en el VPS o
+  sobrevivir a cada redeploy de alguna otra forma).
+- **Verificación**: subir una foto de >1MB en base64 debe completarse sin el error "Body exceeded
+  1 MB limit" en consola; reemplazar la foto de un producto debe dejar en disco solo el archivo
+  nuevo, nunca ambos.
 
 ---
 

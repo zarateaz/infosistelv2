@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { deleteProductImageIfManaged } from "./upload-actions";
 
 export interface AdminProduct {
   id: string;
@@ -125,6 +126,7 @@ export async function updateProduct(
   if ("error" in result) return { error: result.error };
 
   const category = await upsertCategory(result.data.category);
+  const previous = await prisma.product.findUnique({ where: { id }, select: { image: true } });
   try {
     await prisma.product.update({ where: { id }, data: { ...result.data, category } });
   } catch (err) {
@@ -134,13 +136,22 @@ export async function updateProduct(
     throw err;
   }
 
+  // Only clean up once the new row is safely saved, and only if the image
+  // actually changed — otherwise re-saving a product with the same photo
+  // would delete the very file it still points to.
+  if (previous?.image && previous.image !== result.data.image) {
+    await deleteProductImageIfManaged(previous.image);
+  }
+
   revalidatePath("/admin/productos");
   revalidatePath("/tienda");
   redirect("/admin/productos");
 }
 
 export async function deleteProduct(id: string) {
+  const product = await prisma.product.findUnique({ where: { id }, select: { image: true } });
   await prisma.product.delete({ where: { id } });
+  if (product?.image) await deleteProductImageIfManaged(product.image);
   revalidatePath("/admin/productos");
   revalidatePath("/tienda");
 }
