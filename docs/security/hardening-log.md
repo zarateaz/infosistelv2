@@ -197,18 +197,33 @@ vive en el código, y **cómo verificarlo**.
   valor debe devolver el teléfono original exacto; dos formatos distintos del mismo número
   (`"987 654 321"` vs `"987654321"`) deben producir el mismo `customerPhoneIndex`.
 
+### 16. Contenido del panel admin: catálogo y pedidos
+- **Qué**: `/admin/productos` (listar/crear/editar/eliminar, con confirmación antes de borrar) y
+  `/admin/pedidos` (listado + búsqueda exacta por celular usando `customerPhoneIndex` de la
+  Fase 4 — nunca se descifra nada para comparar, solo para mostrar en pantalla). El panel dejó de
+  compartir el Navbar/Footer/chat público (`src/components/SiteChrome.tsx`): un panel interno no
+  necesita el botón de WhatsApp ni el link "Iniciar sesión" que ya se usó para entrar. Crear o
+  editar un producto hace `upsert` de su categoría en la tabla `Category` si es nueva — así
+  `/tienda` la recoge sola en sus chips de filtro sin tocar código.
+- **Por qué**: cierra el hueco que dejaba la Fase 3 (login funcionando pero sin nada que
+  administrar) y le da un uso real al índice ciego construido en la Fase 4.
+- **Dónde**: `src/app/admin/(panel)/`, `src/components/SiteChrome.tsx`.
+- **Verificación**: crear un producto con una categoría nueva debe hacerla aparecer en los chips
+  de `/tienda` sin ningún cambio de código; buscar un pedido por un celular que no existe debe
+  devolver 0 resultados sin lanzar error.
+
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)
-- Contenido real del panel admin (catálogo, pedidos, escáner de inventario) — la Fase 3 hasta
-  ahora solo cubre la autenticación, no las pantallas de gestión. El lookup por
-  `customerPhoneIndex` (Fase 4) queda listo para cuando ese panel exista.
+- Escáner de inventario (lectura de código de barras / reconocimiento de producto) — no estaba en
+  el alcance de esta ronda del panel admin.
 - Campo DNI y su propio cifrado/índice — la Fase 4 hasta ahora solo cubre el teléfono, que era el
   único dato personal que ya existía en el esquema; agregar DNI real cuando el checkout/panel lo
   requiera.
 - Herramienta `buscarProductos` para el chatbot, ahora que el catálogo ya existe — para que no
   tenga que derivar cada pregunta de precio/stock a WhatsApp.
-- Fotografía real de producto (hoy las tarjetas muestran un ícono de categoría, sin fotos) — se
-  resuelve junto con el panel admin en la Fase 3.
+- Fotografía real de producto (hoy las tarjetas muestran un ícono de categoría, sin fotos) —
+  requiere una vía de subida de imágenes que el panel admin todavía no tiene; hoy el campo
+  "ruta de imagen" solo acepta una ruta ya existente en `/public`.
 - Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
   la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local.
