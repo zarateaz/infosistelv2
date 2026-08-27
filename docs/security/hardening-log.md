@@ -318,8 +318,23 @@ vive en el código, y **cómo verificarlo**.
   requiera.
 - Herramienta `buscarProductos` para el chatbot, ahora que el catálogo ya existe — para que no
   tenga que derivar cada pregunta de precio/stock a WhatsApp.
-- Fotografía real de producto (hoy las tarjetas muestran un ícono de categoría, sin fotos) —
-  requiere una vía de subida de imágenes que el panel admin todavía no tiene; hoy el campo
-  "ruta de imagen" solo acepta una ruta ya existente en `/public`.
 - Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
   la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local.
+
+## Revisión pre-despliegue (2026-08-27) — hallazgos y correcciones fuera del alcance de seguridad
+No son medidas de hardening, pero se encontraron revisando el sitio completo antes del primer
+despliegue real:
+- El link "Nosotros" del Navbar apuntaba a un ancla (`#nosotros`) que no existía en ninguna
+  sección — corregido agregando el `id` a `Stats.tsx` (la sección de confianza/credenciales,
+  el contenido más cercano a "quiénes somos" que ya existía).
+- El favicon era el logo genérico de Next.js (el triángulo negro por defecto de
+  `create-next-app`), nunca reemplazado — corregido generando uno real desde
+  `public/img/hero-shield.png` (el shield de la marca), verificado legible a 16×16.
+- `public/{file,globe,next,vercel,window}.svg` — los SVG de ejemplo que trae
+  `create-next-app` por defecto, sin ninguna referencia en el código — eliminados.
+- **El catálogo sembrado (`prisma/seed.ts`, 16 productos Kingston/Logitech/etc.) es data de
+  demostración con precios y stock inventados, no el inventario real de la tienda.**
+  `scripts/deploy-vps.sh` deliberadamente NO lo siembra (`prisma migrate deploy` nunca ejecuta
+  seeds) — la base de datos en el VPS arranca vacía. `/tienda` degrada bien a un catálogo vacío
+  ("Sin resultados", sin crash). Ver `docs/deploy-vps.md` para la decisión sobre cómo poblar el
+  catálogo real antes de anunciar el sitio.

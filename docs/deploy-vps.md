@@ -49,7 +49,31 @@ entrada #15).
 chmod 600 .env
 ```
 
-## 2. Probar en un puerto aparte (recomendado, no te saltes esto)
+## 2. Decide qué catálogo va a mostrar el sitio el día 1
+
+`scripts/deploy-vps.sh` **no siembra ningún producto** — `prisma migrate deploy` solo crea las
+tablas, nunca ejecuta seeds. La base de datos en el VPS arranca completamente vacía (sin
+productos, sin categorías); `/tienda` lo maneja bien ("Sin resultados", sin errores).
+
+`prisma/seed.ts` sí existe en el repo, pero son **16 productos de demostración** (RAM Kingston,
+mouse Logitech, etc.) con precios y stock inventados para probar el catálogo durante el
+desarrollo — **nunca lo corras contra la base de datos de producción** (`npx prisma db seed`)
+a menos que quieras que esos precios y ese stock falsos sean lo primero que vea un cliente real.
+
+Dos caminos razonables:
+- **Arrancar vacío** y cargar tu inventario real desde `/admin/productos` (con el escáner de
+  código de barras / reconocimiento por foto) antes de anunciar el sitio.
+- **Precargar tu catálogo real** editando `prisma/seed.ts` con tus productos, precios y stock
+  reales antes del primer deploy, y corriendo `npx prisma db seed` una sola vez.
+
+Crea tu cuenta de administrador real (no uses "admin" de prueba) antes de dar por terminado el
+despliegue:
+
+```bash
+npx tsx scripts/create-admin.ts <tu-usuario> <tu-contraseña>
+```
+
+## 3. Probar en un puerto aparte (recomendado, no te saltes esto)
 
 Antes de tocar nginx o el sitio anterior, corre v2 en un puerto que nadie más usa:
 
@@ -83,7 +107,7 @@ git checkout ecosystem.config.js
 npx pm2 delete infosistel-v2-test
 ```
 
-## 3. Corte a producción
+## 4. Corte a producción
 
 Con v2 ya probado en el puerto 3010, el corte real es: apagar el proceso PM2 del sitio anterior y
 levantar v2 en el puerto 3000 (el mismo que nginx ya espera — **nginx no necesita ningún cambio**,
@@ -101,7 +125,7 @@ bash scripts/deploy-vps.sh
 curl -I https://infosistel.com.pe
 ```
 
-## 4. Si algo sale mal — volver atrás
+## 5. Si algo sale mal — volver atrás
 
 ```bash
 npx pm2 stop infosistel-v2
