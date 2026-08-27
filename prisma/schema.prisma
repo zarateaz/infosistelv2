@@ -52,3 +52,10 @@ model OrderItem {
   unitPrice Float? // price verified against the DB at order time, not client-supplied
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String // "salt:hash", both hex — see src/lib/auth.ts (scrypt, not bcrypt: no native deps)
+  createdAt    DateTime @default(now())
+}

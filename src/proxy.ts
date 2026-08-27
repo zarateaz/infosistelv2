@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 
 // Strict, nonce-based Content-Security-Policy. `middleware.ts` is deprecated
 // in Next.js 16 in favor of `proxy.ts` (same request-interception model,
@@ -9,7 +10,23 @@ import { NextRequest, NextResponse } from "next/server";
 // attacker manages to inject (reflected/stored XSS) is not, because it
 // won't carry a valid nonce. This forces dynamic rendering site-wide — a
 // deliberate trade-off, logged in docs/security/hardening-log.md.
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Fase 3 — panel admin: everything under /admin except the login page
+  // itself requires a valid session JWT. Uses `jose` (WebCrypto), not
+  // Node's `crypto` — this function runs in the Edge runtime.
+  if (pathname.startsWith("/admin")) {
+    const token = request.cookies.get(SESSION_COOKIE)?.value;
+    const session = token ? await verifySessionToken(token) : null;
+
+    if (pathname === "/admin/login") {
+      if (session) return NextResponse.redirect(new URL("/admin", request.url));
+    } else if (!session) {
+      return NextResponse.redirect(new URL("/admin/login", request.url));
+    }
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
 

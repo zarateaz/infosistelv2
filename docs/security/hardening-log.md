@@ -137,8 +137,46 @@ vive en el código, y **cómo verificarlo**.
 
 ---
 
+## Fase 3 — Autenticación del panel admin
+
+### 13. Login de admin: scrypt + JWT de sesión + rate limiting + anti-enumeración
+- **Qué**: cuenta de administrador única (modelo `Admin`, sin registro público — se crea con
+  `npx tsx scripts/create-admin.ts <usuario> <password>`). La contraseña se guarda como
+  `salt:hash` con `scrypt` (`node:crypto`, no bcrypt/argon2 — sin dependencia nativa nueva que
+  auditar, mismo criterio que la entrada #5). Al autenticar, se firma un JWT de sesión
+  (`jose`, HS256, 8h de expiración) guardado en una cookie `httpOnly; sameSite=lax;
+  secure` (en producción). Máximo 5 intentos por IP cada 15 minutos
+  (`lib/rateLimit.ts`, mismo patrón que chat/pedidos). Si el usuario no existe, se corre
+  igual un `scryptSync` sobre una sal fija (`burnPasswordCheckTime`) para que el tiempo de
+  respuesta no revele si un usuario es válido (ataque de enumeración por timing).
+- **Por qué**: OWASP Top 10 A07:2021 – Identification and Authentication Failures / OWASP ASVS
+  V2 (password storage con KDF lenta, no hash rápido) / API4:2023 (rate limiting en login).
+- **Dónde**: `src/lib/auth.ts` (hashing, Node runtime), `src/lib/session.ts` (JWT, Edge-safe —
+  `jose` en vez de `node:crypto` para poder importarse desde `proxy.ts`), `src/app/admin/login/`,
+  `scripts/create-admin.ts`.
+- **Verificación**: 6 intentos seguidos con contraseña incorrecta desde la misma IP deben
+  bloquear el 6to con un mensaje de espera; medir el tiempo de respuesta con un usuario
+  inexistente vs. uno existente con contraseña incorrecta no debe mostrar una diferencia
+  perceptible.
+
+### 14. `/admin/*` protegido en el edge, no solo en la página
+- **Qué**: `proxy.ts` verifica la cookie de sesión para cualquier ruta bajo `/admin` (excepto
+  `/admin/login`) y redirige a `/admin/login` si falta o es inválida/expirada — antes de que la
+  petición llegue a renderizar cualquier Server Component. `/admin/page.tsx` vuelve a verificar
+  la sesión igual (defensa en profundidad: el chequeo del proxy no debe ser el único lugar que
+  decide qué se le muestra a quién).
+- **Por qué**: OWASP Top 10 A01:2021 – Broken Access Control. Verificar solo dentro del
+  componente de página es frágil — cualquier nueva ruta bajo `/admin` que alguien agregue después
+  quedaría desprotegida por defecto si el chequeo no vive en un punto central.
+- **Dónde**: `src/proxy.ts`.
+- **Verificación**: pedir `/admin` sin cookie de sesión (`curl -I`) debe devolver `307` a
+  `/admin/login`; con una cookie de sesión válida, pedir `/admin/login` debe redirigir a `/admin`.
+
+---
+
 ## Pendiente (fases siguientes — no implementado aún)
-- Autenticación del panel admin (JWT, hash de contraseñas, rate limiting) — Fase 3.
+- Contenido real del panel admin (catálogo, pedidos, escáner de inventario) — la Fase 3 hasta
+  ahora solo cubre la autenticación, no las pantallas de gestión.
 - Cifrado de datos personales (DNI/teléfono) e índice de búsqueda ciego — Fase 4.
 - Herramienta `buscarProductos` para el chatbot, ahora que el catálogo ya existe — para que no
   tenga que derivar cada pregunta de precio/stock a WhatsApp.
