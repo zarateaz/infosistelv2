@@ -274,6 +274,42 @@ vive en el código, y **cómo verificarlo**.
   1 MB limit" en consola; reemplazar la foto de un producto debe dejar en disco solo el archivo
   nuevo, nunca ambos.
 
+### 19. Preparación para desplegar en el VPS (sin ejecutar nada remoto)
+- **Qué**: `next.config.ts` agrega `output: "standalone"`; `ecosystem.config.js`,
+  `scripts/deploy-vps.sh` y `docs/deploy-vps.md` — adaptados del sitio anterior, no copiados tal
+  cual. `PRODUCT_IMAGES_DIR` (nueva env var opcional) permite que las fotos subidas vivan fuera de
+  `.next/standalone` en producción, igual que ya hacía `dev.db`; el script las enlaza (`ln -s`) al
+  build en cada deploy para que sobrevivan a los rebuilds. El runbook prueba todo en un puerto
+  aparte (3010) antes de tocar el dominio real, con plan de rollback explícito (el sitio anterior
+  se detiene con `pm2 stop`, no se borra).
+- **Dos problemas reales encontrados al adaptar la config del sitio anterior** (no eran hipotéticos
+  — estaban en el `nginx.conf` que ya corre en producción):
+  1. Su rate-limit estricto de login apuntaba a `/api/auth/login` (endpoint REST de ese sitio).
+     v2 no tiene esa ruta — el login es un Server Action que hace POST directo a `/admin/login`.
+     Sin corregir esto, el intento de fuerza bruta contra el login cae en el límite general
+     (120r/min) en vez del estricto (5r/min).
+  2. Ese `nginx.conf` también fija `X-Frame-Options`, `Permissions-Policy`, HSTS y una CSP propia
+     a nivel de servidor web — v2 ya pone las suyas a nivel de app (`next.config.ts` +
+     `src/proxy.ts`, con nonce por request que nginx no puede replicar). Con ambas capas activas,
+     un mismo header aparece dos veces con valores distintos (`X-Frame-Options: SAMEORIGIN` de
+     nginx contra `DENY` de la app) — comportamiento no garantizado entre navegadores, y una forma
+     real de terminar menos protegido que con la app sola. Se quitaron esas líneas de `nginx.conf`
+     dejando un comentario explicando por qué, para que nadie las vuelva a agregar sin darse cuenta.
+  3. (Bug de build, no de nginx) `PRODUCT_IMAGES_DIR` al ser una ruta dinámica (viene de una env
+     var) hacía que Turbopack no pudiera acotar el tracing del output y empaquetara el proyecto
+     completo dentro de `.next/standalone` — corregido con comentarios `turbopackIgnore` en los
+     tres usos de `fs` que la tocan (`upload-actions.ts`). Verificado: el standalone bajó a ~77MB
+     sin la advertencia de build.
+- **Por qué**: el dominio real (`infosistel.com.pe`) sirve hoy el sitio anterior — desplegar v2 ahí
+  reemplaza ese sitio, no agrega uno nuevo. "Sin margen de error" significa que este cambio se
+  prueba en un puerto aparte con datos reales (login, crear producto con foto, un pedido) antes de
+  cortar el dominio, con un camino de vuelta atrás de un solo comando.
+- **Dónde**: `next.config.ts`, `ecosystem.config.js`, `scripts/deploy-vps.sh`, `nginx.conf`,
+  `docs/deploy-vps.md`, `.env.example`.
+- **Deliberadamente NO hecho en esta entrada**: nada se ejecutó contra el VPS real ni se tocó DNS,
+  nginx en producción, o el proceso PM2 del sitio anterior — todo esto vive en el repo, listo para
+  que el usuario lo corra él mismo siguiendo `docs/deploy-vps.md`.
+
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)

@@ -7,7 +7,19 @@ import { headers } from "next/headers";
 import sharp from "sharp";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "img", "products");
+// PRODUCT_IMAGES_DIR lets the VPS point this at a location outside
+// .next/standalone (symlinked into its public/img/products at deploy time
+// — see scripts/deploy-vps.sh), so uploaded photos survive every rebuild
+// exactly like data/dev.db does. Unset in local dev: writes straight into
+// the repo's own public/img/products.
+//
+// The `turbopackIgnore` comments below on every fs call using this are
+// deliberate: because it comes from an env var, Turbopack's build-time
+// output tracer can't statically resolve it and — without the hint —
+// falls back to tracing (and bundling into .next/standalone) the ENTIRE
+// project as a worst case. The ignore comment tells it this path is
+// intentionally resolved at runtime, outside anything it needs to trace.
+const UPLOAD_DIR = process.env.PRODUCT_IMAGES_DIR || path.join(process.cwd(), "public", "img", "products");
 const PUBLIC_PREFIX = "/img/products/";
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB raw, before re-encoding
 
@@ -32,7 +44,7 @@ export async function uploadProductImage(dataUrl: string): Promise<UploadImageRe
     return { error: "La imagen es muy grande (máximo 8MB)." };
   }
 
-  await mkdir(UPLOAD_DIR, { recursive: true });
+  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true });
   const filename = `${randomUUID()}.webp`;
 
   try {
@@ -45,7 +57,7 @@ export async function uploadProductImage(dataUrl: string): Promise<UploadImageRe
       .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer();
-    await writeFile(path.join(UPLOAD_DIR, filename), processed);
+    await writeFile(path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename), processed);
   } catch {
     return { error: "No se pudo procesar la imagen. Intenta con otro archivo." };
   }
@@ -62,7 +74,7 @@ export async function deleteProductImageIfManaged(imagePath: string | null): Pro
   if (!/^[0-9a-f-]{36}\.webp$/.test(filename)) return;
 
   try {
-    await unlink(path.join(UPLOAD_DIR, filename));
+    await unlink(path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename));
   } catch {
     // Already gone, or a permissions hiccup — not worth failing the
     // product save/delete over a stale file on disk.

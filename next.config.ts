@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   // an attacker a free framework fingerprint for free.
   poweredByHeader: false,
 
+  // Self-contained build (.next/standalone/server.js + minimal
+  // node_modules) — what scripts/deploy-vps.sh runs under PM2. Harmless
+  // for `next dev`, only changes what `next build` produces.
+  output: "standalone",
+
   experimental: {
     serverActions: {
       // Default is 1MB. The inventory scanner sends photos as base64 data
