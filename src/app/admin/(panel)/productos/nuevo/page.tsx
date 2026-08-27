@@ -9,7 +9,7 @@ export default async function NewProductPage() {
     <div>
       <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Nuevo producto</h1>
       <div className="mt-8">
-        <ProductForm categoryNames={categories.map((c) => c.name)} action={createProduct} />
+        <ProductForm categoryNames={categories.map((c) => c.name)} action={createProduct} showScanner />
       </div>
     </div>
   );

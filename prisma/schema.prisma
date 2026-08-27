@@ -25,6 +25,7 @@ model Product {
   stock       Int      @default(0)
   image       String? // path under /public, e.g. "/img/products/x.webp" — null renders a category icon placeholder
   costPrice   Float?   @default(0) // admin-only field, never sent to public API responses
+  barcode     String?  @unique // UPC/EAN scanned at the register — null for products entered without one
   isFeatured  Boolean  @default(false)
   onSale      Boolean  @default(false)
   salePrice   Float?

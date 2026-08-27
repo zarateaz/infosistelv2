@@ -14,6 +14,7 @@ export interface AdminProduct {
   costPrice: number | null;
   stock: number;
   image: string | null;
+  barcode: string | null;
   isFeatured: boolean;
   onSale: boolean;
   salePrice: number | null;
@@ -44,6 +45,12 @@ const productSchema = z.object({
     .max(300)
     .optional()
     .transform((v) => (v ? v : null)),
+  barcode: z
+    .string()
+    .trim()
+    .max(64)
+    .optional()
+    .transform((v) => (v ? v : null)),
 });
 
 /** Keeps the Category table in sync with whatever the admin types — this is
@@ -64,6 +71,7 @@ function parseProductForm(formData: FormData) {
     costPrice: formData.get("costPrice") || 0,
     stock: formData.get("stock"),
     image: formData.get("image"),
+    barcode: formData.get("barcode"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." } as const;
@@ -80,6 +88,12 @@ function parseProductForm(formData: FormData) {
   return { data: { ...parsed.data, isFeatured, onSale, salePrice } } as const;
 }
 
+/** Prisma's unique-constraint error code — see
+ *  https://www.prisma.io/docs/orm/reference/error-reference#p2002 */
+function isUniqueConstraintError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "P2002";
+}
+
 export async function createProduct(
   _prevState: ProductFormState,
   formData: FormData
@@ -88,7 +102,14 @@ export async function createProduct(
   if ("error" in result) return { error: result.error };
 
   const category = await upsertCategory(result.data.category);
-  await prisma.product.create({ data: { ...result.data, category } });
+  try {
+    await prisma.product.create({ data: { ...result.data, category } });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return { error: "Ya existe un producto con ese código de barras." };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/productos");
   revalidatePath("/tienda");
@@ -104,7 +125,14 @@ export async function updateProduct(
   if ("error" in result) return { error: result.error };
 
   const category = await upsertCategory(result.data.category);
-  await prisma.product.update({ where: { id }, data: { ...result.data, category } });
+  try {
+    await prisma.product.update({ where: { id }, data: { ...result.data, category } });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return { error: "Ya existe un producto con ese código de barras." };
+    }
+    throw err;
+  }
 
   revalidatePath("/admin/productos");
   revalidatePath("/tienda");

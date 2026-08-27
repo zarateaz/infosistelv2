@@ -212,11 +212,34 @@ vive en el código, y **cómo verificarlo**.
   de `/tienda` sin ningún cambio de código; buscar un pedido por un celular que no existe debe
   devolver 0 resultados sin lanzar error.
 
+### 17. Escáner de inventario: código de barras + reconocimiento por foto con IA
+- **Qué**: en "Nuevo producto", un campo de código de barras (el escáner físico USB que usará la
+  tienda es HID — escribe dígitos y Enter, no necesita cámara ni permiso del navegador) busca
+  primero en la base local (`Product.barcode`, columna `@unique`); si ya existe, lleva directo a
+  editar ese producto en vez de dejar crear un duplicado — esto es lo que de verdad importa día a
+  día (reabastecer stock). Si no existe localmente, intenta una base pública de UPC gratuita
+  (best-effort: timeout de 5s, cualquier fallo se trata como "no encontrado", nunca bloquea el
+  flujo). Además, "Reconocer con IA" deja subir una foto de la caja/etiqueta y usa Claude
+  (`generateObject`, mismo proveedor que el chatbot — sin agregar otra API) para leer marca/
+  modelo/especificaciones y sugerir nombre, descripción y categoría (restringida por `zod.enum`
+  a las categorías que ya existen, para no inventar una nueva por error de lectura). La foto nunca
+  se sube a disco ni se guarda — solo viaja como base64 al modelo y se descarta.
+- **Por qué**: cierra el alcance original de la Fase 3 ("catálogo, pedidos, escáner de
+  inventario"). El límite real y ya documentado en el proyecto anterior se mantiene: la mayoría
+  del inventario (cables genéricos, repuestos B2B) simplemente no tiene ficha en bases públicas de
+  UPC — por eso el reconocimiento por foto es la vía que de verdad funciona para ese caso. Rate
+  limit de 20 fotos / 5 min por IP en `recognizeProductImage` — cuesta dinero real por llamada
+  aunque esté detrás del login admin.
+- **Dónde**: `src/app/admin/(panel)/productos/scan-actions.ts`, `ScannerPanel.tsx`,
+  `prisma/schema.prisma` (`Product.barcode`).
+- **Verificación**: escanear un código ya guardado debe llevar a editar ese producto, no a crear
+  uno nuevo; intentar guardar dos productos con el mismo código de barras debe rechazar el segundo
+  con "Ya existe un producto con ese código de barras" en vez de un error de servidor sin
+  explicación.
+
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)
-- Escáner de inventario (lectura de código de barras / reconocimiento de producto) — no estaba en
-  el alcance de esta ronda del panel admin.
 - Campo DNI y su propio cifrado/índice — la Fase 4 hasta ahora solo cubre el teléfono, que era el
   único dato personal que ya existía en el esquema; agregar DNI real cuando el checkout/panel lo
   requiera.

@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — .env.example has no secrets (placeholders + generation
+# commands only) and documents every var new phases have needed; it's
+# meant to survive a fresh clone, unlike the rest of these.
 .env*
+!.env.example
 
 # vercel
 .vercel
