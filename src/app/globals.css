@@ -73,3 +73,28 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Preloader wordmark shine sweep — pure CSS, not GSAP-driven, so it can
+   never get stuck alongside the GSAP-timed letter assembly. */
+@keyframes preloader-shine {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Absolute last-resort reveal for the preloader. GSAP's timeline and the
+   native setTimeout safety net in Preloader.tsx both need the JS main
+   thread to actually get scheduled time — under severe contention (a heavy
+   build running alongside the dev server, a slammed CPU, a stalled Fast
+   Refresh mid-animation) neither is guaranteed to run promptly. A CSS
+   animation's opacity/visibility changes are handled by the compositor,
+   not the JS thread, so this fires on a wall-clock timer no matter what
+   JS is or isn't doing. Applied directly on the root element in the JSX
+   (no JS wiring needed) — belt, suspenders, and a parachute. */
+@keyframes preloader-force-reveal {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

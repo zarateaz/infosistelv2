@@ -5,15 +5,14 @@ import { gsap } from "@/lib/gsap/registerGsap";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 const SESSION_KEY = "infosistel-preloaded";
-const HERO_IMAGE_SRC = "/img/hero-shield.png";
-// Hard ceiling: no matter what fails upstream (a stalled asset promise, a
-// paused GSAP ticker in a backgrounded tab, anything), the site must
-// become visible by this point. A loading screen that can get stuck
-// forever is worse than one that skips its own animation.
-const SAFETY_TIMEOUT_MS = 6000;
+// Hard ceiling: no matter what fails upstream — a stuck GSAP ticker, a
+// backgrounded tab, anything — the site must become visible by this point.
+// Deliberately NOT gated on fonts/images finishing (a previous version was,
+// and that extra async dependency was one more thing that could hang).
+const SAFETY_TIMEOUT_MS = 4500;
 
 // Same three-color split as the Hero wordmark, flattened into individual
-// letters so each one can be animated on/off independently.
+// letters so each one can be animated independently.
 const WORD_PARTS = [
   { text: "INFO", className: "text-accent" },
   { text: "SIS", className: "text-fg" },
@@ -23,26 +22,6 @@ const LETTERS = WORD_PARTS.flatMap((part) =>
   part.text.split("").map((ch) => ({ ch, className: part.className }))
 );
 
-/** Waits for the fonts + hero image to actually be ready, capped so a slow
- *  network can't hold the preloader open forever. */
-function waitForRealAssets(): Promise<void> {
-  const fontsReady =
-    typeof document !== "undefined" && "fonts" in document
-      ? document.fonts.ready
-      : Promise.resolve();
-
-  const heroImageReady = new Promise<void>((resolve) => {
-    const img = new window.Image();
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
-    img.src = HERO_IMAGE_SRC;
-  });
-
-  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 4000));
-
-  return Promise.race([Promise.all([fontsReady, heroImageReady]).then(() => undefined), timeout]);
-}
-
 export function Preloader({ onComplete }: { onComplete: () => void }) {
   const reducedMotion = useReducedMotion();
   const [alreadySeen] = useState(
@@ -51,38 +30,23 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const letterRefs = useRef<Array<HTMLSpanElement | null>>([]);
-  const taglineRef = useRef<HTMLSpanElement>(null);
-  const lineRef = useRef<HTMLDivElement>(null);
-  const sparkRef = useRef<HTMLSpanElement>(null);
   const finished = useRef(false);
 
   const finish = useCallback(() => {
+    if (finished.current) return;
+    finished.current = true;
+    sessionStorage.setItem(SESSION_KEY, "1");
     document.body.style.overflow = "";
     onComplete();
   }, [onComplete]);
 
-  const runExitAnimation = useCallback(() => {
-    if (finished.current) return;
-    finished.current = true;
-    sessionStorage.setItem(SESSION_KEY, "1");
-
-    const letters = letterRefs.current.filter(Boolean) as HTMLSpanElement[];
-    const tl = gsap.timeline({ onComplete: finish });
-    tl.to([taglineRef.current, lineRef.current, sparkRef.current], {
-      opacity: 0,
-      duration: 0.25,
-      ease: "power2.in",
-    })
-      .to(
-        letters,
-        { scale: 1.06, opacity: 0, duration: 0.35, stagger: 0.015, ease: "power2.in" },
-        "-=0.15"
-      )
-      .to(
-        rootRef.current,
-        { clipPath: "inset(0 0 100% 0)", duration: 0.85, ease: "power4.inOut" },
-        "-=0.1"
-      );
+  /** Instant, non-animated fallback — `gsap.set` applies synchronously and
+   *  doesn't need the rAF ticker at all, unlike every `.to()` tween above.
+   *  If GSAP's ticker is the thing that's stuck, a tween-based "safety net"
+   *  would get stuck too; this can't. */
+  const forceHide = useCallback(() => {
+    gsap.set(rootRef.current, { autoAlpha: 0 });
+    finish();
   }, [finish]);
 
   useEffect(() => {
@@ -92,16 +56,12 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
     }
 
     if (reducedMotion) {
-      // No assembly theatre for a visitor who asked for less motion — just
-      // hide instantly and get out of the way.
-      sessionStorage.setItem(SESSION_KEY, "1");
       gsap.set(rootRef.current, { autoAlpha: 0 });
       finish();
       return;
     }
 
     document.body.style.overflow = "hidden";
-    let cancelled = false;
 
     const letters = letterRefs.current.filter(Boolean) as HTMLSpanElement[];
     gsap.set(letters, {
@@ -112,73 +72,55 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
       filter: "blur(6px)",
     });
     gsap.set(glowRef.current, { opacity: 0, scale: 0.6 });
-    gsap.set(lineRef.current, { scaleX: 0 });
-    gsap.set(sparkRef.current, { opacity: 0, left: "0%" });
-    gsap.set(taglineRef.current, { opacity: 0, y: 10 });
 
-    // Exit only fires once BOTH the entrance has visually finished (via its
-    // own onComplete, not a guessed duration) AND real assets are ready —
-    // whichever takes longer. This is what the old MIN_VISIBLE_MS-minus-
-    // elapsed math was trying to approximate, and got wrong: if assets
-    // resolved fast, `gsap.delayedCall(remaining, runExitAnimation)` could
-    // fire WHILE the entrance was still mid-flight, and GSAP silently
-    // overwrote the in-flight letter tweens — leaving them parked at
-    // whatever they'd reached and the timeline's own onComplete (which
-    // drives `finish()`) never called, because that tween got cut short by
-    // the overwrite instead of completing. Net effect: the wordmark sits
-    // there fully visible forever. Waiting for the real onComplete removes
-    // that race outright.
-    let entrance: gsap.core.Timeline;
-    const entranceDone = new Promise<void>((resolve) => {
-      entrance = gsap.timeline({ onComplete: resolve });
-      entrance
-        .to(letters, {
-          opacity: 1,
-          x: 0,
-          y: 0,
-          rotate: 0,
-          filter: "blur(0px)",
-          duration: 0.75,
-          stagger: { each: 0.045, from: "center" },
-          ease: "back.out(1.8)",
-        })
-        .to(glowRef.current, { opacity: 1, scale: 1.4, duration: 0.5, ease: "power2.out" }, "-=0.5")
-        .to(glowRef.current, { opacity: 0, duration: 0.6, ease: "power2.in" }, "-=0.1")
-        .to(sparkRef.current, { opacity: 1, duration: 0.1 }, "-=0.55")
-        .to(lineRef.current, { scaleX: 1, duration: 0.55, ease: "power3.inOut" }, "<")
-        .to(sparkRef.current, { left: "100%", duration: 0.55, ease: "power3.inOut" }, "<")
-        .to(sparkRef.current, { opacity: 0, duration: 0.15 })
-        .to(taglineRef.current, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, "-=0.15");
-    });
+    // One single timeline drives entrance AND exit — no cross-timeline
+    // coordination, no promise chains, no dependency on fonts/images
+    // finishing. `finish()` only ever runs from this timeline's own
+    // onComplete or from the safety timer below; never both (finished.current
+    // guards it), so there's no double-fire.
+    const tl = gsap.timeline({ onComplete: finish });
+    tl.to(letters, {
+      opacity: 1,
+      x: 0,
+      y: 0,
+      rotate: 0,
+      filter: "blur(0px)",
+      duration: 0.7,
+      stagger: { each: 0.04, from: "center" },
+      ease: "back.out(1.8)",
+    })
+      .to(glowRef.current, { opacity: 1, scale: 1.5, duration: 0.45, ease: "power2.out" }, "-=0.45")
+      .to(glowRef.current, { opacity: 0, duration: 0.5, ease: "power2.in" }, "-=0.05")
+      .to({}, { duration: 0.5 }) // brief cinematic hold on the assembled mark
+      .to(letters, { opacity: 0, scale: 1.08, duration: 0.3, stagger: 0.012, ease: "power2.in" })
+      .to(rootRef.current, { clipPath: "inset(0 0 100% 0)", duration: 0.75, ease: "power4.inOut" }, "-=0.05");
 
-    Promise.all([entranceDone, waitForRealAssets()])
-      .then(() => {
-        if (!cancelled) runExitAnimation();
-      })
-      .catch(() => {
-        if (!cancelled) runExitAnimation();
-      });
-
-    // Native setTimeout, not gsap.delayedCall — this must fire even if
-    // GSAP's own rAF-driven ticker is the thing that's stuck, so it can't
-    // share a failure mode with whatever it's guarding against.
-    const safetyTimer = window.setTimeout(() => {
-      if (!cancelled) runExitAnimation();
-    }, SAFETY_TIMEOUT_MS);
+    const safetyTimer = window.setTimeout(forceHide, SAFETY_TIMEOUT_MS);
 
     return () => {
-      cancelled = true;
-      entrance?.kill();
+      tl.kill();
       window.clearTimeout(safetyTimer);
     };
-  }, [alreadySeen, reducedMotion, onComplete, finish, runExitAnimation]);
+  }, [alreadySeen, reducedMotion, onComplete, finish, forceHide]);
 
   if (alreadySeen) return null;
+
+  // The CSS-only force-reveal animation (see globals.css) only touches
+  // opacity/visibility — it can't call back into React or GSAP on its own.
+  // This listener is what turns "the overlay went invisible" into "the
+  // page is actually usable again" (scroll restored, onComplete fired for
+  // the Hero's own entrance) even in the worst case where GSAP and the
+  // setTimeout safety net both somehow never ran. Filtered to this exact
+  // animation so it ignores the shine sweep's animationend bubbling up.
+  function handleRootAnimationEnd(e: React.AnimationEvent<HTMLDivElement>) {
+    if (e.animationName === "preloader-force-reveal") finish();
+  }
 
   return (
     <div
       ref={rootRef}
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-bg"
+      onAnimationEnd={handleRootAnimationEnd}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-bg animate-[preloader-force-reveal_0.3s_ease-out_7s_1_forwards]"
       role="status"
       aria-live="polite"
       aria-label="Cargando Infosistel"
@@ -197,7 +139,7 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
         className="pointer-events-none absolute h-72 w-72 rounded-full bg-accent/30 blur-[80px]"
       />
 
-      <div className="relative select-none font-display text-[clamp(2.6rem,11vw,7.5rem)] font-extrabold leading-none tracking-tight">
+      <div className="relative select-none overflow-hidden font-display text-[clamp(2.6rem,11vw,7.5rem)] font-extrabold leading-none tracking-tight">
         {LETTERS.map((l, i) => (
           <span
             key={i}
@@ -210,21 +152,9 @@ export function Preloader({ onComplete }: { onComplete: () => void }) {
             {l.ch}
           </span>
         ))}
-      </div>
-
-      <span
-        ref={taglineRef}
-        className="relative mt-5 text-xs font-bold uppercase tracking-[0.35em] text-fg-muted"
-      >
-        Servicio técnico en Huancayo
-      </span>
-
-      <div className="relative mt-8 h-px w-56 overflow-hidden bg-border-strong">
-        <div ref={lineRef} className="h-full w-full origin-left bg-accent" />
-        <span
-          ref={sparkRef}
-          className="absolute top-1/2 h-2 w-2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-accent shadow-[0_0_14px_4px_rgba(10,95,219,0.55)]"
-        />
+        {/* Pure CSS shine sweep — no GSAP, no JS timing dependency, can't
+            get stuck. Timed to play once the letters have mostly landed. */}
+        <span className="pointer-events-none absolute inset-0 -translate-x-full animate-[preloader-shine_1.1s_ease-out_0.55s_1_forwards] bg-gradient-to-r from-transparent via-white/60 to-transparent mix-blend-overlay" />
       </div>
     </div>
   );
