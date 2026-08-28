@@ -57,9 +57,51 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
+model Repair {
+  id            String   @id @default(cuid())
+  code          String   @unique // e.g. "INF102" — assigned sequentially, see actions.ts
+  dniEncrypted  String // AES-256-GCM ciphertext ("iv:authTag:cipher", hex) — see lib/crypto.ts. Never read/write raw.
+  dniIndex      String // HMAC-SHA256 blind index of the DNI, for exact-match lookup without decrypting
+  equipment     String
+  problem       String
+  progress      Int      @default(0) // 0-100
+  statusText    String
+  lastUpdate    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([dniIndex])
+}
+
+model Sale {
+  id        String   @id @default(cuid())
+  productId String? // reference to Product, if sold from the catalog (Inventario's "Vender" button) — null for a manual entry
+  pName     String
+  category  String?
+  quantity  Int      @default(1)
+  price     Float
+  costPrice Float    @default(0)
+  profit    Float // (price - costPrice) * quantity, computed at creation time
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+model CashboxTransaction {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  description   String
+  type          String // "INCOME" or "EXPENSE"
+  amount        Float
+  paymentMethod String // "EFECTIVO", "YAPE 1", "YAPE 2"
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model Admin {
   id           String   @id @default(cuid())
   username     String   @unique
   passwordHash String // "salt:hash", both hex — see src/lib/auth.ts (scrypt, not bcrypt: no native deps)
+  role         String   @default("admin") // "admin" or "superadmin" — only superadmin can manage other admins (Usuarios section)
   createdAt    DateTime @default(now())
 }

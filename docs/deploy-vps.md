@@ -38,7 +38,8 @@ PRODUCT_IMAGES_DIR="/home/zarate/infosistel-v2-data/uploads/products"
 JWT_SECRET="$(openssl rand -base64 64)"
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
 DNI_HMAC_SECRET="$(openssl rand -hex 32)"
-ANTHROPIC_API_KEY="..."   # console.anthropic.com — habilita el chat y "Reconocer con IA"
+ANTHROPIC_API_KEY="..."   # console.anthropic.com — habilita "Reconocer con IA" en el escáner
+DEEPSEEK_API_KEY="..."    # platform.deepseek.com/api_keys — habilita el chatbot público
 ```
 
 **Nunca cambies `DNI_HMAC_SECRET` una vez que haya pedidos reales guardados** — invalida el índice
@@ -61,7 +62,7 @@ desarrollo — **nunca lo corras contra la base de datos de producción** (`npx 
 a menos que quieras que esos precios y ese stock falsos sean lo primero que vea un cliente real.
 
 Dos caminos razonables:
-- **Arrancar vacío** y cargar tu inventario real desde `/admin/productos` (con el escáner de
+- **Arrancar vacío** y cargar tu inventario real desde `/taller-control/productos` (con el escáner de
   código de barras / reconocimiento por foto) antes de anunciar el sitio.
 - **Precargar tu catálogo real** editando `prisma/seed.ts` con tus productos, precios y stock
   reales antes del primer deploy, y corriendo `npx prisma db seed` una sola vez.
@@ -96,7 +97,7 @@ curl -I http://127.0.0.1:3010
 Prueba manualmente desde tu navegador vía un túnel SSH (`ssh -L 3010:localhost:3010 zarate@tu-vps`)
 o agregando temporalmente un `server_name` de prueba en nginx apuntando al puerto 3010. Verifica
 en especial:
-- Login de admin (`/admin/login`) con la cuenta que crees vía
+- Login de admin (`/taller-control/login`) con la cuenta que crees vía
   `npx tsx --env-file=.env scripts/create-admin.ts <usuario> <password>`.
 - Crear un producto con foto (confirma que `PRODUCT_IMAGES_DIR` funciona).
 - Un pedido de prueba desde `/tienda` (confirma cifrado del teléfono).

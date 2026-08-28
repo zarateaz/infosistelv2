@@ -13,17 +13,17 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Fase 3 — panel admin: everything under /admin except the login page
+  // Fase 3 — panel admin: everything under /taller-control except the login page
   // itself requires a valid session JWT. Uses `jose` (WebCrypto), not
   // Node's `crypto` — this function runs in the Edge runtime.
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/taller-control")) {
     const token = request.cookies.get(SESSION_COOKIE)?.value;
     const session = token ? await verifySessionToken(token) : null;
 
-    if (pathname === "/admin/login") {
-      if (session) return NextResponse.redirect(new URL("/admin", request.url));
+    if (pathname === "/taller-control/login") {
+      if (session) return NextResponse.redirect(new URL("/taller-control", request.url));
     } else if (!session) {
-      return NextResponse.redirect(new URL("/admin/login", request.url));
+      return NextResponse.redirect(new URL("/taller-control/login", request.url));
     }
   }
 

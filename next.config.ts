@@ -32,9 +32,9 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
-            // Public site never needs camera/mic/geolocation. /admin gets a
-            // narrower override below for the barcode scanner's camera —
-            // never `self` here, so no public page can ever request it.
+            // Public site never needs camera/mic/geolocation. /taller-control
+            // gets a narrower override below for the barcode scanner's
+            // camera — never `self` here, so no public page can ever request it.
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
           },
@@ -49,11 +49,12 @@ const nextConfig: NextConfig = {
       {
         // Narrower than the blanket policy above — Next.js applies both,
         // and a header value repeated for the same matched path is
-        // overwritten by the later entry, so this one wins under /admin
-        // specifically. The inventory scanner is the one place on the
-        // whole site that needs the camera (reading a barcode off a photo
-        // or live feed); nothing under /admin needs mic or geolocation.
-        source: "/admin/:path*",
+        // overwritten by the later entry, so this one wins under
+        // /taller-control specifically. The inventory scanner is the one
+        // place on the whole site that needs the camera (reading a barcode
+        // off a photo or live feed); nothing under /taller-control needs
+        // mic or geolocation.
+        source: "/taller-control/:path*",
         headers: [
           {
             key: "Permissions-Policy",

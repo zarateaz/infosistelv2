@@ -317,13 +317,77 @@ vive en el código, y **cómo verificarlo**.
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)
-- Campo DNI y su propio cifrado/índice — la Fase 4 hasta ahora solo cubre el teléfono, que era el
-  único dato personal que ya existía en el esquema; agregar DNI real cuando el checkout/panel lo
-  requiera.
-- Herramienta `buscarProductos` para el chatbot, ahora que el catálogo ya existe — para que no
-  tenga que derivar cada pregunta de precio/stock a WhatsApp.
 - Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
   la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local.
+
+### 20. Roles de administrador (superadmin/admin) para la sección Usuarios (2026-08-28)
+- **Qué**: `Admin.role` (`"admin"` | `"superadmin"`, default `"admin"`) se agrega al esquema y se
+  firma dentro del JWT de sesión (`lib/session.ts`) junto a `sub`/`username` — no se vuelve a
+  consultar la base de datos en cada request para saberlo. `lib/requireSuperAdmin.ts` es el punto
+  único de verificación: redirige a `/admin/login` si no hay sesión, y a `/admin` si la sesión es
+  de un `admin` normal. Se usa tanto en `usuarios/page.tsx` (server component) como al inicio de
+  cada acción en `usuarios/actions.ts` (`createAdminUser`, `deleteAdminUser`) — la comprobación en
+  la página oculta el enlace del menú, pero solo la comprobación en la acción del servidor impide
+  que alguien invoque la mutación directamente sin pasar por la UI.
+- **Por qué**: OWASP Top 10 A01:2021 – Broken Access Control. Antes de esto, cualquier cuenta con
+  sesión válida podía crear o eliminar otras cuentas de administrador — sin distinción de
+  privilegios, un técnico común tenía el mismo poder que el dueño del negocio. `deleteAdminUser`
+  además bloquea explícitamente que un superadmin se elimine a sí mismo o elimine al último
+  superadmin restante, para que la cuenta nunca quede sin ningún acceso de máximo privilegio.
+- **Dónde**: `prisma/schema.prisma` (`Admin.role`), `src/lib/session.ts`,
+  `src/lib/requireSuperAdmin.ts`, `src/app/admin/login/actions.ts`,
+  `src/app/admin/(panel)/usuarios/actions.ts`, `src/app/admin/(panel)/layout.tsx` (el enlace
+  "Usuarios" solo se renderiza si `session.role === "superadmin"`), `scripts/create-admin.ts`
+  (tercer argumento opcional de rol, default `superadmin` por ser el script de aprovisionamiento
+  fuera de banda).
+- **Verificación**: iniciar sesión con una cuenta `admin` normal y confirmar que el enlace
+  "Usuarios" no aparece en el menú Y que navegar directamente a `/admin/usuarios` redirige a
+  `/admin` (verificado en este sesión con una cuenta de prueba `tecnico2`, luego eliminada).
+
+### 21. DNI cifrado en reposo para Reparaciones (2026-08-28)
+- **Qué**: `Repair.dniEncrypted` (AES-256-GCM vía `encryptPII`) + `Repair.dniIndex` (HMAC-SHA256
+  vía `blindIndex`) reutilizan exactamente el mismo patrón que `Order.customerPhone`/
+  `customerPhoneIndex` de la entrada #15 — mismo `lib/crypto.ts`, mismo `DNI_HMAC_SECRET` que ya
+  existía en `.env`/`lib/env.ts` desde Fase 4 (el nombre de la variable ya anticipaba este caso de
+  uso, solo que hasta ahora no había un campo DNI real en el esquema). La búsqueda de una
+  reparación por DNI (`getAdminRepairs(dniQuery)`) compara por `dniIndex`, nunca descifra para
+  comparar.
+- **Por qué**: OWASP Top 10 A02:2021 – Cryptographic Failures. El DNI es dato personal más
+  sensible que un número de celular (identificador único nacional) — el mismo razonamiento de la
+  entrada #15 aplica con más motivo. Esto también cierra el ítem que quedaba pendiente desde esa
+  entrada.
+- **Dónde**: `prisma/schema.prisma` (`Repair.dniEncrypted`, `Repair.dniIndex`, con
+  `@@index([dniIndex])`), `src/app/admin/(panel)/reparaciones/actions.ts`.
+- **Verificación**: `sqlite3 dev.db "SELECT dniEncrypted FROM Repair;"` debe mostrar
+  `iv:authTag:ciphertext` en hex, nunca un DNI legible; la búsqueda por `/admin/reparaciones?dni=...`
+  debe encontrar el registro correcto sin descifrar toda la tabla (verificado en este sesión con
+  un registro de prueba `INF001`, luego eliminado).
+
+### Herramienta `buscarProductos` para el chatbot (2026-08-28)
+- **Qué**: tool de la Vercel AI SDK (`src/lib/chatTools.ts`) que el chatbot puede invocar para
+  consultar el catálogo real por nombre/categoría/descripción, en vez de derivar cada pregunta de
+  precio o stock a WhatsApp. Registrada en `src/app/api/chat/route.ts` junto con
+  `stopWhen: stepCountIs(5)` — sin esto, `streamText` se detiene después de la llamada a la tool
+  (su default es `stepCountIs(1)`) y nunca genera el texto final que relaya el resultado.
+- **Por qué (seguridad)**: el `select` de la query replica el mismo allowlist de campos que
+  `src/app/tienda/actions.ts` (`getProducts`) — `costPrice` (precio de costo, admin-only) nunca se
+  incluye, así que el modelo no puede filtrar ese dato aunque un usuario se lo pida directamente.
+  Es de solo lectura; no hay ninguna tool de escritura expuesta al chat.
+- **Nota de implementación**: `contains` en SQLite exige substring exacta y contigua — una
+  búsqueda ingenua de `"mouse logitech"` no encontraba `"Mouse Gamer Logitech G203"`. Se resolvió
+  dividiendo la consulta en palabras y exigiendo cada una por separado (AND de palabras, OR de
+  campos), verificado contra el catálogo de demostración (`prisma/seed.ts`).
+- **Dónde**: `src/lib/chatTools.ts`, `src/app/api/chat/route.ts`.
+
+### Chatbot movido de Anthropic a DeepSeek (2026-08-28)
+- **Qué**: `src/app/api/chat/route.ts` ahora usa `@ai-sdk/deepseek` (`deepseek-v4-flash`) en vez de
+  `@ai-sdk/anthropic`. `ANTHROPIC_API_KEY` sigue existiendo — la sigue usando el escáner de
+  inventario por IA en `/admin` (`scan-actions.ts`), que no se tocó. `DEEPSEEK_API_KEY` es la
+  nueva variable, documentada en `.env.example` y `docs/deploy-vps.md`.
+- **Por qué**: costo — `deepseek-v4-flash` soporta tool calls (necesario para `buscarProductos`)
+  a una fracción del precio por token de los modelos Claude, y el chatbot público es tráfico
+  potencialmente alto/no autenticado, exactamente el caso donde el costo por request importa más.
+- **Dónde**: `src/app/api/chat/route.ts`, `.env`, `.env.example`, `docs/deploy-vps.md`.
 
 ## Revisión pre-despliegue (2026-08-27) — hallazgos y correcciones fuera del alcance de seguridad
 No son medidas de hardening, pero se encontraron revisando el sitio completo antes del primer
@@ -342,3 +406,26 @@ despliegue real:
   seeds) — la base de datos en el VPS arranca vacía. `/tienda` degrada bien a un catálogo vacío
   ("Sin resultados", sin crash). Ver `docs/deploy-vps.md` para la decisión sobre cómo poblar el
   catálogo real antes de anunciar el sitio.
+
+### 22. Ruta del panel admin renombrada, sin enlace público (2026-08-28)
+- **Qué**: `/admin` (y `/admin/login`) pasa a ser `/taller-control` (y `/taller-control/login`)
+  en toda la app (`src/proxy.ts`, `next.config.ts`, todos los `revalidatePath`/`redirect`/`Link`
+  bajo el panel, `nginx.conf`, `docs/deploy-vps.md`). Además, el botón "Iniciar sesión" que antes
+  vivía en `Navbar.tsx` (versión de escritorio y menú móvil) se eliminó por completo del sitio
+  público — ya no hay ningún `<a>`/`<Link>` hacia esa ruta en el HTML que un visitante o un bot
+  pueda descubrir con "ver código fuente".
+- **Por qué**: esto es **seguridad por oscuridad**, no autenticación — hay que ser honesto sobre
+  qué protege y qué no. La protección real ya existía antes de este cambio (entrada #13: scrypt +
+  JWT + rate limiting + tiempo de respuesta constante ante usuario inexistente) y sigue siendo
+  la que de verdad impide un login no autorizado. Lo que este cambio reduce es el *ruido*: escáneres
+  automatizados y bots de credential-stuffing prueban rutas de diccionario (`/admin`, `/wp-admin`,
+  `/login`, `/dashboard`) contra cualquier dominio que encuentran, sin saber nada del sitio — sacar
+  la ruta de ese diccionario común y no enlazarla públicamente hace que esos intentos automáticos
+  ni siquiera lleguen al formulario de login, bajando la superficie de ataque expuesta a escaneo
+  ciego. No sustituye ni debilita la entrada #13 en ningún sentido.
+- **Dónde**: `src/proxy.ts`, `next.config.ts`, `src/app/taller-control/**`, `src/lib/requireSuperAdmin.ts`,
+  `src/components/Navbar.tsx`, `src/components/SiteChrome.tsx`, `nginx.conf`, `docs/deploy-vps.md`.
+- **Verificación**: `GET /admin` y `GET /admin/login` devuelven 404; `GET /taller-control/login`
+  sirve el formulario; iniciar sesión redirige a `/taller-control` con el panel completo funcionando;
+  el HTML de cada página pública no contiene ningún enlace hacia `/taller-control` (confirmado
+  inspeccionando el menú de escritorio y el menú móvil vía DOM).
