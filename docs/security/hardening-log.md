@@ -619,3 +619,47 @@ despliegue real:
 - **Nota operativa**: este fix solo corrige archivos escritos *después* del deploy. Las fotos ya
   guardadas en el VPS con el permiso restrictivo anterior necesitan un `chmod` retroactivo una
   sola vez — ver `docs/deploy-vps.md`.
+
+
+### 31. Causa raíz real de las fotos rotas en el VPS: home del usuario sin tránsito para nginx (2026-08-31)
+- **Qué**: después de aplicar y verificar en el VPS las tres correcciones anteriores (bloque de
+  nginx activo — #28, `PRODUCT_IMAGES_DIR` configurado, permisos de archivo forzados a 644/755 —
+  #30), una foto recién descargada por el escáner **seguía devolviendo 404** tanto por el dominio
+  público como directo al proceso Node. Diagnóstico con `namei -l` sobre la ruta completa del
+  archivo mostró la causa exacta: `/home/zarate` — el directorio home del usuario que corre la
+  aplicación — tenía permiso `drwx------` (700), el valor por defecto al crear un usuario en la
+  mayoría de distribuciones Linux. El archivo de la foto (644) y cada carpeta intermedia
+  (`infosistel-v2-data`, `uploads`, `products`, todas en 755) estaban correctos — pero el proceso
+  de nginx corre como el usuario `http` (no `zarate`), y sin permiso de tránsito (`x`) sobre
+  `/home/zarate` no puede atravesarlo para llegar a ningún archivo de adentro, sin importar los
+  permisos del resto de la ruta. `open()` falla en el primer directorio bloqueado, y nginx lo
+  reporta como 404 (no 403), lo que hizo parecer — en los tres diagnósticos anteriores, todos
+  centrados en la carpeta de fotos y no en el home — que el problema seguía sin causa clara.
+- **Por qué**: NIST SP 800-53 AC-6 (mínimo privilegio) y el principio de separación entre el
+  proceso que sirve contenido web (nginx, usuario `http`) y el proceso que lo genera (Next.js,
+  usuario `zarate`) — dos identidades de sistema distintas por diseño, para que un compromiso de
+  una no implique acceso total a los archivos de la otra. Ese mismo aislamiento correcto es lo que
+  bloqueaba, como efecto secundario no anticipado, el único directorio que sí necesitaban
+  compartir (las fotos servidas). La solución no es debilitar el aislamiento (abrir `/home/zarate`
+  a cualquier usuario del sistema) sino conceder acceso explícito y mínimo solo al proceso que
+  realmente lo necesita.
+- **Solución**: ACL POSIX (`setfacl`) en vez de `chmod`, para no afectar a "otros" usuarios del
+  sistema en general — solo al usuario `http`, y solo con el bit de ejecución (tránsito), sin
+  lectura (no puede listar el contenido del home, solo atravesarlo):
+  ```bash
+  sudo setfacl -m u:http:x /home/zarate
+  ```
+  El resto de la ruta (`infosistel-v2-data/`, `uploads/`, `products/`) ya tenía los permisos
+  correctos desde la entrada #30 y no necesitó cambios. Verificado con `namei -l` (permiso de cada
+  componente de la ruta) y `curl -sI` contra la URL pública real, confirmando el archivo real
+  (`etag`, `accept-ranges`, `cache-control`) en vez de la página de error 404.
+- **Dónde**: configuración del sistema operativo del VPS (fuera del repo de git, por eso queda
+  documentado explícitamente) — `docs/deploy-vps.md`, sección 0.
+- **Lección para el proceso de diagnóstico**: las tres correcciones anteriores eran todas
+  necesarias pero ninguna era suficiente por sí sola — el bug tenía cuatro causas independientes
+  apiladas (bug de cacheo de Next standalone, nginx sin aplicar, `PRODUCT_IMAGES_DIR` sin definir,
+  y esta ACL de home) que se fueron descubriendo una por una porque cada corrección revelaba la
+  siguiente capa en vez de resolver el síntoma completo. La lección operativa: ante un fallo de
+  "no encuentra el archivo" con permisos aparentemente correctos, `namei -l` sobre la ruta
+  completa desde `/` es el diagnóstico decisivo — revisar solo el directorio final (como hicieron
+  los primeros diagnósticos) puede pasar por alto un bloqueo más arriba en la jerarquía.

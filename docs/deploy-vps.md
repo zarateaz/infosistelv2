@@ -21,6 +21,20 @@ haberlo visto funcionar primero.
   mkdir -p /home/zarate/infosistel-v2-data/backups
   mkdir -p /home/zarate/infosistel-v2-data/uploads/products
   ```
+- **ACL de tránsito en el home** (necesario una sola vez, se pierde si reinstalas el VPS o creas
+  el usuario de nuevo). `nginx.conf` sirve las fotos de producto directo desde disco (ver sección
+  4 y `hardening-log.md` #28), pero el usuario del proceso nginx (`http`, no `zarate`) no puede
+  atravesar `/home/zarate` por defecto — en la mayoría de distros el home se crea `700`
+  (`drwx------`), así que nginx nunca llega a abrir el archivo aunque este tenga permiso `644` y
+  el resto de la ruta esté en `755`. La foto vuelve 404 aunque todo lo demás esté bien configurado.
+  Solución mínima (solo tránsito, `http` sigue sin poder listar ni leer nada más del home):
+  ```bash
+  sudo setfacl -m u:http:x /home/zarate
+  getfacl /home/zarate   # debe mostrar "user:http:--x"
+  ```
+  (si tu VPS corre el proceso de nginx con otro usuario, p. ej. `nginx` o `www-data`, usa ese
+  nombre en vez de `http` — confírmalo con `ps aux | grep "nginx: worker"`). Ver `hardening-log.md`,
+  entrada #31.
 
 ## 1. Configurar `.env`
 
