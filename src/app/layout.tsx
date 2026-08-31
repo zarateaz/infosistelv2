@@ -20,9 +20,30 @@ const mono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const SITE_URL = "https://infosistel.com.pe";
+const SITE_DESCRIPTION =
+  "Diagnóstico honesto, repuestos reales y garantía sobre cada trabajo — reparación y venta de laptops, PC e impresoras en Huancayo, Perú.";
+
 export const metadata: Metadata = {
-  title: "INFOSISTEL",
-  description: "Reparación y venta de tecnología en Huancayo, Perú.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "INFOSISTEL — Reparación y venta de tecnología en Huancayo",
+    template: "%s — INFOSISTEL",
+  },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    locale: "es_PE",
+    url: SITE_URL,
+    siteName: "INFOSISTEL",
+    title: "INFOSISTEL — Reparación y venta de tecnología en Huancayo",
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "INFOSISTEL — Reparación y venta de tecnología en Huancayo",
+    description: SITE_DESCRIPTION,
+  },
 };
 
 export default async function RootLayout({

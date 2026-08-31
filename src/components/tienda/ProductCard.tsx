@@ -17,11 +17,16 @@ export function ProductCard({
   return (
     <div
       onClick={onSelect}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-bg-alt transition-colors hover:border-accent/40"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-bg-alt transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-xl hover:shadow-accent/10"
     >
-      <div className="relative aspect-square bg-bg">
+      <div className="relative aspect-square overflow-hidden bg-bg">
         {product.image ? (
-          <Image src={product.image} alt={product.name} fill className="object-contain p-4" />
+          <Image
+            src={product.image}
+            alt={product.name}
+            fill
+            className="object-contain p-4 transition-transform duration-300 group-hover:scale-105"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <CategoryIcon category={product.category} size={40} strokeWidth={1.25} className="text-fg-muted opacity-40" />
