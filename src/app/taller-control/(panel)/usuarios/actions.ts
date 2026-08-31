@@ -32,7 +32,7 @@ const adminUserSchema = z.object({
     .trim()
     .min(3, "El usuario debe tener al menos 3 caracteres")
     .max(64),
-  password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(256),
+  password: z.string().min(12, "La contraseña debe tener al menos 12 caracteres").max(256),
   role: z.enum(["admin", "superadmin"]),
 });
 

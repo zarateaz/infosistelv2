@@ -52,7 +52,7 @@ export function AddAdminForm() {
             name="password"
             type="password"
             required
-            minLength={8}
+            minLength={12}
             maxLength={256}
             className={inputClass}
           />

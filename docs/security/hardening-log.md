@@ -318,7 +318,9 @@ vive en el código, y **cómo verificarlo**.
 
 ## Pendiente (fases siguientes — no implementado aún)
 - Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
-  la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local.
+  la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local. Runbook listo
+  en `docs/security/fase5-vps-hardening.md` — el usuario lo ejecuta manualmente en el VPS y pega
+  la salida de verificación aquí para documentar el resultado real (entrada #24, pendiente).
 
 ### 20. Roles de administrador (superadmin/admin) para la sección Usuarios (2026-08-28)
 - **Qué**: `Admin.role` (`"admin"` | `"superadmin"`, default `"admin"`) se agrega al esquema y se
@@ -429,3 +431,53 @@ despliegue real:
   sirve el formulario; iniciar sesión redirige a `/taller-control` con el panel completo funcionando;
   el HTML de cada página pública no contiene ningún enlace hacia `/taller-control` (confirmado
   inspeccionando el menú de escritorio y el menú móvil vía DOM).
+
+### 23. `style-src` de la CSP corregido: nonce por `'unsafe-inline'` (2026-08-30)
+- **Qué**: la entrada #2 (Fase 0) dejó `style-src` con el mismo nonce por request que `script-src`.
+  En build de producción esto bloqueaba en consola docenas de estilos inline con
+  `Refused to apply inline style because it violates the following Content Security Policy
+  directive: "style-src 'self' 'nonce-...'"`, uno por cada valor distinto de `style="..."` que
+  GSAP (animaciones del Hero/preloader) y `recharts` (gráfico de Caja) escriben en tiempo de
+  ejecución sobre el DOM. Se cambió `style-src` a `'self' 'unsafe-inline'`, sin nonce, en ambos
+  entornos.
+- **Por qué**: un *nonce* de CSP solo autoriza elementos `<style>`/`<link>` que lo llevan como
+  atributo — nunca cubre el atributo `style="..."` que una librería asigna vía
+  `element.style.cssText`/`el.style.transform = ...` en JavaScript, y la spec de CSP3 es explícita
+  en que el *hash* tampoco aplica a atributos `style` a menos que se agregue el keyword
+  `'unsafe-hashes'`. Con `'unsafe-hashes'` habría que listar el hash de cada valor posible, lo cual
+  es inviable para una animación que interpola `transform`/`opacity` en cada frame — el valor
+  cambia continuamente. `script-src` mantiene el nonce + `'strict-dynamic'` intactos (entrada #2):
+  la inyección de *script* (XSS clásico, robo de sesión, exfiltración) es el vector que de verdad
+  importa mitigar, y ese sigue bloqueado. Relajar solo `style-src` es un trade-off documentado y
+  aceptado por herramientas de referencia como el CSP Evaluator de Google — el riesgo de una
+  inyección de *solo CSS* (sin `script-src` abierto) se limita a filtración de datos vía
+  selectores CSS, no a ejecución de código, y esta aplicación no tiene ningún punto donde un
+  usuario no autenticado controle el CSS servido.
+- **Dónde**: `src/proxy.ts`.
+- **Verificación**: `npm run build && npm start`, abrir la consola del navegador en cualquier
+  página con animaciones (`/`) y en `/admin/caja` (gráfico `recharts`) — cero violaciones de
+  `style-src` en la consola; la cabecera `content-security-policy` de la respuesta sigue sin
+  `'unsafe-inline'` en `script-src`.
+
+
+### 24. Dos regresiones encontradas al auditar v2 contra la misma matriz ASVS que v1 (2026-08-30)
+- **Qué**: al construir el Capítulo IV de la tesis se re-auditaron los mismos 31 requisitos ASVS
+  verificados contra v1 (ver `tesis-cap1-cap2.tex`, Capítulo III), esta vez contra v2, para poder
+  reportar un antes/después real. Dos de ellos resultaron ser **regresiones** respecto a v1, no
+  mejoras: (1) V2.1.1 — la contraseña mínima de una cuenta admin nueva era de 8 caracteres
+  (`scripts/create-admin.ts`, el formulario `AddAdminForm.tsx` y el `zod` de
+  `usuarios/actions.ts`), mientras que v1 exigía 12; (2) V14.3.2 — `next.config.ts` no tenía
+  `compiler.removeConsole`, que v1 sí tenía. Ambas se corrigieron: los tres puntos de
+  `create-admin.ts`/`AddAdminForm.tsx`/`usuarios/actions.ts` ahora exigen 12 caracteres como
+  mínimo (igual que v1), y se agregó el mismo `removeConsole` condicionado a `NODE_ENV=production`
+  que ya usaba v1.
+- **Por qué**: al reescribir un proyecto desde cero es fácil re-introducir un problema que ya se
+  había resuelto en la versión anterior si no existe una lista de verificación explícita contra la
+  cual contrastar cada nueva implementación — es exactamente la causa raíz "ausencia de checklist
+  de seguridad para nuevas rutas/funcionalidades" identificada en el Capítulo III de la tesis
+  (Tabla 3.5), aplicada aquí no a una ruta nueva sino a todo el proyecto v2 en su conjunto.
+- **Dónde**: `scripts/create-admin.ts`, `src/app/taller-control/(panel)/usuarios/AddAdminForm.tsx`,
+  `src/app/taller-control/(panel)/usuarios/actions.ts`, `next.config.ts`.
+- **Verificación**: `npx tsc --noEmit` sin errores; crear una cuenta admin con una contraseña de
+  10 caracteres debe ser rechazada tanto en el formulario (HTML5 `minLength`) como en el servidor
+  (`zod`, por si se hace POST directo sin pasar por el formulario).

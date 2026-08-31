@@ -5,11 +5,15 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 // in Next.js 16 in favor of `proxy.ts` (same request-interception model,
 // renamed file convention) — see node_modules/next/dist/docs/.../proxy.md.
 //
-// A fresh nonce is minted on every request and threaded through so inline
-// scripts/styles Next.js itself injects are allowed, while anything an
-// attacker manages to inject (reflected/stored XSS) is not, because it
-// won't carry a valid nonce. This forces dynamic rendering site-wide — a
-// deliberate trade-off, logged in docs/security/hardening-log.md.
+// A fresh nonce is minted on every request and threaded through script-src so
+// inline scripts Next.js itself injects are allowed, while anything an
+// attacker manages to inject (reflected/stored XSS) is not, because it won't
+// carry a valid nonce. This forces dynamic rendering site-wide — a deliberate
+// trade-off, logged in docs/security/hardening-log.md. style-src stays on
+// 'unsafe-inline' instead of a nonce (GSAP/recharts set arbitrary inline
+// style="" attributes at runtime — a nonce only covers <style>/<link>, not
+// style attributes, and CSS-injection risk here is far lower than script
+// injection) — also logged in hardening-log.md.
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -33,7 +37,7 @@ export async function proxy(request: NextRequest) {
   const cspHeader = `
     default-src 'self';
     script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""};
-    style-src 'self' ${isDev ? "'unsafe-inline'" : `'nonce-${nonce}'`};
+    style-src 'self' 'unsafe-inline';
     img-src 'self' blob: data:;
     font-src 'self';
     object-src 'none';

@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
   // for `next dev`, only changes what `next build` produces.
   output: "standalone",
 
+  // Strips console.* from the client bundle in production (errors/warnings
+  // kept, per the `exclude` list) — defense in depth against a stray debug
+  // log ever shipping details to the browser console. Doesn't affect
+  // `next dev`.
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
+  },
+
   experimental: {
     serverActions: {
       // Default is 1MB. The inventory scanner sends photos as base64 data

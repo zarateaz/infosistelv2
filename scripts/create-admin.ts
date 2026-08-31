@@ -17,8 +17,8 @@ async function main() {
     console.error("Usage: npx tsx scripts/create-admin.ts <username> <password> [role]");
     process.exit(1);
   }
-  if (password.length < 8) {
-    console.error("Password must be at least 8 characters.");
+  if (password.length < 12) {
+    console.error("Password must be at least 12 characters.");
     process.exit(1);
   }
   if (role !== "admin" && role !== "superadmin") {
