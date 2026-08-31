@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { searchProductImages } from "@/lib/imageSearch";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/scanner
@@ -92,65 +93,10 @@ async function lookupBarcodeSpider(
   }
 }
 
-/**
- * Motor 3 — DuckDuckGo Images. Used when the product was found but has no
- * image, or when the client sends a `manualQuery` for a product not in any
- * barcode database. Returns up to 4 image URLs.
- *
- * Talks to DuckDuckGo's own (undocumented, public) image-search endpoint
- * directly via `fetch` — this used to go through the `duckduckgo-images-api`
- * npm package, which pulled in an unmaintained `axios`/`follow-redirects`
- * chain with several high-severity CVEs (SSRF, prototype pollution) for
- * what is, underneath, two plain HTTP GETs. Same two requests, same
- * response shape, zero added dependencies — see hardening-log.md.
- */
-const DDG_HEADERS: HeadersInit = {
-  "user-agent":
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
-  accept: "application/json, text/javascript, */*; q=0.01",
-  "x-requested-with": "XMLHttpRequest",
-  referer: "https://duckduckgo.com/",
-};
-
-async function searchDuckDuckGoImages(query: string): Promise<string[]> {
-  const fullQuery = `${query} isolated white background product`;
-  try {
-    // Step 1: DuckDuckGo's HTML search page embeds a short-lived "vqd"
-    // token in an inline script — the image endpoint rejects requests
-    // without a valid one.
-    const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(fullQuery)}`, {
-      headers: DDG_HEADERS,
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!tokenRes.ok) return [];
-    const html = await tokenRes.text();
-    const token = html.match(/vqd=([\d-]+)&/)?.[1];
-    if (!token) return [];
-
-    // Step 2: the actual image search, moderate filter on (p=1).
-    const imagesUrl =
-      `https://duckduckgo.com/i.js?l=wt-wt&o=json&q=${encodeURIComponent(fullQuery)}` +
-      `&vqd=${token}&f=,,,&p=1`;
-    const imagesRes = await fetch(imagesUrl, {
-      headers: DDG_HEADERS,
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!imagesRes.ok) return [];
-
-    const data = await imagesRes.json();
-    if (!Array.isArray(data?.results)) return [];
-
-    return data.results
-      .slice(0, 4)
-      .map((r: { image?: string }) => r.image)
-      .filter(
-        (url: unknown): url is string =>
-          typeof url === "string" && url.startsWith("https://")
-      );
-  } catch {
-    return [];
-  }
-}
+// Motor 3 — DuckDuckGo Images, via the shared src/lib/imageSearch.ts (used
+// when the product was found but has no image, or when the client sends a
+// `manualQuery` for a product not in any barcode database).
+const searchDuckDuckGoImages = searchProductImages;
 
 export async function POST(request: NextRequest) {
   try {

@@ -12,6 +12,12 @@ import {
   X,
 } from "lucide-react";
 import { createProductQuick } from "@/app/taller-control/(panel)/productos/actions";
+import { downloadProductImageFromUrl } from "@/app/taller-control/(panel)/productos/upload-actions";
+
+// The site's CSP (img-src 'self' blob: data:) blocks hotlinking DuckDuckGo's
+// image results directly — this route re-serves them from our own origin
+// just for the picker preview. See src/app/api/image-proxy/route.ts.
+const previewUrl = (externalUrl: string) => `/api/image-proxy?url=${encodeURIComponent(externalUrl)}`;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -199,6 +205,19 @@ export function FastProductScanner() {
     setSaving(true);
     setSaveError(null);
 
+    // draft.selectedImage is a raw external URL (DuckDuckGo or the
+    // barcode listing's own photo) — never store that directly. Same
+    // pipeline as every other product photo in the app: download it
+    // server-side and re-encode through sharp to a local WEBP
+    // (downloadProductImageFromUrl, upload-actions.ts). Best-effort: a
+    // failed download just leaves the product without a photo rather than
+    // blocking the save — the admin can still add one manually after.
+    let imagePath: string | null = null;
+    if (draft.selectedImage) {
+      const downloaded = await downloadProductImageFromUrl(draft.selectedImage);
+      imagePath = downloaded.path ?? null;
+    }
+
     // draft.title is the field the admin actually reviewed/edited in
     // "Nombre del producto" — brand/model are just aids for filling it in,
     // Product has no separate brand/model columns to write them to.
@@ -207,7 +226,7 @@ export function FastProductScanner() {
       name: draft.title.trim(),
       description: draft.description.trim() || draft.title.trim(),
       category: draft.category.trim() || "SIN CATEGORÍA",
-      image: draft.selectedImage || null,
+      image: imagePath,
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
       price,
       costPrice: 0,
@@ -532,7 +551,7 @@ export function FastProductScanner() {
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={url}
+                      src={previewUrl(url)}
                       alt={`Opción ${i + 1}`}
                       className="h-full w-full object-contain bg-white p-1"
                       onError={(e) => {
@@ -561,7 +580,7 @@ export function FastProductScanner() {
               <div className="mt-4 inline-block rounded-xl border border-border bg-white p-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={draft.selectedImage}
+                  src={previewUrl(draft.selectedImage)}
                   alt="Imagen seleccionada"
                   className="h-40 w-40 object-contain"
                 />

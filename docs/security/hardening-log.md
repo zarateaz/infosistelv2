@@ -520,3 +520,31 @@ despliegue real:
   seguridad, es una mejora visual pura, documentada aquí solo por trazabilidad del cambio.
 - **Dónde**: `src/app/globals.css`, y el patrón `admin-glass rounded-[var(--radius-lg)]` en las
   9 páginas bajo `src/app/taller-control/(panel)/`.
+
+
+### 27. Fotos automáticas también en el escáner original de Productos (2026-08-31)
+- **Qué**: el escáner de código de barras de `/taller-control/productos` (distinto del de "Alta
+  Rápida") completaba nombre/categoría/descripción al encontrar un código en upcitemdb, pero nunca
+  traía foto cuando la ficha externa no tenía una — el caso más común. Ahora, cuando eso pasa,
+  busca automáticamente hasta 4 fotos candidatas (misma función compartida de la entrada #25,
+  movida a `src/lib/imageSearch.ts` para no duplicarla) y el admin elige una con un clic.
+- **Corrige además un bug real de CSP**: las miniaturas de esas fotos candidatas son URLs externas,
+  y `img-src` de la CSP es `'self' blob: data:` — sin ajuste, el navegador las bloquea en silencio
+  (así se veían "rotas" en la captura que reportó el usuario). Se agregó
+  `src/app/api/image-proxy/route.ts`: reobtiene la imagen desde el propio origen solo para la
+  vista previa del selector (con límite de tamaño, tipo de contenido y *rate limit*) — nunca
+  persiste nada. Al elegir una foto, se descarga y reprocesa con `sharp` de verdad
+  (`downloadProductImageFromUrl`, ya existente) — la URL externa nunca se guarda tal cual.
+- **Mismo fix aplicado a Alta Rápida**: `FastProductScanner.tsx` guardaba la URL externa cruda como
+  `Product.image` sin pasar por `downloadProductImageFromUrl` — inconsistente con el resto de la
+  app y bloqueado por la misma CSP al intentar mostrarla después. Ahora usa el mismo proxy para
+  la vista previa y el mismo `downloadProductImageFromUrl` antes de guardar.
+- **Dónde**: `src/lib/imageSearch.ts` (nuevo), `src/app/api/image-proxy/route.ts` (nuevo),
+  `src/app/taller-control/(panel)/productos/scan-actions.ts`,
+  `src/app/taller-control/(panel)/productos/ScannerPanel.tsx`, `src/components/FastProductScanner.tsx`,
+  `src/app/api/scanner/route.ts` (ahora importa la función compartida en vez de duplicarla).
+- **Verificación**: probado con el código de barras real del reporte (`6935364040413`, router
+  TP-LINK) — la ficha externa no traía foto, aparecieron 4 candidatas, se eligió una, se confirmó
+  en disco un WEBP válido (`identify`: 768×768, 8-bit sRGB) y servido con 200 OK tanto directo
+  como a través del optimizador de imágenes de Next.js, corriendo el servidor exactamente como lo
+  hace `scripts/deploy-vps.sh` (`node .next/standalone/server.js`, no `next start`).

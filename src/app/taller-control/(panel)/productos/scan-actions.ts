@@ -6,11 +6,24 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
+import { searchProductImages } from "@/lib/imageSearch";
 
 export interface BarcodeLookupResult {
   existingProductId?: string;
   existingProductName?: string;
-  suggestion?: { name?: string; description?: string; category?: string; imageUrl?: string };
+  suggestion?: {
+    name?: string;
+    description?: string;
+    category?: string;
+    imageUrl?: string;
+    /** Candidate photos from an image search — only populated when the
+     *  listing itself had no photo, so the admin can pick one instead of
+     *  always falling back to a manual upload. Raw external URLs: the
+     *  caller must preview them through /api/image-proxy (CSP blocks
+     *  hotlinking) and, on selection, persist via
+     *  downloadProductImageFromUrl — never save the URL itself. */
+    imageOptions?: string[];
+  };
   source?: "local" | "external";
   notFound?: boolean;
 }
@@ -83,6 +96,13 @@ async function lookupExternalUPC(
       ? item.images.find((img: unknown) => typeof img === "string" && img.startsWith("https://"))
       : undefined;
 
+    // The listing itself has no photo (the common case — see the comment
+    // on guessCategory: most of this store's inventory has no public UPC
+    // listing at all, and even a matched listing often lacks images). Fall
+    // back to an image search instead of leaving the admin to always find
+    // a photo by hand.
+    const imageOptions = imageUrl ? undefined : await searchProductImages(title, 4);
+
     return {
       source: "external",
       suggestion: {
@@ -90,6 +110,7 @@ async function lookupExternalUPC(
         description: (item.description || title).slice(0, 500).toUpperCase(),
         category,
         imageUrl,
+        imageOptions: imageOptions && imageOptions.length > 0 ? imageOptions : undefined,
       },
     };
   } catch {

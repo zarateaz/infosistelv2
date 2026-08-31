@@ -2,10 +2,15 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Barcode, Camera, ScanLine, Loader2, CheckCircle2 } from "lucide-react";
+import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon } from "lucide-react";
 import { lookupBarcode, recognizeProductImage } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
+
+// The site's CSP (img-src 'self' blob: data:) blocks hotlinking the image
+// search results directly — this re-serves them from our own origin just
+// for the picker preview. See src/app/api/image-proxy/route.ts.
+const previewUrl = (externalUrl: string) => `/api/image-proxy?url=${encodeURIComponent(externalUrl)}`;
 
 export interface ScanFill {
   name?: string;
@@ -33,12 +38,21 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Candidate photos from an image search, shown when the barcode listing
+  // itself had no photo. `pickingUrl` tracks which one is being
+  // downloaded so the picker can show a spinner on just that thumbnail.
+  const [imageOptions, setImageOptions] = useState<string[]>([]);
+  const [pickedUrl, setPickedUrl] = useState<string | null>(null);
+  const [pickingUrl, setPickingUrl] = useState<string | null>(null);
+
   async function runBarcodeLookup(code: string) {
     const clean = code.trim();
     if (!clean) return;
 
     setBarcode(clean);
     setBarcodeStatus({ kind: "loading" });
+    setImageOptions([]);
+    setPickedUrl(null);
     const result = await lookupBarcode(clean);
 
     if (result.existingProductId) {
@@ -50,9 +64,10 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       return;
     }
 
-    const { imageUrl, ...suggestion } = result.suggestion ?? {};
+    const { imageUrl, imageOptions: candidates, ...suggestion } = result.suggestion ?? {};
     onFill({ barcode: clean, ...suggestion });
     setBarcodeStatus(result.suggestion ? { kind: "found" } : { kind: "not-found" });
+    if (candidates && candidates.length > 0) setImageOptions(candidates);
 
     // Best-effort: the product listing sometimes has its own photo — fetch
     // it in the background so a product with a barcode match doesn't
@@ -68,6 +83,20 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   function handleBarcodeSubmit(e: React.FormEvent) {
     e.preventDefault();
     runBarcodeLookup(barcode);
+  }
+
+  /** Admin picked one of the search-result thumbnails — download + re-encode
+   *  it through sharp (same pipeline as any other product photo) and only
+   *  then hand the resulting local path to the form. Never store the
+   *  external URL itself. */
+  async function handlePickImage(url: string) {
+    setPickingUrl(url);
+    const result = await downloadProductImageFromUrl(url);
+    setPickingUrl(null);
+    if (result.path) {
+      setPickedUrl(url);
+      onFill({ image: result.path });
+    }
   }
 
   function handleCameraDetected(code: string) {
@@ -177,6 +206,50 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       )}
       {imageStatus.kind === "error" && (
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>
+      )}
+
+      {imageOptions.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-muted">
+            <ImageIcon size={13} />
+            Este producto no tiene foto en su ficha — elige una encontrada en internet
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {imageOptions.map((url, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handlePickImage(url)}
+                disabled={pickingUrl !== null}
+                className={`group relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border-2 transition-all disabled:cursor-wait ${
+                  pickedUrl === url
+                    ? "border-accent ring-2 ring-accent/30"
+                    : "border-border hover:border-accent/50"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl(url)}
+                  alt={`Opción ${i + 1}`}
+                  className="h-full w-full object-contain bg-white p-1"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                {pickingUrl === url && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                    <Loader2 size={16} className="animate-spin text-accent" />
+                  </div>
+                )}
+                {pickedUrl === url && pickingUrl === null && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-accent/20">
+                    <CheckCircle2 size={18} className="text-accent" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {cameraOpen && (
