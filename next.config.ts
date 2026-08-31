@@ -10,6 +10,23 @@ const nextConfig: NextConfig = {
   // for `next dev`, only changes what `next build` produces.
   output: "standalone",
 
+  images: {
+    // Product photos (uploaded manually, downloaded from a barcode listing,
+    // or picked from an image search) live in PRODUCT_IMAGES_DIR on the
+    // VPS — outside the repo, symlinked into .next/standalone/public/img/
+    // products/ at deploy time (scripts/deploy-vps.sh) so they survive
+    // every rebuild. Next's built-in image optimizer doesn't reliably
+    // resolve that symlinked path in standalone mode — a freshly written
+    // photo comes back "isn't a valid image ... received null" even though
+    // the file itself is perfectly valid on disk (confirmed with
+    // `identify`/`curl` directly). Every photo is already resized and
+    // re-encoded through sharp exactly once at upload time
+    // (upload-actions.ts) — there's no benefit to a second optimization
+    // pass, only a broken one. Same fix, same reasoning, as the sibling
+    // project's next.config.js.
+    unoptimized: true,
+  },
+
   // Strips console.* from the client bundle in production (errors/warnings
   // kept, per the `exclude` list) — defense in depth against a stray debug
   // log ever shipping details to the browser console. Doesn't affect

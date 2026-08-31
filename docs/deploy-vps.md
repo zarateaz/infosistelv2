@@ -111,9 +111,18 @@ npx pm2 delete infosistel-v2-test
 
 ## 4. Corte a producción
 
-Con v2 ya probado en el puerto 3010, el corte real es: apagar el proceso PM2 del sitio anterior y
-levantar v2 en el puerto 3000 (el mismo que nginx ya espera — **nginx no necesita ningún cambio**,
-solo reenvía a `localhost:3000`).
+Con v2 ya probado en el puerto 3010, el corte real es: aplicar el `nginx.conf` de este repo
+(paso obligatorio ahora, ver la nota abajo), apagar el proceso PM2 del sitio anterior y levantar
+v2 en el puerto 3000 (el mismo que nginx ya espera).
+
+**Antes que nada, copia el `nginx.conf` de este repo a la configuración real** — a diferencia de
+un despliegue normal, esta vez SÍ hace falta tocar nginx (ver "Fotos de producto" en Notas, abajo):
+
+```bash
+sudo cp /home/zarate/infosistel-v2/nginx.conf /etc/nginx/conf.d/infosistel.conf   # o donde viva la config real
+sudo nginx -t   # valida sintaxis ANTES de recargar
+sudo systemctl reload nginx
+```
 
 ```bash
 # 1. Apaga el sitio anterior (NO lo borres — es tu plan de rollback)
@@ -142,9 +151,15 @@ su propio directorio (`/home/zarate/infosistel`), completamente separadas de
 
 - `scripts/deploy-vps.sh` hace un backup de la base de datos (`cp -a`) antes de cada build —
   revisa `/home/zarate/infosistel-v2-data/backups/` si algo se ve raro después de un deploy.
-- `nginx.conf` en este repo es el mismo del sitio anterior con dos ajustes (ver el comentario en el
-  encabezado del archivo) — no hace falta tocar nginx para este despliegue, ya que ambos sitios
-  usan el mismo dominio y puerto. Si en algún momento quieres aplicar cambios a la config real en
-  el VPS, cópialo tú mismo y corre `nginx -t` antes de recargar.
+- `nginx.conf` en este repo es el mismo del sitio anterior con tres ajustes (ver el comentario en
+  el encabezado del archivo) — cópialo tú mismo y corre `nginx -t` antes de recargar cada vez que
+  cambie en el repo.
+- **Fotos de producto — bloque de nginx obligatorio.** El servidor standalone de Next.js indexa su
+  carpeta `public/` una sola vez al arrancar y no detecta archivos escritos después: una foto
+  subida, descargada de un código de barras o elegida en el buscador de imágenes devuelve 404
+  hasta el próximo reinicio del proceso PM2. `nginx.conf` ya trae el bloque
+  `location /img/products/ { alias ...; }` que sirve esas fotos directo desde
+  `PRODUCT_IMAGES_DIR` sin pasar por Node — confirma que la ruta del `alias` coincide exactamente
+  con tu `PRODUCT_IMAGES_DIR` real antes de recargar nginx. Ver `hardening-log.md`, entrada #28.
 - Redeploys posteriores (una vez ya migraste) son solo `git pull && bash scripts/deploy-vps.sh` —
   el script ya asume el puerto 3000 real.

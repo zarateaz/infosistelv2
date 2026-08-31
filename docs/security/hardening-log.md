@@ -548,3 +548,27 @@ despliegue real:
   en disco un WEBP válido (`identify`: 768×768, 8-bit sRGB) y servido con 200 OK tanto directo
   como a través del optimizador de imágenes de Next.js, corriendo el servidor exactamente como lo
   hace `scripts/deploy-vps.sh` (`node .next/standalone/server.js`, no `next start`).
+
+
+### 28. Fotos de producto en 404 hasta reiniciar PM2 — nginx debe servirlas directo (2026-08-31)
+- **Qué**: al depurar por qué una foto elegida en el escáner de Productos se veía "rota" incluso
+  después de corregir la entrada #27, se confirmó con una prueba controlada (servidor standalone
+  real, `node .next/standalone/server.js`, igual que PM2) que el servidor de Next.js **indexa su
+  carpeta `public/` una sola vez al arrancar** y no detecta archivos escritos después — cualquier
+  archivo agregado en caliente devuelve 404 hasta el próximo reinicio del proceso, sin importar si
+  llega por symlink o como archivo regular. Esto no es un bug de esta función: afecta a **toda**
+  foto de producto (subida manual incluida), desde que existe la funcionalidad.
+- **Por qué**: NIST SP 800-123 (disponibilidad/consistencia de la configuración del servidor) —
+  un componente que sirve contenido dinámico como si fuera estático produce fallos silenciosos e
+  intermitentes que dependen del momento exacto del último reinicio, muy difíciles de reproducir
+  y diagnosticar sin una prueba controlada como la de esta entrada.
+- **Solución**: `nginx.conf` agrega `location /img/products/ { alias PRODUCT_IMAGES_DIR; }` —
+  nginx sí lee el filesystem en cada request, así que sirviendo esa ruta directo desde disco se
+  evita el problema por completo, y de paso deja de pasar por Node para archivos estáticos (mejor
+  arquitectura de todas formas). **Requiere aplicar el `nginx.conf` del repo a la configuración
+  real del VPS** — antes este despliegue no tocaba nginx; ahora sí, ver `docs/deploy-vps.md`
+  sección 4.
+- **Dónde**: `nginx.conf`, `docs/deploy-vps.md`.
+- **Verificación**: con el servidor standalone corriendo, escribir un archivo nuevo directo en el
+  directorio de fotos y pedirlo por HTTP — sin el bloque de nginx, 404 hasta reiniciar el proceso;
+  con nginx sirviendo la ruta directo desde disco, 200 OK inmediatamente, sin reiniciar nada.
