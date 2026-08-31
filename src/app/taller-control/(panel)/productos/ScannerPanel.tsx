@@ -128,6 +128,9 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     if (!file) return;
 
     setImageStatus({ kind: "loading" });
+    setImageOptions([]);
+    setSelectedUrls([]);
+    setPicksApplied(false);
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
@@ -142,6 +145,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     }
     onFill({ name: result.name, description: result.description, category: result.category });
     setImageStatus({ kind: "done" });
+    if (result.imageOptions && result.imageOptions.length > 0) setImageOptions(result.imageOptions);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -231,8 +235,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         <div className="mt-4">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-muted">
             <ImageIcon size={13} />
-            Este producto no tiene foto en su ficha — elige hasta {MAX_PICKS} encontradas en
-            internet (la primera será la foto principal, el resto quedan de referencia)
+            Elige hasta {MAX_PICKS} fotos encontradas en internet para este producto (la primera
+            será la foto principal, el resto quedan de referencia)
           </p>
           <div className="flex flex-wrap items-end gap-3">
             {imageOptions.map((url, i) => {

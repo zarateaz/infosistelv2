@@ -143,6 +143,12 @@ export interface RecognizeImageResult {
   name?: string;
   description?: string;
   category?: string;
+  /** Candidate photos found from the recognized product name — same
+   *  picker/flow as the barcode lookup's imageOptions. Populated whenever
+   *  recognition succeeds, so a product with no barcode listing at all can
+   *  still get real photos straight from a single box photo instead of a
+   *  manual search. */
+  imageOptions?: string[];
   error?: string;
 }
 
@@ -200,10 +206,16 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
       ],
     });
 
+    // Best-effort, same as the barcode flow's imageOptions — a failed
+    // search just means no photo suggestions, never blocks the recognition
+    // result the admin is waiting on.
+    const imageOptions = await searchProductImages(object.name, 4).catch(() => []);
+
     return {
       name: object.name.toUpperCase(),
       description: object.description.toUpperCase(),
       category: object.category.toUpperCase(),
+      imageOptions: imageOptions.length > 0 ? imageOptions : undefined,
     };
   } catch {
     return { error: "No se pudo procesar la imagen. Intenta con otra foto más clara." };
