@@ -15,6 +15,9 @@ export interface AdminProduct {
   costPrice: number | null;
   stock: number;
   image: string | null;
+  /** Up to 3 additional reference photos — admin-only, never shown on
+   *  /tienda or the storefront card, only when editing the product. */
+  images: string | null;
   barcode: string | null;
   isFeatured: boolean;
   onSale: boolean;
@@ -33,6 +36,8 @@ export interface ProductFormState {
   error?: string;
 }
 
+const MAX_EXTRA_IMAGES = 3;
+
 const productSchema = z.object({
   name: z.string().trim().min(1, "El nombre es obligatorio").max(150),
   category: z.string().trim().min(1, "La categoría es obligatoria").max(60),
@@ -46,6 +51,7 @@ const productSchema = z.object({
     .max(300)
     .optional()
     .transform((v) => (v ? v : null)),
+  images: z.array(z.string().trim().max(300)).max(MAX_EXTRA_IMAGES).optional(),
   barcode: z
     .string()
     .trim()
@@ -64,6 +70,20 @@ async function upsertCategory(name: string): Promise<string> {
 }
 
 function parseProductForm(formData: FormData) {
+  // Same convention as the single `image` hidden input, just JSON-encoded
+  // since a plain <input> can't hold an array — ImageGalleryField writes it.
+  const imagesRaw = formData.get("images");
+  let images: string[] | undefined;
+  if (typeof imagesRaw === "string" && imagesRaw) {
+    try {
+      const decoded = JSON.parse(imagesRaw);
+      if (Array.isArray(decoded)) images = decoded.filter((v) => typeof v === "string");
+    } catch {
+      // Malformed value from a hand-crafted request — ignore rather than
+      // fail the whole save over an optional field.
+    }
+  }
+
   const parsed = productSchema.safeParse({
     name: formData.get("productName"),
     category: formData.get("category"),
@@ -72,6 +92,7 @@ function parseProductForm(formData: FormData) {
     costPrice: formData.get("costPrice") || 0,
     stock: formData.get("stock"),
     image: formData.get("image"),
+    images,
     barcode: formData.get("barcode"),
   });
   if (!parsed.success) {
@@ -110,10 +131,17 @@ export async function createProduct(
   redirect("/taller-control/productos");
 }
 
+/** Product.images is a single TEXT column (String?) — arrays go in/out as a
+ *  JSON-encoded string, never as raw values Prisma would understand. */
+function serializeExtraImages(images?: string[]): string | null {
+  return images && images.length > 0 ? JSON.stringify(images) : null;
+}
+
 async function insertProduct(data: z.infer<typeof productSchema>): Promise<string | null> {
   const category = await upsertCategory(data.category);
+  const { images, ...rest } = data;
   try {
-    await prisma.product.create({ data: { ...data, category } });
+    await prisma.product.create({ data: { ...rest, category, images: serializeExtraImages(images) } });
     return null;
   } catch (err) {
     if (isUniqueConstraintError(err)) {
@@ -135,6 +163,7 @@ export async function createProductQuick(input: {
   costPrice: number;
   stock: number;
   image: string | null;
+  images?: string[];
   barcode: string | null;
 }): Promise<{ error?: string }> {
   const parsed = productSchema.safeParse(input);
@@ -159,9 +188,14 @@ export async function updateProduct(
   if ("error" in result) return { error: result.error };
 
   const category = await upsertCategory(result.data.category);
-  const previous = await prisma.product.findUnique({ where: { id }, select: { image: true } });
+  const { images, ...rest } = result.data;
+  const newImagesJson = serializeExtraImages(images);
+  const previous = await prisma.product.findUnique({ where: { id }, select: { image: true, images: true } });
   try {
-    await prisma.product.update({ where: { id }, data: { ...result.data, category } });
+    await prisma.product.update({
+      where: { id },
+      data: { ...rest, category, images: newImagesJson },
+    });
   } catch (err) {
     if (isUniqueConstraintError(err)) {
       return { error: "Ya existe un producto con ese código de barras." };
@@ -169,22 +203,39 @@ export async function updateProduct(
     throw err;
   }
 
-  // Only clean up once the new row is safely saved, and only if the image
-  // actually changed — otherwise re-saving a product with the same photo
-  // would delete the very file it still points to.
-  if (previous?.image && previous.image !== result.data.image) {
-    await deleteProductImageIfManaged(previous.image);
-  }
+  // Only clean up once the new row is safely saved, and only for files that
+  // actually left the product (cover or gallery) — otherwise re-saving with
+  // the same photos would delete files the product still points to.
+  const keptImages = new Set([rest.image, ...(images ?? [])].filter((v): v is string => !!v));
+  const removedPaths = [previous?.image, ...parseExtraImages(previous?.images ?? null)].filter(
+    (v): v is string => !!v && !keptImages.has(v)
+  );
+  await Promise.all(removedPaths.map((path) => deleteProductImageIfManaged(path)));
 
   revalidatePath("/taller-control/productos");
   revalidatePath("/tienda");
   redirect("/taller-control/productos");
 }
 
+/** Inverse of serializeExtraImages — tolerant of null/malformed values
+ *  since this only ever reads back what the app itself wrote. */
+function parseExtraImages(images: string | null): string[] {
+  if (!images) return [];
+  try {
+    const parsed = JSON.parse(images);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function deleteProduct(id: string) {
-  const product = await prisma.product.findUnique({ where: { id }, select: { image: true } });
+  const product = await prisma.product.findUnique({ where: { id }, select: { image: true, images: true } });
   await prisma.product.delete({ where: { id } });
-  if (product?.image) await deleteProductImageIfManaged(product.image);
+  const paths = [product?.image, ...parseExtraImages(product?.images ?? null)].filter(
+    (v): v is string => !!v
+  );
+  await Promise.all(paths.map((path) => deleteProductImageIfManaged(path)));
   revalidatePath("/taller-control/productos");
   revalidatePath("/tienda");
 }

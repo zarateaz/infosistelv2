@@ -18,6 +18,10 @@ export interface ScanFill {
   category?: string;
   barcode?: string;
   image?: string;
+  /** Extra reference photos beyond the cover — admin-only, see
+   *  ImageGalleryField. Only set when the admin picks more than one
+   *  candidate in the image search picker. */
+  images?: string[];
 }
 
 /** Barcode entry (typed, USB-scanner keyboard input, or live camera) + AI
@@ -39,11 +43,15 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Candidate photos from an image search, shown when the barcode listing
-  // itself had no photo. `pickingUrl` tracks which one is being
-  // downloaded so the picker can show a spinner on just that thumbnail.
+  // itself had no photo. Multi-select (up to 4: one becomes the cover,
+  // the rest go to the gallery) — `downloadingSelection` covers the whole
+  // confirm step rather than one thumbnail at a time, since all selected
+  // photos download together when the admin confirms.
+  const MAX_PICKS = 4;
   const [imageOptions, setImageOptions] = useState<string[]>([]);
-  const [pickedUrl, setPickedUrl] = useState<string | null>(null);
-  const [pickingUrl, setPickingUrl] = useState<string | null>(null);
+  const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
+  const [downloadingSelection, setDownloadingSelection] = useState(false);
+  const [picksApplied, setPicksApplied] = useState(false);
 
   async function runBarcodeLookup(code: string) {
     const clean = code.trim();
@@ -52,7 +60,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     setBarcode(clean);
     setBarcodeStatus({ kind: "loading" });
     setImageOptions([]);
-    setPickedUrl(null);
+    setSelectedUrls([]);
+    setPicksApplied(false);
     const result = await lookupBarcode(clean);
 
     if (result.existingProductId) {
@@ -85,18 +94,28 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     runBarcodeLookup(barcode);
   }
 
-  /** Admin picked one of the search-result thumbnails — download + re-encode
-   *  it through sharp (same pipeline as any other product photo) and only
-   *  then hand the resulting local path to the form. Never store the
-   *  external URL itself. */
-  async function handlePickImage(url: string) {
-    setPickingUrl(url);
-    const result = await downloadProductImageFromUrl(url);
-    setPickingUrl(null);
-    if (result.path) {
-      setPickedUrl(url);
-      onFill({ image: result.path });
-    }
+  function toggleSelection(url: string) {
+    setSelectedUrls((prev) =>
+      prev.includes(url) ? prev.filter((u) => u !== url) : prev.length < MAX_PICKS ? [...prev, url] : prev
+    );
+  }
+
+  /** Admin confirmed their selection (1–4 thumbnails) — download + re-encode
+   *  every one through sharp (same pipeline as any other product photo),
+   *  in parallel, and only then hand the resulting local paths to the form.
+   *  The first successful download becomes the cover photo, the rest go to
+   *  the gallery. Never store the external URLs themselves. */
+  async function handleConfirmSelection() {
+    if (selectedUrls.length === 0) return;
+    setDownloadingSelection(true);
+    const results = await Promise.all(selectedUrls.map((url) => downloadProductImageFromUrl(url)));
+    setDownloadingSelection(false);
+
+    const paths = results.map((r) => r.path).filter((p): p is string => !!p);
+    if (paths.length === 0) return;
+    const [cover, ...gallery] = paths;
+    onFill({ image: cover, images: gallery });
+    setPicksApplied(true);
   }
 
   function handleCameraDetected(code: string) {
@@ -212,43 +231,60 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         <div className="mt-4">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-muted">
             <ImageIcon size={13} />
-            Este producto no tiene foto en su ficha — elige una encontrada en internet
+            Este producto no tiene foto en su ficha — elige hasta {MAX_PICKS} encontradas en
+            internet (la primera será la foto principal, el resto quedan de referencia)
           </p>
-          <div className="flex flex-wrap gap-3">
-            {imageOptions.map((url, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => handlePickImage(url)}
-                disabled={pickingUrl !== null}
-                className={`group relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border-2 transition-all disabled:cursor-wait ${
-                  pickedUrl === url
-                    ? "border-accent ring-2 ring-accent/30"
-                    : "border-border hover:border-accent/50"
-                }`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previewUrl(url)}
-                  alt={`Opción ${i + 1}`}
-                  className="h-full w-full object-contain bg-white p-1"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-                {pickingUrl === url && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/70">
-                    <Loader2 size={16} className="animate-spin text-accent" />
-                  </div>
-                )}
-                {pickedUrl === url && pickingUrl === null && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-accent/20">
-                    <CheckCircle2 size={18} className="text-accent" />
-                  </div>
-                )}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-end gap-3">
+            {imageOptions.map((url, i) => {
+              const order = selectedUrls.indexOf(url);
+              const selected = order !== -1;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => toggleSelection(url)}
+                  disabled={downloadingSelection}
+                  className={`group relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border-2 transition-all disabled:cursor-wait ${
+                    selected ? "border-accent ring-2 ring-accent/30" : "border-border hover:border-accent/50"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrl(url)}
+                    alt={`Opción ${i + 1}`}
+                    className="h-full w-full object-contain bg-white p-1"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                  {selected && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-accent/20">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg">
+                        {order === 0 ? <CheckCircle2 size={14} /> : order + 1}
+                      </span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={handleConfirmSelection}
+              disabled={selectedUrls.length === 0 || downloadingSelection}
+              className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-xs font-bold text-accent-fg transition-all hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {downloadingSelection && <Loader2 size={13} className="animate-spin" />}
+              {downloadingSelection
+                ? "Guardando…"
+                : `Usar ${selectedUrls.length || ""} foto${selectedUrls.length === 1 ? "" : "s"}`.trim()}
+            </button>
           </div>
+          {picksApplied && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-accent">
+              <CheckCircle2 size={13} />
+              Fotos aplicadas abajo.
+            </p>
+          )}
         </div>
       )}
 

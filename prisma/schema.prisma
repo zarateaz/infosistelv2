@@ -24,6 +24,7 @@ model Product {
   price       Float
   stock       Int      @default(0)
   image       String? // path under /public, e.g. "/img/products/x.webp" — null renders a category icon placeholder
+  images      String? // JSON-encoded string[] of ADDITIONAL photos (admin reference only — /tienda and the storefront card only ever show `image`, the cover). Up to 3 extra, same path format as `image`.
   costPrice   Float?   @default(0) // admin-only field, never sent to public API responses
   barcode     String?  @unique // UPC/EAN scanned at the register — null for products entered without one
   isFeatured  Boolean  @default(false)

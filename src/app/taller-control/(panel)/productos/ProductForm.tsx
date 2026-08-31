@@ -5,8 +5,22 @@ import { useRouter } from "next/navigation";
 import type { ProductFormState, AdminProduct } from "./actions";
 import { ScannerPanel, type ScanFill } from "./ScannerPanel";
 import { ImageUploadField } from "./ImageUploadField";
+import { ImageGalleryField } from "./ImageGalleryField";
 
 const initialState: ProductFormState = {};
+
+/** Product.images is stored as a JSON-encoded string (see actions.ts) —
+ *  tolerant of null/malformed values since this only ever reads back what
+ *  the app itself wrote. */
+function parseImagesJson(value?: string | null): string[] | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const inputClass =
   "mt-2 w-full rounded-xl border border-border bg-bg px-4 py-2.5 text-sm text-fg outline-none transition-colors focus:border-accent";
@@ -28,6 +42,7 @@ export function ProductForm({
   const [onSale, setOnSale] = useState(product?.onSale ?? false);
   const [imageUploading, setImageUploading] = useState(false);
   const [scannedImagePath, setScannedImagePath] = useState<string | null>(null);
+  const [scannedGalleryImages, setScannedGalleryImages] = useState<string[] | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLInputElement>(null);
@@ -40,6 +55,7 @@ export function ProductForm({
     if (fill.category && categoryRef.current) categoryRef.current.value = fill.category;
     if (fill.barcode && barcodeRef.current) barcodeRef.current.value = fill.barcode;
     if (fill.image) setScannedImagePath(fill.image);
+    if (fill.images) setScannedGalleryImages(fill.images);
   }
 
   return (
@@ -167,6 +183,11 @@ export function ProductForm({
             defaultValue={product?.image}
             onUploadingChange={setImageUploading}
             autoImagePath={scannedImagePath}
+          />
+
+          <ImageGalleryField
+            defaultValue={parseImagesJson(product?.images)}
+            autoImages={scannedGalleryImages}
           />
         </div>
 

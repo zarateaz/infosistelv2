@@ -43,7 +43,11 @@ interface ProductDraft {
   model: string;
   description: string;
   category: string;
-  selectedImage: string;
+  /** Up to 4 candidates picked in the image search — the first becomes the
+   *  cover photo, the rest go to the admin-only gallery (see
+   *  ImageGalleryField in the Productos scanner; Alta Rápida uses the same
+   *  convention). */
+  selectedImages: string[];
   price: string;
   stock: string;
 }
@@ -73,11 +77,12 @@ export function FastProductScanner() {
     model: "",
     description: "",
     category: "",
-    selectedImage: "",
+    selectedImages: [],
     price: "",
     stock: "1",
   });
 
+  const MAX_PICKS = 4;
   const [imageOptions, setImageOptions] = useState<string[]>([]);
   const [imageSearching, setImageSearching] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -134,7 +139,7 @@ export function FastProductScanner() {
           model: data.model ?? "",
           description: data.description ?? "",
           category: data.category ?? "",
-          selectedImage: data.images?.[0] ?? data.image ?? "",
+          selectedImages: data.images?.[0] ? [data.images[0]] : data.image ? [data.image] : [],
           price: "",
           stock: "1",
         }));
@@ -149,7 +154,7 @@ export function FastProductScanner() {
           model: "",
           description: "",
           category: "",
-          selectedImage: "",
+          selectedImages: [],
           price: "",
           stock: "1",
         }));
@@ -181,8 +186,8 @@ export function FastProductScanner() {
       const data: ScannerAPIResponse = await res.json();
       if (data.images && data.images.length > 0) {
         setImageOptions(data.images);
-        if (!draft.selectedImage) {
-          setDraft((prev) => ({ ...prev, selectedImage: data.images![0] }));
+        if (draft.selectedImages.length === 0) {
+          setDraft((prev) => ({ ...prev, selectedImages: [data.images![0]] }));
         }
       }
     } catch {
@@ -205,18 +210,19 @@ export function FastProductScanner() {
     setSaving(true);
     setSaveError(null);
 
-    // draft.selectedImage is a raw external URL (DuckDuckGo or the
-    // barcode listing's own photo) — never store that directly. Same
-    // pipeline as every other product photo in the app: download it
+    // draft.selectedImages are raw external URLs (DuckDuckGo or the
+    // barcode listing's own photo) — never store those directly. Same
+    // pipeline as every other product photo in the app: download each one
     // server-side and re-encode through sharp to a local WEBP
-    // (downloadProductImageFromUrl, upload-actions.ts). Best-effort: a
-    // failed download just leaves the product without a photo rather than
-    // blocking the save — the admin can still add one manually after.
-    let imagePath: string | null = null;
-    if (draft.selectedImage) {
-      const downloaded = await downloadProductImageFromUrl(draft.selectedImage);
-      imagePath = downloaded.path ?? null;
-    }
+    // (downloadProductImageFromUrl, upload-actions.ts), in parallel. The
+    // first successful download becomes the cover photo, the rest go to
+    // the admin-only gallery. Best-effort: a failed download just leaves
+    // that one photo out rather than blocking the whole save.
+    const downloaded = await Promise.all(
+      draft.selectedImages.map((url) => downloadProductImageFromUrl(url))
+    );
+    const paths = downloaded.map((d) => d.path).filter((p): p is string => !!p);
+    const [imagePath = null, ...galleryPaths] = paths;
 
     // draft.title is the field the admin actually reviewed/edited in
     // "Nombre del producto" — brand/model are just aids for filling it in,
@@ -227,6 +233,7 @@ export function FastProductScanner() {
       description: draft.description.trim() || draft.title.trim(),
       category: draft.category.trim() || "SIN CATEGORÍA",
       image: imagePath,
+      images: galleryPaths,
       stock: Number.isFinite(stock) && stock >= 0 ? stock : 0,
       price,
       costPrice: 0,
@@ -249,7 +256,7 @@ export function FastProductScanner() {
       model: "",
       description: "",
       category: "",
-      selectedImage: "",
+      selectedImages: [],
       price: "",
       stock: "1",
     });
@@ -268,7 +275,7 @@ export function FastProductScanner() {
       model: "",
       description: "",
       category: "",
-      selectedImage: "",
+      selectedImages: [],
       price: "",
       stock: "1",
     });
@@ -528,7 +535,7 @@ export function FastProductScanner() {
           <div className="mt-6">
             <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-muted">
               <ImageIcon size={13} />
-              Imagen del producto
+              Fotos del producto — hasta {MAX_PICKS} (la primera es la principal)
               {imageSearching && (
                 <Loader2 size={12} className="ml-1 animate-spin text-accent" />
               )}
@@ -536,36 +543,47 @@ export function FastProductScanner() {
 
             {imageOptions.length > 0 ? (
               <div className="flex flex-wrap gap-3">
-                {imageOptions.map((url, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() =>
-                      setDraft((prev) => ({ ...prev, selectedImage: url }))
-                    }
-                    className={`group relative h-24 w-24 overflow-hidden rounded-xl border-2 transition-all ${
-                      draft.selectedImage === url
-                        ? "border-accent ring-2 ring-accent/30 scale-105"
-                        : "border-border hover:border-accent/50"
-                    }`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={previewUrl(url)}
-                      alt={`Opción ${i + 1}`}
-                      className="h-full w-full object-contain bg-white p-1"
-                      onError={(e) => {
-                        // Hide broken images
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                    {draft.selectedImage === url && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-accent/20">
-                        <CheckCircle2 size={20} className="text-accent" />
-                      </div>
-                    )}
-                  </button>
-                ))}
+                {imageOptions.map((url, i) => {
+                  const order = draft.selectedImages.indexOf(url);
+                  const selected = order !== -1;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() =>
+                        setDraft((prev) => {
+                          const already = prev.selectedImages.includes(url);
+                          if (already) {
+                            return { ...prev, selectedImages: prev.selectedImages.filter((u) => u !== url) };
+                          }
+                          if (prev.selectedImages.length >= MAX_PICKS) return prev;
+                          return { ...prev, selectedImages: [...prev.selectedImages, url] };
+                        })
+                      }
+                      className={`group relative h-24 w-24 overflow-hidden rounded-xl border-2 transition-all ${
+                        selected ? "border-accent ring-2 ring-accent/30 scale-105" : "border-border hover:border-accent/50"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={previewUrl(url)}
+                        alt={`Opción ${i + 1}`}
+                        className="h-full w-full object-contain bg-white p-1"
+                        onError={(e) => {
+                          // Hide broken images
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                      {selected && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-accent/20">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg">
+                            {order === 0 ? <CheckCircle2 size={16} /> : order + 1}
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-fg-muted">
@@ -573,18 +591,6 @@ export function FastProductScanner() {
                   ? "Buscando imágenes…"
                   : "No hay imágenes disponibles. Escribe el nombre del producto y quita el foco para buscar automáticamente."}
               </p>
-            )}
-
-            {/* Preview of selected image */}
-            {draft.selectedImage && (
-              <div className="mt-4 inline-block rounded-xl border border-border bg-white p-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previewUrl(draft.selectedImage)}
-                  alt="Imagen seleccionada"
-                  className="h-40 w-40 object-contain"
-                />
-              </div>
             )}
           </div>
 

@@ -572,3 +572,26 @@ despliegue real:
 - **Verificación**: con el servidor standalone corriendo, escribir un archivo nuevo directo en el
   directorio de fotos y pedirlo por HTTP — sin el bloque de nginx, 404 hasta reiniciar el proceso;
   con nginx sirviendo la ruta directo desde disco, 200 OK inmediatamente, sin reiniciar nada.
+
+
+### 29. Galería de fotos adicionales por producto (2026-08-31)
+- **Qué**: `Product.images` (nueva columna, JSON-encoded `string[]`, hasta 3 rutas) para guardar
+  fotos de referencia adicionales, además de la portada (`Product.image`) que ya existía. Los dos
+  escáneres (Productos y Alta Rápida) ahora permiten elegir hasta 4 candidatas del buscador de
+  imágenes — la primera se procesa como portada, el resto como galería — en vez de forzar a elegir
+  una sola. `ImageGalleryField.tsx` (nuevo) las muestra/gestiona al editar un producto, con el
+  mismo patrón de "hidden input" que ya usaba `ImageUploadField` para la portada.
+- **Por qué**: pedido explícito del usuario; sin impacto de seguridad — es una extensión de
+  esquema y UI. Se aplicó el mismo criterio de mínimo privilegio que ya rige `costPrice`: la
+  galería es **solo referencia interna**, nunca se expone en `/tienda` ni en la tarjeta pública del
+  producto (decisión explícita para no ampliar el alcance a la tienda pública en esta iteración).
+- **Dónde**: `prisma/schema.prisma`, migración `20260831154429_add_product_extra_images`,
+  `src/app/taller-control/(panel)/productos/actions.ts` (`createProductQuick`, `insertProduct`,
+  `updateProduct`, `deleteProduct` — limpia también los archivos de la galería al reemplazar o
+  borrar un producto, mismo criterio que ya aplicaba a la portada),
+  `src/app/taller-control/(panel)/productos/ImageGalleryField.tsx` (nuevo),
+  `src/app/taller-control/(panel)/productos/ScannerPanel.tsx`, `src/components/FastProductScanner.tsx`.
+- **Verificación**: probado end-to-end con el código de barras real del reporte
+  (`6935364040413`) — se seleccionaron 3 de las 4 fotos encontradas, se guardó, y se confirmó con
+  `sqlite3 dev.db` que `image` tiene la portada y `images` un arreglo JSON con las otras 2 rutas;
+  la tienda pública (`/tienda`) muestra la portada correctamente.
