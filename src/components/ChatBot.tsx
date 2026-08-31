@@ -110,7 +110,10 @@ export function ChatBot() {
             {status === "error" && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-red-500/10 px-4 py-2.5 text-sm leading-relaxed text-red-400">
-                  No pude responder en este momento. Intenta de nuevo o escríbenos por{" "}
+                  {/* Server-specific message when the AI SDK's onError supplied one
+                      (invalid key, sin saldo, etc.) — generic fallback otherwise. */}
+                  {error?.message || "No pude responder en este momento."} Intenta de nuevo o
+                  escríbenos por{" "}
                   <a
                     href="https://wa.me/51964648202"
                     target="_blank"

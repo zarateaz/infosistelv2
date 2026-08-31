@@ -40,7 +40,16 @@ CÓMO RESPONDER:
 export async function POST(req: Request) {
   // Lazy check (not in the global fail-fast env schema) — the rest of the
   // site works fine without this key; only the chat feature needs it.
+  // Logged loudly on purpose: this exact condition (key unset/empty) used
+  // to fail with zero output in `pm2 logs`, which turned a one-line config
+  // problem into a multi-round remote debugging session. Never again.
   if (!process.env.DEEPSEEK_API_KEY) {
+    console.error(
+      "[chat] DEEPSEEK_API_KEY no está configurado (vacío o ausente en .env) — " +
+        "el chatbot no puede responder. Consíguela en platform.deepseek.com/api_keys, " +
+        "ponla en .env y redeploya con scripts/deploy-vps.sh (no un simple `pm2 restart`, " +
+        "que no recarga variables de entorno)."
+    );
     return new Response(
       JSON.stringify({ error: "El asistente no está configurado (falta DEEPSEEK_API_KEY)." }),
       { status: 503, headers: { "Content-Type": "application/json" } }
@@ -82,5 +91,23 @@ export async function POST(req: Request) {
     stopWhen: stepCountIs(5),
   });
 
-  return result.toUIMessageStreamResponse();
+  // onError: without this, a rejected/invalid key, an out-of-credit
+  // DeepSeek account, or a network failure to their API all fail *inside*
+  // the stream with nothing in `pm2 logs` — the client just sees a generic
+  // "no pude responder" with no way to tell those three apart. Logging the
+  // real error server-side, and returning a distinct message per case,
+  // turns that back into something debuggable in one look.
+  return result.toUIMessageStreamResponse({
+    onError: (error) => {
+      console.error("[chat] Error llamando a DeepSeek:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (/401|invalid.*api.?key|authentication/i.test(message)) {
+        return "La clave de DeepSeek configurada no es válida — revisa DEEPSEEK_API_KEY en .env.";
+      }
+      if (/insufficient|balance|quota|payment/i.test(message)) {
+        return "La cuenta de DeepSeek se quedó sin saldo — recarga en platform.deepseek.com.";
+      }
+      return "No se pudo contactar al asistente en este momento. Intenta de nuevo.";
+    },
+  });
 }
