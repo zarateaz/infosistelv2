@@ -18,7 +18,7 @@ export function AddTransactionForm() {
   }, [state, isPending]);
 
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+    <div className="admin-glass rounded-[var(--radius-lg)] p-6">
       <h2 className="font-display text-lg font-bold text-fg">Registrar movimiento</h2>
 
       <form ref={formRef} action={formAction} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -60,16 +60,16 @@ export default async function AdminDashboardPage() {
           <Link
             key={s.label}
             href={s.href}
-            className="group rounded-[var(--radius-lg)] border border-border bg-bg-alt p-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-xl hover:shadow-accent/10"
+            className="group admin-glass rounded-[var(--radius-lg)] p-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-xl hover:shadow-accent/10"
           >
             <div
-              className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+              className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-inner transition-colors ${
                 s.warn
-                  ? "bg-red-50 text-red-600"
-                  : "bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-fg"
+                  ? "bg-red-50 text-red-600 shadow-[0_0_16px_-4px_rgba(220,38,38,0.35)]"
+                  : "bg-accent/10 text-accent shadow-[0_0_16px_-4px_rgba(10,95,219,0.35)] group-hover:bg-accent group-hover:text-accent-fg"
               }`}
             >
-              <s.icon size={16} strokeWidth={1.75} />
+              <s.icon size={17} strokeWidth={1.75} />
             </div>
             <p className="mt-4 text-2xl font-bold text-fg">{s.value}</p>
             <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-fg-muted">{s.label}</p>
@@ -89,7 +89,7 @@ export default async function AdminDashboardPage() {
           {recentOrders.map((order) => (
             <div
               key={order.id}
-              className="flex items-center justify-between rounded-xl border border-border bg-bg-alt px-5 py-3.5"
+              className="flex items-center justify-between admin-glass rounded-xl px-5 py-3.5"
             >
               <div>
                 <p className="text-sm font-semibold text-fg">{order.customerName}</p>
@@ -101,7 +101,7 @@ export default async function AdminDashboardPage() {
             </div>
           ))}
           {recentOrders.length === 0 && (
-            <p className="rounded-xl border border-border bg-bg-alt px-5 py-8 text-center text-sm text-fg-muted">
+            <p className="admin-glass rounded-xl px-5 py-8 text-center text-sm text-fg-muted">
               Todavía no hay pedidos.
             </p>
           )}

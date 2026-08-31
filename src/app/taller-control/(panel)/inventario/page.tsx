@@ -14,7 +14,7 @@ export default async function AdminInventoryPage() {
         {products.length} productos · {lowStock} con stock bajo (≤3).
       </p>
 
-      <div className="mt-8 overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-bg-alt">
+      <div className="mt-8 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">

@@ -17,7 +17,7 @@ export default async function AdminProductsPage() {
 
       <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:sticky lg:top-28 lg:col-span-1 lg:self-start">
-          <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+          <div className="admin-glass rounded-[var(--radius-lg)] p-6">
             <h2 className="mb-6 flex items-center gap-2 font-display text-lg font-bold text-fg">
               <Plus size={18} className="text-accent" /> Añadir producto
             </h2>
@@ -26,7 +26,7 @@ export default async function AdminProductsPage() {
         </div>
 
         <div className="lg:col-span-2">
-          <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-bg-alt">
+          <div className="overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">

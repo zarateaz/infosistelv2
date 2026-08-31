@@ -24,14 +24,14 @@ export default async function AdminCashboxPage() {
 
       <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
         {PAYMENT_METHODS.map((method) => (
-          <div key={method} className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-5">
+          <div key={method} className="admin-glass rounded-[var(--radius-lg)] p-5">
             <p className="text-xs font-bold uppercase tracking-wider text-fg-muted">{method}</p>
             <p className="mt-2 text-xl font-bold text-fg">S/. {totalsByMethod[method].toFixed(2)}</p>
           </div>
         ))}
       </div>
 
-      <div className="mt-8 rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+      <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">
         <h2 className="font-display text-lg font-bold text-fg">Evolución del saldo</h2>
         <div className="mt-4">
           <CajaChart transactions={transactions} />
@@ -42,7 +42,7 @@ export default async function AdminCashboxPage() {
         <AddTransactionForm />
       </div>
 
-      <div className="mt-8 overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-bg-alt">
+      <div className="mt-8 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">

@@ -98,7 +98,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   }
 
   return (
-    <div className="mb-8 rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+    <div className="mb-8 admin-glass rounded-[var(--radius-lg)] p-6">
       <p className="text-xs font-bold uppercase tracking-wider text-fg-muted">
         Escáner de inventario (opcional)
       </p>

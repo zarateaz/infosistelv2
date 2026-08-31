@@ -11,14 +11,14 @@ export default async function AdminCategoriesPage() {
       <p className="mt-1 text-sm text-fg-muted">{categories.length} categorías en el catálogo.</p>
 
       <div className="mt-8 space-y-6">
-        <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+        <div className="admin-glass rounded-[var(--radius-lg)] p-6">
           <h2 className="font-display text-lg font-bold text-fg">Gestionar categorías</h2>
           <div className="mt-5">
             <AddCategoryForm />
           </div>
         </div>
 
-        <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+        <div className="admin-glass rounded-[var(--radius-lg)] p-6">
           <div className="flex flex-wrap gap-3">
             {categories.map((c) => (
               <CategoryChip key={c.id} id={c.id} name={c.name} />

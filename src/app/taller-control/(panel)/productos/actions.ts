@@ -102,19 +102,52 @@ export async function createProduct(
   const result = parseProductForm(formData);
   if ("error" in result) return { error: result.error };
 
-  const category = await upsertCategory(result.data.category);
-  try {
-    await prisma.product.create({ data: { ...result.data, category } });
-  } catch (err) {
-    if (isUniqueConstraintError(err)) {
-      return { error: "Ya existe un producto con ese código de barras." };
-    }
-    throw err;
-  }
+  const error = await insertProduct(result.data);
+  if (error) return { error };
 
   revalidatePath("/taller-control/productos");
   revalidatePath("/tienda");
   redirect("/taller-control/productos");
+}
+
+async function insertProduct(data: z.infer<typeof productSchema>): Promise<string | null> {
+  const category = await upsertCategory(data.category);
+  try {
+    await prisma.product.create({ data: { ...data, category } });
+    return null;
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return "Ya existe un producto con ese código de barras.";
+    }
+    throw err;
+  }
+}
+
+/** Same validation/insert path as createProduct, but takes a plain object
+ *  instead of FormData and never redirects — the Alta Rápida scanner stays
+ *  on its own page and resets for the next scan instead of navigating away,
+ *  since the whole point of that flow is scanning several items in a row. */
+export async function createProductQuick(input: {
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  costPrice: number;
+  stock: number;
+  image: string | null;
+  barcode: string | null;
+}): Promise<{ error?: string }> {
+  const parsed = productSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const error = await insertProduct(parsed.data);
+  if (error) return { error };
+
+  revalidatePath("/taller-control/productos");
+  revalidatePath("/tienda");
+  return {};
 }
 
 export async function updateProduct(

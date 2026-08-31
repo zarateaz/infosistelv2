@@ -25,7 +25,7 @@ export function AddAdminForm() {
   }
 
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+    <div className="admin-glass rounded-[var(--radius-lg)] p-6">
       <h2 className="font-display text-lg font-bold text-fg">Gestión de acceso</h2>
       <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-fg-muted">
         <span className="inline-flex items-center gap-1.5">

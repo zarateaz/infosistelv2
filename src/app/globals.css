@@ -98,3 +98,54 @@ body {
     0 1px 0 0 rgba(255, 255, 255, 0.8) inset,
     0 30px 80px -30px rgba(10, 30, 80, 0.25);
 }
+
+/* Admin-panel glass — the same frosted-glass language as .glass-panel,
+   tuned lighter (smaller blur radius, tighter shadow) so it stays crisp
+   and cheap to render when a dashboard puts a dozen of these on screen at
+   once instead of the one or two hero surfaces .glass-panel was designed
+   for. A thin accent-tinted ring on top of the usual border is what reads
+   as "futurista" rather than just "frosted" — it's what separates this
+   from a plain translucent card. Never applied to <input>/<select> —
+   those stay fully opaque so typed text keeps full contrast. */
+.admin-glass {
+  position: relative;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.54));
+  backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.85) inset,
+    0 18px 44px -22px rgba(10, 30, 80, 0.3),
+    0 0 0 1px rgba(10, 95, 219, 0.09);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+/* The sci-fi-panel signature: a thin glowing accent line inset along the
+   top edge, following the card's own border-radius. A plain top border
+   would look like a UI mistake; this reads as deliberate. */
+.admin-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    100deg,
+    rgba(10, 95, 219, 0.55),
+    rgba(10, 95, 219, 0) 28%,
+    rgba(10, 95, 219, 0) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.admin-glass:hover {
+  border-color: rgba(10, 95, 219, 0.22);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.9) inset,
+    0 22px 52px -20px rgba(10, 30, 80, 0.34),
+    0 0 0 1px rgba(10, 95, 219, 0.16);
+}

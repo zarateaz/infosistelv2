@@ -481,3 +481,42 @@ despliegue real:
 - **Verificación**: `npx tsc --noEmit` sin errores; crear una cuenta admin con una contraseña de
   10 caracteres debe ser rechazada tanto en el formulario (HTML5 `minLength`) como en el servidor
   (`zod`, por si se hace POST directo sin pasar por el formulario).
+
+
+### 25. Dependencia `duckduckgo-images-api` (3 vulnerabilidades altas) eliminada (2026-08-31)
+- **Qué**: la función "Alta Rápida" (`src/app/api/scanner/route.ts`) usaba el paquete
+  `duckduckgo-images-api` para buscar fotos de producto por nombre. Ese paquete depende de una
+  versión antigua de `axios` (y de `follow-redirects`) con 3 vulnerabilidades de severidad alta
+  reportadas por `npm audit` — SSRF, *prototype pollution* y ReDoS, sin parche disponible para esa
+  cadena de dependencias. Se reemplazó por dos llamadas `fetch` nativas que replican exactamente
+  el mismo protocolo que el paquete usaba internamente (obtener un token `vqd` de la página de
+  búsqueda de DuckDuckGo, luego pedir `i.js` con ese token) — mismo resultado, cero dependencias
+  nuevas. `npm uninstall axios duckduckgo-images-api` dejó `npm audit` en 0 vulnerabilidades.
+- **Por qué**: OWASP Top 10 A06:2021 – Vulnerable and Outdated Components, mismo criterio que la
+  entrada #5. Este hallazgo es particularmente relevante porque el Capítulo VI de la tesis cita
+  "`npm audit`: 0 vulnerabilidades" como evidencia de V14.2.1 — una dependencia nueva sin auditar
+  antes de instalarla habría invalidado esa cifra silenciosamente.
+- **Además, en la misma función**: el botón "Guardar producto" solo hacía `console.log` de los
+  datos — nunca creaba el producto de verdad. Se conectó a una nueva acción de servidor
+  `createProductQuick` (misma validación `zod` y misma ruta de inserción que `createProduct`, pero
+  sin `redirect()`, para que el panel quede listo para escanear el siguiente código) en
+  `productos/actions.ts`, y se agregaron los campos de precio/stock que faltaban en el formulario
+  (antes se guardaban hardcodeados en `0`).
+- **Dónde**: `src/app/api/scanner/route.ts`, `src/components/FastProductScanner.tsx`,
+  `src/app/taller-control/(panel)/productos/actions.ts`, `package.json`.
+- **Verificación**: `npm audit` → "found 0 vulnerabilities"; probado end-to-end (escanear código no
+  registrado → completar nombre/precio → Guardar) y confirmado con `sqlite3 dev.db "SELECT ... FROM
+  Product"` que el producto queda insertado de verdad, no solo en la consola del navegador.
+
+### 26. Vidrio futurista en todo el panel administrativo (2026-08-31)
+- **Qué**: nueva clase `.admin-glass` en `globals.css` (fondo translúcido con `backdrop-filter:
+  blur`, borde con brillo de acento en el canto superior) aplicada a las tarjetas principales de
+  las 9 secciones del panel — antes eran tarjetas blancas planas (`bg-bg-alt` sólido). Nunca
+  aplicada a `<input>`/`<select>`, que se mantienen opacos para no perder contraste del texto
+  escrito. También se rediseñó la navegación de `/taller-control`: pasó de una barra horizontal
+  con scroll (9 enlaces apretados en una fila) a un sidebar fijo a la izquierda con estado activo
+  por ruta (`AdminSidebar.tsx`, entrada previa sin numerar del 2026-08-30/31).
+- **Por qué**: pedido explícito del usuario tras ver el panel "se ve muerta" — sin impacto de
+  seguridad, es una mejora visual pura, documentada aquí solo por trazabilidad del cambio.
+- **Dónde**: `src/app/globals.css`, y el patrón `admin-glass rounded-[var(--radius-lg)]` en las
+  9 páginas bajo `src/app/taller-control/(panel)/`.

@@ -44,7 +44,7 @@ export default async function AdminRepairsPage({
         ))}
 
         {repairs.length === 0 && (
-          <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt px-6 py-14 text-center text-fg-muted">
+          <div className="admin-glass rounded-[var(--radius-lg)] px-6 py-14 text-center text-fg-muted">
             {dni ? "Ninguna reparación coincide con ese DNI." : "Todavía no hay reparaciones."}
           </div>
         )}

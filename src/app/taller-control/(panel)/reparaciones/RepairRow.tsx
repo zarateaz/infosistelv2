@@ -20,7 +20,7 @@ export function RepairRow({ repair }: { repair: AdminRepair }) {
   };
 
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+    <div className="admin-glass rounded-[var(--radius-lg)] p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="font-display text-sm font-bold text-accent">{repair.code}</p>

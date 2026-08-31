@@ -20,7 +20,7 @@ export default async function AdminSalesPage() {
         {STAT_CARDS.map(({ key, label, icon: Icon }) => {
           const bucket = stats[key];
           return (
-            <div key={key} className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+            <div key={key} className="admin-glass rounded-[var(--radius-lg)] p-6">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
                 <Icon size={18} />
               </div>
@@ -34,7 +34,7 @@ export default async function AdminSalesPage() {
         })}
       </div>
 
-      <div className="mt-8 overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-bg-alt">
+      <div className="mt-8 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">

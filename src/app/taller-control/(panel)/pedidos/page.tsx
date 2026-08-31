@@ -34,7 +34,7 @@ export default async function AdminOrdersPage({
 
       <div className="mt-8 space-y-4">
         {orders.map((order) => (
-          <div key={order.id} className="rounded-[var(--radius-lg)] border border-border bg-bg-alt p-6">
+          <div key={order.id} className="admin-glass rounded-[var(--radius-lg)] p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="font-semibold text-fg">{order.customerName}</p>
@@ -65,7 +65,7 @@ export default async function AdminOrdersPage({
         ))}
 
         {orders.length === 0 && (
-          <div className="rounded-[var(--radius-lg)] border border-border bg-bg-alt px-6 py-14 text-center text-fg-muted">
+          <div className="admin-glass rounded-[var(--radius-lg)] px-6 py-14 text-center text-fg-muted">
             {telefono ? "Ningún pedido coincide con ese número." : "Todavía no hay pedidos."}
           </div>
         )}
