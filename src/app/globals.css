@@ -149,3 +149,34 @@ body {
     0 22px 52px -20px rgba(10, 30, 80, 0.34),
     0 0 0 1px rgba(10, 95, 219, 0.16);
 }
+
+/* Admin sidebar — same frosted-glass family as .admin-glass, but tuned for
+   a fixed edge-to-edge vertical panel instead of a floating card: the glow
+   runs down the right edge (where the panel actually meets the page)
+   rather than around all four sides, and the gradient is vertical so it
+   reads as a wall of light, not a tilted card. */
+.admin-sidebar {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 255, 255, 0.88) 55%,
+    rgba(234, 241, 255, 0.86)
+  );
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 18px 0 44px -30px rgba(10, 30, 80, 0.28);
+}
+
+.admin-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 95, 219, 0.05),
+    rgba(10, 95, 219, 0.4) 30%,
+    rgba(10, 95, 219, 0.4) 70%,
+    rgba(10, 95, 219, 0.05)
+  );
+}

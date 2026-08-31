@@ -33,6 +33,24 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/usuarios": Users,
 };
 
+// Groups the flat nav list into labeled sections purely for display — the
+// actual link list (and its role-based filtering, e.g. Usuarios only for
+// superadmin) stays owned by layout.tsx. A link whose href isn't in here
+// falls back to "General" so a future addition never silently disappears.
+const GROUP_OF: Record<string, string> = {
+  "/taller-control": "General",
+  "/taller-control/caja": "Ventas",
+  "/taller-control/pedidos": "Ventas",
+  "/taller-control/ventas": "Ventas",
+  "/taller-control/inventario": "Inventario",
+  "/taller-control/productos": "Inventario",
+  "/taller-control/alta-rapida": "Inventario",
+  "/taller-control/categorias": "Inventario",
+  "/taller-control/reparaciones": "Servicio técnico",
+  "/taller-control/usuarios": "Sistema",
+};
+const GROUP_ORDER = ["General", "Ventas", "Inventario", "Servicio técnico", "Sistema"];
+
 type NavLink = { href: string; label: string };
 
 export function AdminSidebar({
@@ -52,37 +70,54 @@ export function AdminSidebar({
   const isActive = (href: string) =>
     href === "/taller-control" ? pathname === href : pathname.startsWith(href);
 
+  const groupedLinks = GROUP_ORDER.map((group) => ({
+    group,
+    links: navLinks.filter((link) => (GROUP_OF[link.href] ?? "General") === group),
+  })).filter((g) => g.links.length > 0);
+
   const NavList = (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
-      {navLinks.map((link) => {
-        const Icon = ICONS[link.href] ?? LayoutDashboard;
-        const active = isActive(link.href);
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            onClick={() => setMobileOpen(false)}
-            className={`group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors ${
-              active
-                ? "bg-accent text-accent-fg shadow-sm shadow-accent/30"
-                : "text-fg-muted hover:bg-bg-raised hover:text-fg"
-            }`}
-          >
-            <Icon
-              size={18}
-              className={active ? "text-accent-fg" : "text-fg-muted group-hover:text-accent"}
-            />
-            {link.label}
-          </Link>
-        );
-      })}
+    <nav className="flex flex-1 flex-col overflow-y-auto px-3 py-2">
+      {groupedLinks.map(({ group, links }, i) => (
+        <div key={group} className={i > 0 ? "mt-3" : undefined}>
+          <p className="px-3.5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-muted/60">
+            {group}
+          </p>
+          <div className="flex flex-col gap-1">
+            {links.map((link) => {
+              const Icon = ICONS[link.href] ?? LayoutDashboard;
+              const active = isActive(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    active
+                      ? "bg-accent text-accent-fg shadow-[0_4px_16px_-4px_rgba(10,95,219,0.5)]"
+                      : "text-fg-muted hover:translate-x-0.5 hover:bg-bg-raised hover:text-fg"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white/70 shadow-[0_0_8px_1px_rgba(255,255,255,0.8)]" />
+                  )}
+                  <Icon
+                    size={18}
+                    className={active ? "text-accent-fg" : "text-fg-muted transition-colors group-hover:text-accent"}
+                  />
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 
   return (
     <>
       {/* Mobile top bar — sidebar is off-canvas below md */}
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-bg-alt/90 px-4 py-3 backdrop-blur-md md:hidden">
+      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/60 bg-bg-alt/90 px-4 py-3 shadow-[0_4px_20px_-8px_rgba(10,30,80,0.15)] backdrop-blur-md md:hidden">
         <Image
           src="/brand/infosistel-logo-v3.png"
           alt="Infosistel"
@@ -103,8 +138,8 @@ export function AdminSidebar({
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-fg/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="glass-panel absolute inset-y-0 left-0 flex w-72 flex-col border-r border-border bg-bg-alt shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-5">
+          <aside className="admin-sidebar absolute inset-y-0 left-0 flex w-72 flex-col shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border/60 px-5 py-5">
               <Image
                 src="/brand/infosistel-logo-v3.png"
                 alt="Infosistel"
@@ -127,8 +162,8 @@ export function AdminSidebar({
       )}
 
       {/* Desktop sidebar — fixed, always visible */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-bg-alt/90 backdrop-blur-md md:flex">
-        <div className="px-5 py-6">
+      <aside className="admin-sidebar fixed inset-y-0 left-0 z-30 hidden w-64 flex-col md:flex">
+        <div className="border-b border-border/60 px-5 py-6">
           <Image
             src="/brand/infosistel-logo-v3.png"
             alt="Infosistel"
@@ -153,9 +188,9 @@ function SidebarFooter({
   logoutAction: () => Promise<void>;
 }) {
   return (
-    <div className="border-t border-border px-4 py-4">
-      <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-bg-raised px-3 py-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg">
+    <div className="border-t border-border/60 px-4 py-4">
+      <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-bg-raised/80 px-3 py-2.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg shadow-[0_0_0_3px_rgba(10,95,219,0.15),0_0_12px_-2px_rgba(10,95,219,0.6)]">
           {username?.slice(0, 2).toUpperCase() ?? "?"}
         </div>
         <span className="truncate text-sm font-semibold text-fg">{username}</span>
