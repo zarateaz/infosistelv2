@@ -161,5 +161,16 @@ su propio directorio (`/home/zarate/infosistel`), completamente separadas de
   `location /img/products/ { alias ...; }` que sirve esas fotos directo desde
   `PRODUCT_IMAGES_DIR` sin pasar por Node — confirma que la ruta del `alias` coincide exactamente
   con tu `PRODUCT_IMAGES_DIR` real antes de recargar nginx. Ver `hardening-log.md`, entrada #28.
+- **Fotos de producto — permisos.** El código ahora fija 644/755 en cada foto/directorio nuevo
+  (ver `hardening-log.md`, entrada #30), pero eso solo corrige archivos escritos *después* de este
+  deploy. Si ya tenías fotos guardadas con el bug anterior (rotas para nginx aunque existan en
+  disco), corrige las existentes una sola vez:
+  ```bash
+  sudo chmod 755 "$PRODUCT_IMAGES_DIR"
+  sudo chmod 644 "$PRODUCT_IMAGES_DIR"/*.webp
+  ```
+  (reemplaza `$PRODUCT_IMAGES_DIR` por la ruta real de tu `.env`, p. ej.
+  `/home/zarate/infosistel-v2-data/uploads/products`). Después de esto, cualquier foto que ya
+  estuviera "rota" en el navegador debería cargar sin necesidad de volver a escanearla.
 - Redeploys posteriores (una vez ya migraste) son solo `git pull && bash scripts/deploy-vps.sh` —
   el script ya asume el puerto 3000 real.

@@ -595,3 +595,27 @@ despliegue real:
   (`6935364040413`) — se seleccionaron 3 de las 4 fotos encontradas, se guardó, y se confirmó con
   `sqlite3 dev.db` que `image` tiene la portada y `images` un arreglo JSON con las otras 2 rutas;
   la tienda pública (`/tienda`) muestra la portada correctamente.
+
+
+### 30. Fotos de producto ilegibles para nginx por el umask del proceso (2026-08-31)
+- **Qué**: incluso con el bloque de nginx de la entrada #28 activo y `PRODUCT_IMAGES_DIR`
+  correctamente configurado (ambos verificados en el VPS), las fotos seguían mostrando el ícono
+  de imagen rota justo después de un escaneo completamente nuevo. Causa: `writeFile()` y
+  `mkdir()` en `upload-actions.ts` usan sus modos por defecto (0o666 / 0o777), que el kernel
+  reduce según el umask del proceso que los ejecuta. Con un umask restrictivo en el VPS (habitual
+  en un servidor endurecido), los archivos quedaban legibles solo por el usuario `zarate` — nginx
+  corre como otro usuario y no podía leerlos, aunque sí podía atravesar el directorio y aunque la
+  ruta y el archivo existieran físicamente en disco.
+- **Por qué**: NIST SP 800-123 (principio de mínimo privilegio en permisos de archivos) — el
+  problema real no era el umask en sí (correcto tenerlo restrictivo) sino que el código asumía
+  permisos por defecto sin fijarlos explícitamente para un archivo que otro proceso (nginx) debe
+  poder leer. Cualquier configuración de sistema que dependa de un valor ambiental no fijado
+  explícitamente en el código es, por definición, no reproducible entre entornos.
+- **Solución**: `upload-actions.ts` ahora hace `chmod(archivo, 0o644)` después de cada
+  `writeFile()` y `chmod(directorio, 0o755)` después de cada `mkdir()`, en las dos funciones que
+  escriben fotos (`uploadProductImage`, `downloadProductImageFromUrl`) — el permiso queda fijado
+  por código, sin depender del umask del proceso ni de quién lo ejecute.
+- **Dónde**: `src/app/taller-control/(panel)/productos/upload-actions.ts`.
+- **Nota operativa**: este fix solo corrige archivos escritos *después* del deploy. Las fotos ya
+  guardadas en el VPS con el permiso restrictivo anterior necesitan un `chmod` retroactivo una
+  sola vez — ver `docs/deploy-vps.md`.
