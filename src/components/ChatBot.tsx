@@ -4,6 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { MessageCircle, X, ArrowUp } from "lucide-react";
 
+// The chat bubble renders plain text (no markdown parser, by design — no
+// new dependency for a handful of short messages). The system prompt asks
+// the model to avoid markdown, but a user can explicitly ask for "bold"
+// and the model will still reach for **asterisks** anyway — this strips
+// the common tokens as a second layer so raw syntax never leaks through.
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*]\s+/gm, "• ");
+}
+
 export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -70,7 +84,11 @@ export function ChatBot() {
                       : "rounded-bl-md bg-bg text-fg-muted"
                   }`}
                 >
-                  {message.parts.map((part, i) => (part.type === "text" ? <span key={i}>{part.text}</span> : null))}
+                  {message.parts.map((part, i) =>
+                    part.type === "text" ? (
+                      <span key={i}>{message.role === "assistant" ? stripMarkdown(part.text) : part.text}</span>
+                    ) : null
+                  )}
                 </div>
               </div>
             ))}
