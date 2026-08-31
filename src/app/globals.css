@@ -156,7 +156,14 @@ body {
    rather than around all four sides, and the gradient is vertical so it
    reads as a wall of light, not a tilted card. */
 .admin-sidebar {
-  position: relative;
+  /* No `position` here on purpose — the elements that use this class
+     already set their own (fixed on desktop, absolute on the mobile
+     drawer) via Tailwind. Setting `position: relative` here would win the
+     cascade (same specificity, later in source) and silently downgrade
+     `fixed` back into normal document flow — which is exactly what
+     happened once and pushed all page content down by the sidebar's full
+     height. Both `fixed` and `absolute` are already valid positioning
+     contexts for ::after below, so this class doesn't need to set one. */
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.95),
