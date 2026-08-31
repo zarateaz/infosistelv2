@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { generateObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { deepseek } from "@ai-sdk/deepseek";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
@@ -155,8 +155,8 @@ export interface RecognizeImageResult {
 export async function recognizeProductImage(
   dataUrl: string
 ): Promise<RecognizeImageResult> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { error: "El reconocimiento por IA no está configurado (falta ANTHROPIC_API_KEY)." };
+  if (!process.env.DEEPSEEK_API_KEY) {
+    return { error: "El reconocimiento por IA no está configurado (falta DEEPSEEK_API_KEY)." };
   }
 
   // This is behind admin auth (proxy.ts), but each call still costs real
@@ -179,7 +179,12 @@ export async function recognizeProductImage(
 
   try {
     const { object } = await generateObject({
-      model: anthropic("claude-opus-5"),
+      // deepseek-v4-flash-vision-exp reuses the same DEEPSEEK_API_KEY
+      // already configured for the public chatbot (src/app/api/chat) —
+      // no separate account/key needed for this admin-only feature.
+      // "-exp" (experimental) in the model id is DeepSeek's own naming,
+      // not a signal to avoid it for real use.
+      model: deepseek("deepseek-v4-flash-vision-exp"),
       schema: z.object({
         name: z.string().describe("Nombre comercial corto del producto, en español."),
         description: z.string().describe("Descripción breve (1-2 frases) basada en lo que dice la caja."),

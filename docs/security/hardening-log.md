@@ -663,3 +663,33 @@ despliegue real:
   "no encuentra el archivo" con permisos aparentemente correctos, `namei -l` sobre la ruta
   completa desde `/` es el diagnóstico decisivo — revisar solo el directorio final (como hicieron
   los primeros diagnósticos) puede pasar por alto un bloqueo más arriba en la jerarquía.
+
+
+### 32. "Reconocer con IA" también busca fotos, y cambia de proveedor: Anthropic → DeepSeek Vision (2026-08-31)
+- **Qué**: dos cambios juntos. (1) `recognizeProductImage` ahora también busca hasta 4 fotos
+  candidatas con el nombre que reconoce de la foto de la caja (mismo buscador que ya usaba el
+  flujo de código de barras) — antes solo llenaba nombre/descripción/categoría, dejando la foto
+  siempre para elegir a mano. (2) El modelo de visión pasó de Claude (`@ai-sdk/anthropic`,
+  requería una cuenta y saldo nuevos, sin usar en ningún otro lugar del proyecto) a
+  `deepseek-v4-flash-vision-exp` vía `@ai-sdk/deepseek` — reutiliza la misma `DEEPSEEK_API_KEY`
+  que ya factura el chatbot público, cero cuenta nueva. Requirió subir `ai` (6→7),
+  `@ai-sdk/react` (3→4) y `@ai-sdk/deepseek` (2→3) juntos por un cambio de versión del spec de
+  proveedor (`@ai-sdk/provider` v2/v3 → v4) que el modelo de visión nuevo necesita.
+- **Por qué**: costo y superficie de cuentas — NIST SP 800-53 (mínimo de sistemas/credenciales
+  externas por integrar). Un proveedor de IA adicional es una cuenta, una clave y un método de
+  pago más que proteger y rotar, sin necesidad real: DeepSeek ya estaba integrado, ya tenía saldo
+  cargado, y su modelo de visión (lanzado 2026-08-21, ver DeepSeek API Docs) cubre el mismo caso
+  de uso.
+- **Verificación**: probado end-to-end en local con `DEEPSEEK_API_KEY` real — subida de foto →
+  reconocimiento correcto (incluida una prueba con una foto genérica sin texto de producto, donde
+  el modelo respondió honestamente "producto no identificado" en vez de inventar datos, tal como
+  pide el prompt) → búsqueda de 4 fotos candidatas → selección → descarga → imagen renderizada
+  correctamente en el formulario. También se confirmó que el chatbot público (que comparte el
+  paquete `ai` recién actualizado) sigue respondiendo en streaming sin cambios de comportamiento.
+- **Dónde**: `src/app/taller-control/(panel)/productos/scan-actions.ts`, `package.json`,
+  `.env.example`.
+- **Nota operativa**: el modelo tiene "-exp" (experimental) en el nombre — es la convención de
+  nombres de DeepSeek para lanzamientos recientes, no una señal de inestabilidad; aun así, vale la
+  pena revisar si DeepSeek publica un nombre estable (sin "-exp") más adelante y migrar. En el VPS
+  no hace falta ninguna variable de entorno nueva — ya tiene `DEEPSEEK_API_KEY` configurada para
+  el chatbot.
