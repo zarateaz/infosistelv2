@@ -5,9 +5,14 @@ import { Laptop, Printer, Cpu } from "lucide-react";
 import { gsap, registerGsap } from "@/lib/gsap/registerGsap";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
+// Chips stay fully inside the visual on narrow screens (base classes) and
+// only spill outward from `sm:` up, once the hero has enough side padding
+// to absorb it — the parent <section> in Hero.tsx is overflow-hidden, so
+// on mobile the old fixed -6%/-4% offsets pushed "Impresoras" past that
+// boundary and got its text hard-clipped instead of wrapping or shrinking.
 const CHIPS = [
-  { icon: Laptop, label: "Laptops", className: "-left-[4%] top-[10%]" },
-  { icon: Printer, label: "Impresoras", className: "-right-[6%] top-[42%]" },
+  { icon: Laptop, label: "Laptops", className: "left-[2%] top-[10%] sm:-left-[4%]" },
+  { icon: Printer, label: "Impresoras", className: "right-[2%] top-[42%] sm:-right-[6%]" },
   { icon: Cpu, label: "PCs", className: "left-[4%] bottom-[8%]" },
 ];
 
