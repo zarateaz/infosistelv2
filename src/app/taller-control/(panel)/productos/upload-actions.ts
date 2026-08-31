@@ -1,6 +1,6 @@
 "use server";
 
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
@@ -44,7 +44,11 @@ export async function uploadProductImage(dataUrl: string): Promise<UploadImageRe
     return { error: "La imagen es muy grande (máximo 8MB)." };
   }
 
-  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true });
+  // mkdir's default mode (0o777) is also reduced by the process umask — a
+  // restrictive umask here would make the directory itself untraversable by
+  // nginx's worker user, independent of the per-file chmod below.
+  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true, mode: 0o755 });
+  await chmod(/*turbopackIgnore: true*/ UPLOAD_DIR, 0o755).catch(() => {});
   const filename = `${randomUUID()}.webp`;
 
   try {
@@ -57,7 +61,14 @@ export async function uploadProductImage(dataUrl: string): Promise<UploadImageRe
       .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer();
-    await writeFile(path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename), processed);
+    const filePath = path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename);
+    await writeFile(filePath, processed);
+    // writeFile's default mode (0o666) is reduced by the process umask —
+    // on a hardened VPS with a restrictive umask (e.g. 077) that leaves the
+    // file unreadable by nginx's worker user, which serves this directory
+    // directly (see nginx.conf's /img/products/ alias). Force it explicitly
+    // so uploads work regardless of the host's umask.
+    await chmod(filePath, 0o644);
   } catch {
     return { error: "No se pudo procesar la imagen. Intenta con otro archivo." };
   }
@@ -95,7 +106,11 @@ export async function downloadProductImageFromUrl(url: string): Promise<UploadIm
     return { error: "No se pudo descargar la imagen del proveedor." };
   }
 
-  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true });
+  // mkdir's default mode (0o777) is also reduced by the process umask — a
+  // restrictive umask here would make the directory itself untraversable by
+  // nginx's worker user, independent of the per-file chmod below.
+  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true, mode: 0o755 });
+  await chmod(/*turbopackIgnore: true*/ UPLOAD_DIR, 0o755).catch(() => {});
   const filename = `${randomUUID()}.webp`;
 
   try {
@@ -104,7 +119,9 @@ export async function downloadProductImageFromUrl(url: string): Promise<UploadIm
       .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer();
-    await writeFile(path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename), processed);
+    const filePath = path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename);
+    await writeFile(filePath, processed);
+    await chmod(filePath, 0o644);
   } catch {
     return { error: "El archivo descargado no es una imagen válida." };
   }
