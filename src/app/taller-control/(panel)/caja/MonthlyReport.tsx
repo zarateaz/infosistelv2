@@ -2,6 +2,7 @@
 
 import { Printer } from "lucide-react";
 import type { AdminTransaction, AdminCashboxPeriod } from "./actions";
+import { MonthlyReportRow } from "./MonthlyReportRow";
 
 const MONTH_NAMES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -103,28 +104,16 @@ export function MonthlyReport({
             <th className="px-2 py-2 text-right">Egr. efect.</th>
             <th className="px-2 py-2 text-right">Saldo</th>
             <th className="px-2 py-2">Notas</th>
+            <th className="print:hidden px-2 py-2">Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ t, isIncome, running: rowBalance, incomeYape1, incomeYape2, incomeCash, expenseYape1, expenseYape2, expenseCash }) => (
-            <tr key={t.id} className="border-b border-border/50">
-              <td className="whitespace-nowrap px-2 py-1.5">{formatDate(t.date)}</td>
-              <td className="px-2 py-1.5">{t.description}</td>
-              <td className="px-2 py-1.5 text-right font-semibold text-accent">{isIncome ? money(t.amount) : ""}</td>
-              <td className="px-2 py-1.5 text-right">{money(incomeYape1)}</td>
-              <td className="px-2 py-1.5 text-right">{money(incomeYape2)}</td>
-              <td className="px-2 py-1.5 text-right">{money(incomeCash)}</td>
-              <td className="px-2 py-1.5 text-right font-semibold text-red-600">{!isIncome ? money(t.amount) : ""}</td>
-              <td className="px-2 py-1.5 text-right">{money(expenseYape1)}</td>
-              <td className="px-2 py-1.5 text-right">{money(expenseYape2)}</td>
-              <td className="px-2 py-1.5 text-right">{money(expenseCash)}</td>
-              <td className="px-2 py-1.5 text-right font-bold text-fg">{money(rowBalance)}</td>
-              <td className="px-2 py-1.5 text-fg-muted">{t.notes ?? ""}</td>
-            </tr>
+          {rows.map(({ t, running: rowBalance }) => (
+            <MonthlyReportRow key={t.id} transaction={t} running={rowBalance} />
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={12} className="px-2 py-8 text-center text-fg-muted">
+              <td colSpan={13} className="px-2 py-8 text-center text-fg-muted">
                 Todavía no hay movimientos este mes.
               </td>
             </tr>
@@ -145,6 +134,7 @@ export function MonthlyReport({
             <td className="px-2 py-2 text-right">{money(totals.expenseCash)}</td>
             <td className="px-2 py-2 text-right text-accent">{money(finalBalance)}</td>
             <td className="px-2 py-2" />
+            <td className="print:hidden px-2 py-2" />
           </tr>
         </tfoot>
       </table>
