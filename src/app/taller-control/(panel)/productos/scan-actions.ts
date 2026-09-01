@@ -175,9 +175,9 @@ export async function recognizeProductImage(
   }
   const [, mimeType, base64] = match;
 
-  const categories = (await prisma.category.findMany({ select: { name: true } })).map((c) => c.name);
-
   try {
+    const categories = (await prisma.category.findMany({ select: { name: true } })).map((c) => c.name);
+
     const { object } = await generateObject({
       // deepseek-v4-flash-vision-exp reuses the same DEEPSEEK_API_KEY
       // already configured for the public chatbot (src/app/api/chat) —

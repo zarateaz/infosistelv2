@@ -176,22 +176,37 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     setImageOptions([]);
     setSelectedUrls([]);
     setPicksApplied(false);
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
 
-    const result = await recognizeProductImage(dataUrl);
-    if (result.error) {
-      setImageStatus({ kind: "error", message: result.error });
-      return;
+    // Everything below can throw — a rejected FileReader, a dropped
+    // connection to the server action, a timeout — and none of that is a
+    // clean `{ error }` return from recognizeProductImage. Without this
+    // try/catch, an exception here left imageStatus stuck on "loading"
+    // forever, which is what kept the progress bar pinned at its 92% cap
+    // instead of ever reaching 100%.
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+
+      const result = await recognizeProductImage(dataUrl);
+      if (result.error) {
+        setImageStatus({ kind: "error", message: result.error });
+        return;
+      }
+      onFill({ name: result.name, description: result.description, category: result.category });
+      setImageStatus({ kind: "done" });
+      if (result.imageOptions && result.imageOptions.length > 0) setImageOptions(result.imageOptions);
+    } catch {
+      setImageStatus({
+        kind: "error",
+        message: "No se pudo procesar la imagen. Revisa tu conexión e intenta de nuevo.",
+      });
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-    onFill({ name: result.name, description: result.description, category: result.category });
-    setImageStatus({ kind: "done" });
-    if (result.imageOptions && result.imageOptions.length > 0) setImageOptions(result.imageOptions);
-    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   return (
