@@ -729,14 +729,14 @@ despliegue real:
   fotos procesadas / 5 min por IP, `scan-actions.ts`), así que ese mismo riesgo no aplica ahí de
   la misma manera — endurecer sin distinguir el contexto real de cada ruta termina rompiendo
   funcionalidad legítima sin reducir el riesgo real de esa ruta.
-- **Solución**: nuevo bloque `location /taller-control/` en `nginx.conf`, con los mismos
-  `proxy_pass`/cabeceras que el bloque genérico pero `proxy_read_timeout`/`proxy_send_timeout` en
-  90s en vez de 30s. El resto del sitio (`location /` al final del archivo) conserva los 30s
-  originales sin cambios.
+- **Solución (revertida — ver entrada #36)**: la primera versión de esta corrección agregó un
+  nuevo bloque `location /taller-control/` en `nginx.conf`, con los mismos `proxy_pass`/cabeceras
+  que el bloque genérico pero `proxy_read_timeout`/`proxy_send_timeout` en 90s en vez de 30s. Esa
+  versión **rompió el login en producción** (loop de redirecciones) y fue revertida el mismo día
+  — el objetivo (subir el timeout) se logró finalmente aplicando el valor directo al bloque
+  global [D-02] en vez de crear un bloque de ruteo nuevo. Ver entrada #36 para la causa exacta y
+  la solución final.
 - **Dónde**: `nginx.conf`.
-- **Nota operativa**: como todo cambio de `nginx.conf`, **no se aplica solo con el deploy de la
-  app** — hay que copiarlo a la configuración real del VPS y recargar nginx (`sudo nginx -t` antes
-  de `systemctl reload nginx`), igual que en las entradas #24 y #28. Ver `docs/deploy-vps.md`.
 
 ### 35. Código de barras encontrado en inglés — descripción larga sin traducir, categoría a veces en inglés (2026-09-01)
 - **Qué**: cuando el escáner de código de barras sí encuentra una ficha pública (upcitemdb, una
@@ -769,3 +769,39 @@ despliegue real:
   SEALED PRODUCT...") pasó a mostrarse como "PROCESADOR INTEL CORE I7-12700F DE ESCRITORIO, 12ª
   GENERACIÓN ALDER LAKE, 12 NÚCLEOS (8P+4E), 2.1 GHZ, LGA 1700, 65W, NUEVO Y..." — breve, en
   español natural, y sin inventar datos que no estuvieran en el texto original.
+
+
+### 36. El fix de la entrada #34 rompió el login en producción — loop de redirecciones (2026-09-01)
+- **Qué**: minutos después de desplegar la entrada #34 (bloque nuevo `location /taller-control/`
+  en `nginx.conf`), el usuario reportó `/taller-control` completamente inaccesible en producción:
+  Chrome mostraba `ERR_TOO_MANY_REDIRECTS` ("infosistel.com.pe te redireccionó demasiadas veces").
+  El sitio público y la tienda seguían funcionando — solo el panel admin quedó afectado.
+- **Causa real**: `location /taller-control/` (con barra al final) es un *prefix match* — no
+  coincide con la ruta exacta `/taller-control` (sin barra), que sigue cayendo en el bloque
+  genérico `location /`. En cuanto la aplicación agrega la barra final (comportamiento normal de
+  Next.js al navegar dentro del panel), esa segunda petición sí entra al bloque nuevo. Tener dos
+  bloques de ruteo distintos manejando lo que el navegador percibe como la "misma" URL —
+  alternando según lleve o no la barra final— es exactamente el tipo de inconsistencia que produce
+  un rebote de redirecciones entre ambos, sin que el bloque nuevo en sí tuviera ningún error de
+  sintaxis (`nginx -t` lo habría aceptado sin quejarse).
+- **Por qué**: esta es la lección operativa más importante de las últimas entradas — introducir un
+  *nuevo* bloque de ruteo en nginx, aunque parezca una copia casi idéntica de uno que ya funciona,
+  cambia la topología de matching del archivo entero, no solo el comportamiento de la ruta que se
+  quería ajustar. Un cambio que solo necesita modificar un *valor* (el timeout) es más seguro
+  aplicado directamente sobre la directiva existente que envolviéndolo en un bloque de ruteo
+  nuevo — para minimizar superficie de cambio bajo el principio de "0 margen de error" del
+  proyecto.
+- **Solución**: se eliminó por completo el bloque `location /taller-control/` agregado en la
+  entrada #34, devolviendo la lista de `location` blocks exactamente a su forma original (sin
+  cambios de ruteo). El objetivo original — más tiempo para "Reconocer con IA" — se logró subiendo
+  `proxy_read_timeout`/`proxy_send_timeout` de 30s a 90s directamente en el bloque `[D-02]` que ya
+  aplica a todo el sitio, sin crear ningún bloque nuevo.
+- **Trade-off aceptado**: el timeout más permisivo (90s en vez de 30s) ahora aplica a *todo* el
+  sitio, no solo al panel admin como se buscaba originalmente en la entrada #34 — una defensa
+  anti-Slowloris ligeramente menos estricta a cambio de una configuración de ruteo mucho más
+  simple y predecible. Se considera un trade-off razonable: 90s sigue siendo un límite acotado
+  (no indefinido), y el sitio público no expone ninguna operación tan lenta como para necesitar
+  ese margen — solo el panel admin lo aprovecha en la práctica.
+- **Dónde**: `nginx.conf`.
+- **Verificación**: `nginx -t` (sintaxis) y recarga en el VPS pendiente de confirmación del
+  usuario tras aplicar este commit — ver `docs/deploy-vps.md`.
