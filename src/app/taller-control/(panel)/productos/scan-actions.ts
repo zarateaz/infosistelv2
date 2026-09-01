@@ -69,6 +69,68 @@ function extractCategoryGuess(rawCategory: string | undefined): string | undefin
   return last ? last.toUpperCase().slice(0, 60) : undefined;
 }
 
+/** Public UPC listings are almost always in English (upcitemdb is a US-
+ *  centric database) — raw title/category keyword matches in guessCategory
+ *  already come out in Spanish when they hit, but the listing's own
+ *  description never does, and a fallback category (extractCategoryGuess)
+ *  stayed in English too. This asks the same DeepSeek account already used
+ *  elsewhere (text-only model, no vision needed) to translate+shorten the
+ *  description to one plain Spanish sentence and, only when nothing already
+ *  matched, propose a short Spanish category. Best-effort: any failure here
+ *  just falls back to the raw listing text rather than blocking the lookup
+ *  the admin is waiting on. */
+async function translateListingToSpanish(
+  title: string,
+  rawDescription: string,
+  guessedCategory: string | undefined,
+  categories: string[]
+): Promise<{ description: string; category?: string }> {
+  try {
+    // A schema property whose zod type varies (e.g. z.undefined() when
+    // guessedCategory is already set) doesn't translate to valid JSON
+    // Schema for the provider's structured-output call — it silently
+    // fails the whole request rather than just omitting that field. Keep
+    // `category` structurally always-optional instead, and steer whether
+    // the model actually fills it purely through the prompt text below.
+    const { object } = await generateObject({
+      model: deepseek("deepseek-v4-flash"),
+      schema: z.object({
+        description: z
+          .string()
+          .describe("Descripción breve (una sola frase) en español, basada en el título y la descripción original."),
+        category: z
+          .string()
+          .optional()
+          .describe(
+            guessedCategory
+              ? "No se usa — omite este campo."
+              : "Categoría del producto en español: usa una de las existentes si encaja bien; si ninguna encaja, propone una nueva categoría corta (2-3 palabras), siempre en español."
+          ),
+      }),
+      messages: [
+        {
+          role: "user",
+          content: `Título del producto: ${title}
+Descripción original (puede estar en inglés, es de una base pública de códigos de barra): ${rawDescription.slice(0, 800)}
+${
+  guessedCategory
+    ? ""
+    : `Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.`
+}
+Traduce y resume la descripción en una sola frase en español, sin inventar datos que no estén en el texto original.`,
+        },
+      ],
+    });
+    return { description: object.description, category: object.category };
+  } catch (err) {
+    // Best-effort by design (never block the lookup over this), but silent
+    // failures here are exactly what let the z.undefined() schema bug ship
+    // unnoticed — this makes the next one visible in `pm2 logs` instead.
+    console.error("[scan-actions] translateListingToSpanish failed:", err);
+    return { description: rawDescription };
+  }
+}
+
 async function lookupExternalUPC(
   barcode: string,
   categories: string[]
@@ -87,8 +149,14 @@ async function lookupExternalUPC(
     const title: string = item.title || [item.brand, item.model].filter(Boolean).join(" ") || "";
     if (!title) return { notFound: true, source: "external" };
 
-    const category =
-      guessCategory(`${title} ${item.category ?? ""}`, categories) ?? extractCategoryGuess(item.category);
+    const guessedCategory = guessCategory(`${title} ${item.category ?? ""}`, categories);
+    const translated = await translateListingToSpanish(
+      title,
+      item.description || title,
+      guessedCategory,
+      categories
+    );
+    const category = guessedCategory ?? translated.category ?? extractCategoryGuess(item.category);
     // upcitemdb mixes http:// and https:// sources in the same array —
     // downloadProductImageFromUrl only accepts https, so pick the first
     // one that qualifies instead of always trying images[0].
@@ -107,7 +175,7 @@ async function lookupExternalUPC(
       source: "external",
       suggestion: {
         name: title.slice(0, 150).toUpperCase(),
-        description: (item.description || title).slice(0, 500).toUpperCase(),
+        description: translated.description.slice(0, 500).toUpperCase(),
         category,
         imageUrl,
         imageOptions: imageOptions && imageOptions.length > 0 ? imageOptions : undefined,

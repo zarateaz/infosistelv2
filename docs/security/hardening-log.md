@@ -693,3 +693,79 @@ despliegue real:
   pena revisar si DeepSeek publica un nombre estable (sin "-exp") más adelante y migrar. En el VPS
   no hace falta ninguna variable de entorno nueva — ya tiene `DEEPSEEK_API_KEY` configurada para
   el chatbot.
+
+
+### 33. La barra de "Reconocer con IA" se quedaba pegada en 92%, nunca llegaba a 100% (2026-09-01)
+- **Qué**: `handleImageChange` (`ScannerPanel.tsx`) no tenía `try/catch`. Si `recognizeProductImage`
+  lanzaba una excepción en vez de devolver un `{error}` limpio — conexión caída, timeout, o el
+  `prisma.category.findMany()` del lado del servidor fallando antes de entrar a su propio
+  `try/catch` — `imageStatus` nunca salía de `"loading"`, y como la barra de progreso (entrada #32)
+  tiene un techo cosmético de 92% mientras dura la carga, quedaba pegada ahí para siempre en vez de
+  completar o mostrar un error.
+- **Por qué**: todo código que dependa de una llamada de red debe manejar el camino de falla, no
+  solo el camino feliz — un fallo silencioso que deja la interfaz colgada es peor, desde la
+  perspectiva del usuario, que un mensaje de error claro.
+- **Solución**: todo el cuerpo de `handleImageChange` (después de fijar el estado `"loading"`) vive
+  ahora dentro de un `try/catch/finally` — cualquier excepción cae a un mensaje de error genérico.
+  Del lado del servidor, `prisma.category.findMany()` se movió dentro del `try` existente de
+  `recognizeProductImage`, así un fallo de base de datos también devuelve el mismo `{error}` limpio
+  en vez de propagarse sin capturar.
+- **Dónde**: `src/app/taller-control/(panel)/productos/ScannerPanel.tsx`,
+  `src/app/taller-control/(panel)/productos/scan-actions.ts`.
+- **Verificación**: probado en vivo que el camino normal (foto → reconocimiento → 4 opciones de
+  imagen) sigue completando igual que antes del cambio.
+
+### 34. Timeout de nginx (30s) cortaba "Reconocer con IA" en el VPS antes de que terminara (2026-09-01)
+- **Qué**: aun con la entrada #33 ya corregida, en el VPS específicamente "Reconocer con IA" seguía
+  sin completar — el reporte del usuario mostró la barra pegada en 92% en producción. Causa: el
+  bloque `proxy_read_timeout`/`proxy_send_timeout` de `nginx.conf` (entrada [D-02], defensa
+  anti-Slowloris para todo el sitio) está en 30 segundos, y "Reconocer con IA" encadena una llamada
+  al modelo de visión de DeepSeek y luego una búsqueda de imágenes — en el mundo real, esa cadena
+  puede superar sin problema los 30s, sobre todo bajo latencia de red normal de un VPS (en local,
+  con menos saltos de red, no se alcanzaba a notar).
+- **Por qué**: [D-02] es un timeout correcto como defensa general — un timeout más permisivo en
+  todo el sitio sí ampliaría la superficie de ataque de Slowloris. Pero `/taller-control/` ya vive
+  detrás de sesión de administrador autenticada y de un rate limit propio a nivel de aplicación (20
+  fotos procesadas / 5 min por IP, `scan-actions.ts`), así que ese mismo riesgo no aplica ahí de
+  la misma manera — endurecer sin distinguir el contexto real de cada ruta termina rompiendo
+  funcionalidad legítima sin reducir el riesgo real de esa ruta.
+- **Solución**: nuevo bloque `location /taller-control/` en `nginx.conf`, con los mismos
+  `proxy_pass`/cabeceras que el bloque genérico pero `proxy_read_timeout`/`proxy_send_timeout` en
+  90s en vez de 30s. El resto del sitio (`location /` al final del archivo) conserva los 30s
+  originales sin cambios.
+- **Dónde**: `nginx.conf`.
+- **Nota operativa**: como todo cambio de `nginx.conf`, **no se aplica solo con el deploy de la
+  app** — hay que copiarlo a la configuración real del VPS y recargar nginx (`sudo nginx -t` antes
+  de `systemctl reload nginx`), igual que en las entradas #24 y #28. Ver `docs/deploy-vps.md`.
+
+### 35. Código de barras encontrado en inglés — descripción larga sin traducir, categoría a veces en inglés (2026-09-01)
+- **Qué**: cuando el escáner de código de barras sí encuentra una ficha pública (upcitemdb, una
+  base de datos centrada en EE.UU.), la descripción de esa ficha llegaba cruda: texto de marketing
+  en inglés, sin traducir, cortado a 500 caracteres — no una descripción breve. La categoría de
+  respaldo (`extractCategoryGuess`, usada solo cuando el emparejamiento por palabras clave de
+  `guessCategory` no encontraba nada) también tomaba el texto en inglés de la ficha tal cual, sin
+  traducir.
+- **Por qué**: el catálogo de la tienda es en español — mostrarle al administrador una descripción
+  o categoría en inglés (que además termina expuesta tal cual al público en `/tienda` si no se
+  edita a mano) no es aceptable para una tienda peruana.
+- **Solución**: nueva función `translateListingToSpanish()` en `scan-actions.ts` — reutiliza la
+  misma cuenta de DeepSeek ya integrada (modelo de texto, sin necesidad de visión, `generateObject`
+  con un schema Zod) para traducir y resumir la descripción a una sola frase en español, y —solo
+  cuando `guessCategory` no encontró nada— proponer una categoría corta en español. Es
+  best-effort: cualquier fallo cae de vuelta al texto original en inglés en vez de bloquear la
+  búsqueda del código de barras.
+- **Bug propio detectado y corregido en el camino**: la primera versión de esta función usaba
+  `category: guessedCategory ? z.undefined() : z.string()...` — un schema cuyo tipo cambia según
+  una condición. `z.undefined()` no tiene equivalente válido en JSON Schema (el formato que
+  entienden los proveedores de salida estructurada), así que la llamada fallaba silenciosamente y
+  cada intento caía al `catch` sin dar ninguna pista de qué había pasado. Corregido dejando
+  `category` siempre `z.string().optional()` a nivel de estructura, y controlando si el modelo
+  debe llenarlo o no solo mediante el texto del prompt/la descripción del campo — nunca cambiando
+  la forma del schema en sí. Se agregó además un `console.error` en el `catch` para que un fallo
+  futuro de este tipo aparezca en `pm2 logs` en vez de pasar desapercibido.
+- **Dónde**: `src/app/taller-control/(panel)/productos/scan-actions.ts`.
+- **Verificación**: probado en vivo con el código de barras real de un procesador Intel
+  (`735858503105`) — la descripción cruda en inglés ("THE ITEM IN THIS LISTING IS A BRAND NEW
+  SEALED PRODUCT...") pasó a mostrarse como "PROCESADOR INTEL CORE I7-12700F DE ESCRITORIO, 12ª
+  GENERACIÓN ALDER LAKE, 12 NÚCLEOS (8P+4E), 2.1 GHZ, LGA 1700, 65W, NUEVO Y..." — breve, en
+  español natural, y sin inventar datos que no estuvieran en el texto original.
