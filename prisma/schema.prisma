@@ -99,6 +99,21 @@ model CashboxTransaction {
   updatedAt     DateTime @updatedAt
 }
 
+/** One row per calendar month of cash-box tracking — just who's responsible
+ *  for that period. The opening balance itself is never a separate field:
+ *  it's the first CashboxTransaction of the month (an INCOME row titled
+ *  "SALDO INICIAL"), same convention as the spreadsheet this replaces. No
+ *  relation to CashboxTransaction — a month's transactions are found by
+ *  date range, not a foreign key, so nothing here blocks logging a
+ *  transaction before its period row exists. */
+model CashboxPeriod {
+  id          String   @id @default(cuid())
+  month       String   @unique // "2026-09" (YYYY-MM)
+  responsible String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Admin {
   id           String   @id @default(cuid())
   username     String   @unique

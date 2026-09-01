@@ -199,3 +199,19 @@ body {
     background-position: -200% 0;
   }
 }
+
+/* Printing an admin page (Caja → Imprimir reporte) should print just the
+   report, not the fixed sidebar next to it or the blank space its
+   md:ml-64 offset leaves behind once the sidebar itself is gone. Anything
+   that wants to stay out of the printout uses Tailwind's print:hidden;
+   this just resets the layout chrome that print:hidden alone can't reach
+   (the sidebar lives in AdminSidebar.tsx, a sibling of <main>, so hiding
+   it doesn't undo the margin main reserved for it). */
+@media print {
+  .admin-sidebar {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+  }
+}
