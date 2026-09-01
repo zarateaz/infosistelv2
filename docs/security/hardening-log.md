@@ -805,3 +805,30 @@ despliegue real:
 - **Dónde**: `nginx.conf`.
 - **Verificación**: `nginx -t` (sintaxis) y recarga en el VPS pendiente de confirmación del
   usuario tras aplicar este commit — ver `docs/deploy-vps.md`.
+
+
+### 37. "Reconocer con IA" fallaba desde celular — foto sin comprimir superaba el límite de subida (2026-09-01)
+- **Qué**: en el VPS, "Reconocer con IA" funcionaba bien desde una foto de escritorio (archivo
+  pequeño) pero fallaba consistentemente desde el celular, mostrando el mensaje de error genérico
+  añadido en la entrada #33 ("No se pudo procesar la imagen. Revisa tu conexión e intenta de
+  nuevo."). Causa: la foto se enviaba tal cual salía de la cámara del navegador — sin redimensionar
+  ni comprimir — directo a `readAsDataURL`. Una foto de celular moderna pesa rutinariamente entre
+  4 y 10+ MB; codificada en base64 para el cuerpo de la petición (~33% más grande), supera sin
+  esfuerzo el `client_max_body_size 5M` de `nginx.conf`, que corta la petición antes de que llegue
+  a Next.js — un fallo de red genérico, sin ningún mensaje útil de por medio.
+- **Por qué**: el modelo de visión no necesita la resolución completa de una foto de celular para
+  leer el texto de una caja — enviar el archivo original desperdicia ancho de banda (relevante en
+  datos móviles), alarga la respuesta, y en este caso además rompía la función por completo.
+- **Solución**: nueva función `resizeImageForRecognition()` en `ScannerPanel.tsx` — usa
+  `createImageBitmap` + `<canvas>` para reducir la foto a un máximo de 1600px de lado más largo y
+  reexportarla como JPEG de calidad 0.85 en el navegador, *antes* de enviarla al servidor. Reduce
+  el peso típico de varios MB a unos pocos cientos de KB. Si el navegador no soporta
+  `createImageBitmap` (muy poco común), cae de vuelta al método anterior (`FileReader` sin
+  redimensionar) en vez de bloquear la subida. De paso, `client_max_body_size` subió de 5M a 10M en
+  `nginx.conf` como margen de seguridad adicional — solo el valor, sin agregar ningún bloque de
+  ruteo nuevo (lección de la entrada #36).
+- **Dónde**: `src/app/taller-control/(panel)/productos/ScannerPanel.tsx`, `nginx.conf`.
+- **Verificación**: probado en local subiendo una foto sintética de 9.2MB (ruido aleatorio de alta
+  entropía, para simular el peso real de una foto de celular sin comprimir) — el reconocimiento
+  completó todo el flujo (lectura de imagen, búsqueda de fotos) en unos pocos segundos, sin ningún
+  fallo relacionado a tamaño.

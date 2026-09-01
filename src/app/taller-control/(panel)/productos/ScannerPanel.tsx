@@ -12,6 +12,42 @@ import { CameraScanner } from "./CameraScanner";
 // for the picker preview. See src/app/api/image-proxy/route.ts.
 const previewUrl = (externalUrl: string) => `/api/image-proxy?url=${encodeURIComponent(externalUrl)}`;
 
+/** A phone camera photo straight off the file input is routinely 4-10+ MB —
+ *  base64-encoded for the request body that's roughly another +33%, which
+ *  clears nginx's `client_max_body_size 5M` before the request even reaches
+ *  Next.js (a plain network/500-style failure, no useful message). Downscale
+ *  to a size that's still easily enough for the vision model to read text
+ *  off a box, cutting typical payloads to a few hundred KB. Falls back to
+ *  the raw file's own data URL if the browser can't decode it (very old
+ *  browsers, or an unsupported format) rather than blocking the upload —
+ *  `recognizeProductImage`'s own error handling still catches anything that
+ *  slips through this at the API layer. */
+async function resizeImageForRecognition(file: File, maxDim = 1600, quality = 0.85): Promise<string> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas 2d context unavailable");
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+}
+
 export interface ScanFill {
   name?: string;
   description?: string;
@@ -184,12 +220,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     // forever, which is what kept the progress bar pinned at its 92% cap
     // instead of ever reaching 100%.
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
+      const dataUrl = await resizeImageForRecognition(file);
 
       const result = await recognizeProductImage(dataUrl);
       if (result.error) {

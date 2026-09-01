@@ -186,16 +186,19 @@ su propio directorio (`/home/zarate/infosistel`), completamente separadas de
   (reemplaza `$PRODUCT_IMAGES_DIR` por la ruta real de tu `.env`, p. ej.
   `/home/zarate/infosistel-v2-data/uploads/products`). Después de esto, cualquier foto que ya
   estuviera "rota" en el navegador debería cargar sin necesidad de volver a escanearla.
-- **"Reconocer con IA" — timeout de nginx.** `nginx.conf` ahora trae un bloque
-  `location /taller-control/` con `proxy_read_timeout`/`proxy_send_timeout` en 90s (el resto del
-  sitio sigue en 30s) — sin esto, una foto que tarde en procesarse hacía que nginx cortara la
-  conexión a mitad de camino y la barra de progreso del admin se quedaba pegada para siempre en
-  vez de completar. Como con cualquier cambio de `nginx.conf`, esto **no se aplica solo con el
-  deploy de la app** — cópialo a la configuración real y recarga:
+- **"Reconocer con IA" — timeout y tamaño de subida en nginx.** `proxy_read_timeout`/
+  `proxy_send_timeout` subieron de 30s a 90s, y `client_max_body_size` de 5M a 10M — ambos como
+  valores directos en la configuración global existente, **sin ningún bloque `location` nuevo**
+  (un primer intento con un bloque separado para `/taller-control/` rompió el login en producción
+  con un loop de redirecciones; ver `hardening-log.md`, entradas #34 y #36 para la historia
+  completa). Sin el timeout más alto, una foto que tardara en procesarse hacía que nginx cortara la
+  conexión a mitad de camino y la barra de progreso del admin se quedaba pegada para siempre; sin
+  el límite de tamaño más alto, una foto de celular sin comprimir podía superar el límite viejo
+  antes de llegar siquiera a Next.js (entrada #37). Como con cualquier cambio de `nginx.conf`, esto
+  **no se aplica solo con el deploy de la app** — cópialo a la configuración real y recarga:
   ```bash
   sudo cp nginx.conf /etc/nginx/conf.d/infosistel.conf   # o la ruta real que uses
   sudo nginx -t && sudo systemctl reload nginx
   ```
-  Ver `hardening-log.md`, entrada #34.
 - Redeploys posteriores (una vez ya migraste) son solo `git pull && bash scripts/deploy-vps.sh` —
   el script ya asume el puerto 3000 real.
