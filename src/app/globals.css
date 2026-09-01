@@ -187,3 +187,15 @@ body {
     rgba(10, 95, 219, 0.05)
   );
 }
+
+/* Diagonal light sweep used by the "Reconocer con IA" progress bar
+   (ScannerPanel.tsx) — a moving highlight inside the filled portion of
+   the bar, on top of its own width transition. */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}

@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon } from "lucide-react";
+import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon, Sparkles } from "lucide-react";
 import { lookupBarcode, recognizeProductImage } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
@@ -41,6 +41,51 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     { kind: "idle" } | { kind: "loading" } | { kind: "done" } | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // "Reconocer con IA" takes several real seconds (vision model, then an
+  // image search) — a bare spinner reads as frozen. This fakes a smooth,
+  // ever-slowing progress toward 92% for as long as it's actually loading
+  // (never claims to finish before the real response arrives), then snaps
+  // to 100% and holds briefly once it does. Purely cosmetic — no relation
+  // to real request progress, which the fetch API doesn't expose here.
+  const [recognizeProgress, setRecognizeProgress] = useState(0);
+  const [showRecognizeProgress, setShowRecognizeProgress] = useState(false);
+  const wasLoadingRef = useRef(false);
+
+  useEffect(() => {
+    if (imageStatus.kind === "loading") {
+      wasLoadingRef.current = true;
+      setShowRecognizeProgress(true);
+      setRecognizeProgress(0);
+      const start = performance.now();
+      let raf: number;
+      const tick = (now: number) => {
+        const elapsedSec = (now - start) / 1000;
+        setRecognizeProgress(92 * (1 - Math.exp(-elapsedSec / 3.2)));
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+    if (wasLoadingRef.current) {
+      wasLoadingRef.current = false;
+      setRecognizeProgress(100);
+      const t = setTimeout(() => setShowRecognizeProgress(false), 700);
+      return () => clearTimeout(t);
+    }
+  }, [imageStatus.kind]);
+
+  const RECOGNIZE_STAGES = [
+    { at: 0, label: "Leyendo la foto…" },
+    { at: 20, label: "Identificando marca y modelo…" },
+    { at: 45, label: "Redactando la descripción…" },
+    { at: 68, label: "Buscando fotos en internet…" },
+    { at: 88, label: "Verificando resultados…" },
+  ];
+  const recognizeLabel =
+    recognizeProgress >= 100
+      ? "¡Listo!"
+      : RECOGNIZE_STAGES.reduce((label, s) => (recognizeProgress >= s.at ? s.label : label), RECOGNIZE_STAGES[0].label);
 
   // Candidate photos from an image search, shown when the barcode listing
   // itself had no photo. Multi-select (up to 4: one becomes the cover,
@@ -221,6 +266,31 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           foto de la caja.
         </p>
       )}
+      {showRecognizeProgress && (
+        <div className="admin-glass mt-4 rounded-2xl p-4">
+          <div className="mb-2 flex items-center justify-between text-xs font-bold text-fg-muted">
+            <span className="flex items-center gap-1.5">
+              <Sparkles size={13} className="text-accent animate-pulse" />
+              {recognizeLabel}
+            </span>
+            <span className="tabular-nums text-accent">{Math.round(recognizeProgress)}%</span>
+          </div>
+          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-bg-raised">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-accent via-accent-hover to-accent transition-[width] duration-200 ease-out"
+              style={{ width: `${recognizeProgress}%` }}
+            >
+              <div className="absolute inset-0 animate-[shimmer_1.4s_linear_infinite] bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,0.55)_50%,transparent_70%)] bg-[length:200%_100%]" />
+            </div>
+            <div
+              aria-hidden
+              className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_12px_3px_rgba(10,95,219,0.7)] transition-[left] duration-200 ease-out"
+              style={{ left: `calc(${recognizeProgress}% - 5px)` }}
+            />
+          </div>
+        </div>
+      )}
+
       {imageStatus.kind === "done" && (
         <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-accent">
           <CheckCircle2 size={15} />
