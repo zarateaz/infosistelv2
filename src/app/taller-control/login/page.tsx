@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Eye, EyeOff, Lock } from "lucide-react";
 import { loginAction, type LoginState } from "./actions";
 import { CuriousEyes } from "./CuriousEyes";
+import { GalaxyBackground } from "./GalaxyBackground";
 
 const initialState: LoginState = {};
 
@@ -15,48 +16,47 @@ export default function AdminLoginPage() {
   const [passwordFocused, setPasswordFocused] = useState(false);
 
   return (
-    <div className="bg-aurora flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="w-full max-w-4xl">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#04070f] px-6 py-12">
+      <GalaxyBackground />
+      {/* Faint vignette so the galaxy stays legible-dark at the edges even
+          on very bright monitors, without flattening the card's contrast. */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_35%,transparent_0%,transparent_45%,rgba(4,7,15,0.6)_100%)]" />
+
+      <div className="relative z-10 w-full max-w-4xl">
         <Link
           href="/"
-          className="mb-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-fg-muted transition-colors hover:text-fg"
+          className="mb-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/60 transition-colors hover:text-white"
         >
           <ArrowLeft size={14} />
           Volver al inicio
         </Link>
 
-        <div className="glass-panel grid overflow-hidden rounded-[var(--radius-lg)] md:grid-cols-2">
-          {/* Decorative brand panel — same blueprint-grid + glow language as
-              the entrance preloader, so this page reads as part of one
-              system instead of a bolted-on afterthought. */}
-          <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-bg px-10 py-16 md:flex">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.05]"
-              style={{
-                backgroundImage:
-                  "linear-gradient(var(--fg) 1px, transparent 1px), linear-gradient(90deg, var(--fg) 1px, transparent 1px)",
-                backgroundSize: "44px 44px",
-              }}
-            />
-            <div className="pointer-events-none absolute h-72 w-72 rounded-full bg-accent/20 blur-[80px]" />
-
+        <div className="grid overflow-hidden rounded-[var(--radius-lg)] shadow-[0_30px_90px_-20px_rgba(10,95,219,0.45)] md:grid-cols-2">
+          {/* Decorative brand panel — deliberately its own dark surface
+              (not .glass-panel's white frosted tint) so the galaxy behind
+              it reads as deep space instead of washing out gray; logo glows
+              like it's floating in the starfield. */}
+          <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-[#070b18]/55 px-10 py-16 backdrop-blur-[3px] md:flex">
             <div className="relative w-full max-w-[260px]">
               <Image
                 src="/brand/infosistel-logo-v3.png"
                 alt="Infosistel"
                 width={1366}
                 height={166}
-                className="h-auto w-full object-contain drop-shadow-[0_20px_40px_rgba(10,95,219,0.25)]"
+                className="h-auto w-full object-contain drop-shadow-[0_0_45px_rgba(96,165,250,0.55)]"
                 priority
               />
             </div>
-            <p className="relative mt-6 text-xs font-bold uppercase tracking-[0.3em] text-fg-muted">
+            <p className="relative mt-6 text-xs font-bold uppercase tracking-[0.3em] text-white/70">
               Panel administrativo
             </p>
           </div>
 
-          {/* Form panel */}
-          <div className="flex flex-col justify-center px-8 py-12 sm:px-12">
+          {/* Form panel — keeps the light frosted glass-panel treatment on
+              its own (rather than inherited from a shared parent) so it
+              stays fully legible over the dark galaxy on mobile too, where
+              the decorative left panel is hidden and this is the whole card. */}
+          <div className="glass-panel flex flex-col justify-center px-8 py-12 sm:px-12">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent md:hidden">
               <Lock size={20} strokeWidth={1.75} />
             </div>
