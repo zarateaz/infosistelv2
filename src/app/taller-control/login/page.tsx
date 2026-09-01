@@ -31,19 +31,24 @@ export default function AdminLoginPage() {
           Volver al inicio
         </Link>
 
-        <div className="grid overflow-hidden rounded-[var(--radius-lg)] shadow-[0_30px_90px_-20px_rgba(10,95,219,0.45)] md:grid-cols-2">
+        <div className="grid overflow-hidden rounded-[var(--radius-lg)] shadow-[0_30px_90px_-20px_rgba(200,0,220,0.4)] md:grid-cols-2">
           {/* Decorative brand panel — deliberately its own dark surface
               (not .glass-panel's white frosted tint) so the galaxy behind
               it reads as deep space instead of washing out gray; logo glows
               like it's floating in the starfield. */}
-          <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-[#070b18]/55 px-10 py-16 backdrop-blur-[3px] md:flex">
+          <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-[#0b0716]/55 px-10 py-16 backdrop-blur-[3px] md:flex">
+            {/* Blurred neon glow directly behind the logo — magenta + cyan,
+                cyberpunk-style bloom rather than a flat brand-blue halo. */}
+            <div className="pointer-events-none absolute h-64 w-64 rounded-full bg-fuchsia-500/40 blur-[90px]" />
+            <div className="pointer-events-none absolute h-56 w-56 translate-x-16 translate-y-6 rounded-full bg-cyan-400/30 blur-[90px]" />
+
             <div className="relative w-full max-w-[260px]">
               <Image
                 src="/brand/infosistel-logo-v3.png"
                 alt="Infosistel"
                 width={1366}
                 height={166}
-                className="h-auto w-full object-contain drop-shadow-[0_0_45px_rgba(96,165,250,0.55)]"
+                className="h-auto w-full object-contain drop-shadow-[0_0_45px_rgba(255,0,200,0.55)]"
                 priority
               />
             </div>

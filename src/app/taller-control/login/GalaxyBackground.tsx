@@ -25,8 +25,8 @@ const PARTICLE_COUNT_MOBILE = 900; // fewer on small/low-power screens
  *  the bundle weight and zero new dependencies. Same spiral-arm math
  *  idea as the classic Three.js galaxy tutorial (power-curved radius for
  *  a dense core that thins out, branch angle + randomness offset) but
- *  projected straight to 2D and tinted in Infosistel's own blue instead
- *  of a literal copy of a reference palette. */
+ *  projected straight to 2D, tinted in a cyberpunk neon palette (magenta
+ *  core, cyan + violet arms) per the user's request. */
 export function GalaxyBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reducedMotion = useReducedMotion();
@@ -85,9 +85,9 @@ export function GalaxyBackground() {
     }
 
     function colorFor(hue: Particle["hue"], alpha: number): string {
-      if (hue === "core") return `rgba(224, 238, 255, ${alpha})`; // near-white, cool
-      if (hue === "accent") return `rgba(96, 165, 250, ${alpha})`; // bright brand-adjacent blue
-      return `rgba(46, 126, 240, ${alpha})`; // --accent-hover, dimmer
+      if (hue === "core") return `rgba(255, 214, 250, ${alpha})`; // hot near-white magenta
+      if (hue === "accent") return `rgba(0, 229, 255, ${alpha})`; // neon cyan
+      return `rgba(180, 70, 255, ${alpha})`; // neon violet, dimmer
     }
 
     function draw(time: number) {
@@ -96,12 +96,26 @@ export function GalaxyBackground() {
       const cx = width / 2;
       const cy = height * 0.38;
 
-      // Soft glowing core behind everything.
-      const coreGlow = ctx!.createRadialGradient(cx, cy, 0, cx, cy, Math.min(width, height) * 0.4);
-      coreGlow.addColorStop(0, "rgba(46, 126, 240, 0.5)");
-      coreGlow.addColorStop(0.4, "rgba(10, 95, 219, 0.22)");
-      coreGlow.addColorStop(1, "rgba(10, 95, 219, 0)");
-      ctx!.fillStyle = coreGlow;
+      // Two overlapping glows — magenta core, cyan halo — for a bi-color
+      // neon nebula instead of a flat single-hue glow.
+      const magentaGlow = ctx!.createRadialGradient(cx, cy, 0, cx, cy, Math.min(width, height) * 0.38);
+      magentaGlow.addColorStop(0, "rgba(255, 0, 200, 0.45)");
+      magentaGlow.addColorStop(0.45, "rgba(200, 0, 220, 0.18)");
+      magentaGlow.addColorStop(1, "rgba(200, 0, 220, 0)");
+      ctx!.fillStyle = magentaGlow;
+      ctx!.fillRect(0, 0, width, height);
+
+      const cyanGlow = ctx!.createRadialGradient(
+        cx - width * 0.1,
+        cy + height * 0.12,
+        0,
+        cx - width * 0.1,
+        cy + height * 0.12,
+        Math.min(width, height) * 0.5,
+      );
+      cyanGlow.addColorStop(0, "rgba(0, 229, 255, 0.22)");
+      cyanGlow.addColorStop(1, "rgba(0, 229, 255, 0)");
+      ctx!.fillStyle = cyanGlow;
       ctx!.fillRect(0, 0, width, height);
 
       for (const p of particles) {
