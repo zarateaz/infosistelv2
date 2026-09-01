@@ -86,10 +86,21 @@ export function MonthlyReport({
         </button>
       </div>
 
+      {/* Print-only letterhead — screen readers/users never see this, the
+          on-screen title above already covers it. Real border instead of
+          the glass card's blur, which most browsers skip on paper anyway. */}
+      <div className="hidden print:block print:mb-4">
+        <div className="flex items-baseline justify-between">
+          <span className="text-2xl font-extrabold tracking-tight text-fg">INFOSISTEL</span>
+          <span className="text-xs text-fg-muted">Huancayo, Perú</span>
+        </div>
+        <div className="mt-1 h-[3px] w-full bg-accent" />
+        <h1 className="mt-2 text-base font-bold uppercase tracking-wide text-fg">
+          Control de caja — {formatMonthLabel(month)}
+        </h1>
+      </div>
+
       <table className="w-full min-w-[900px] border-collapse text-left text-xs">
-        <caption className="hidden print:table-caption print:mb-2 print:text-left print:text-base print:font-bold">
-          CONTROL DE CAJA — INFOSISTEL
-        </caption>
         <thead>
           <tr className="border-b border-border text-[10px] font-bold uppercase tracking-wider text-fg-muted">
             <th className="px-2 py-2">Fecha</th>
