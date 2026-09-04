@@ -41,6 +41,7 @@ function guessCategory(text: string, categories: string[]): string | undefined {
     [/keyboard|teclado/, ["TECLADO"]],
     [/monitor|display/, ["MONITORES"]],
     [/printer|impresora/, ["IMPRESORAS"]],
+    [/\bink\b|toner|cartridge|tinta|tóner|cartucho/, ["TINTAS", "TINTA Y TONER", "TINTAS Y TONERS", "CARTUCHOS"]],
     [/memory|ram|dimm/, ["RAM"]],
     [/ssd|solid state|nvme/, ["SSD"]],
     [/\bpc\b|desktop|computer tower/, ["PC"]],
@@ -289,7 +290,11 @@ export async function recognizeProductImage(
       // not a signal to avoid it for real use.
       model: deepseek("deepseek-v4-flash-vision-exp"),
       schema: z.object({
-        name: z.string().describe("Nombre comercial corto del producto, en español."),
+        name: z
+          .string()
+          .describe(
+            "Nombre comercial corto del producto, en español. Si es tinta, tóner o cartucho: el color (Negro/Cian/Magenta/Amarillo/Tricolor) es OBLIGATORIO al final del nombre — sin eso, tintas del mismo modelo y distinto color quedan indistinguibles en el catálogo."
+          ),
         description: z.string().describe("Descripción breve (1-2 frases) basada en lo que dice la caja."),
         category: z
           .string()
@@ -304,6 +309,11 @@ export async function recognizeProductImage(
             {
               type: "text",
               text: `Esta es una foto de la caja o etiqueta de un producto de una tienda de tecnología. Lee la marca, modelo y especificaciones impresas para completar los datos. Si no puedes leer algo con certeza, no lo inventes.
+
+Si el producto es una tinta, tóner o cartucho: el modelo impreso suele ser IGUAL para las 4 variantes de color (ej. "GT53" para negro, cian, magenta y amarillo de la misma línea), así que el modelo SOLO no alcanza para identificar cuál es. Identifica el color exacto de dos formas y usa la que te dé más certeza:
+1) texto impreso (Negro/Black, Cian/Cyan, Magenta, Amarillo/Yellow, Tricolor/Tri-color), y
+2) el color visible de la tapa, etiqueta o la tinta/tóner en sí si se ve a través de un empaque transparente.
+Incluye ese color al final de "name" (ej. "TINTA HP GT53 NEGRO", "TINTA HP GT53 CIAN") y menciona la capacidad (ml/gr) en "description" si se lee — hay presentaciones del mismo color en distintos tamaños.
 
 Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.
 Para "category": usa una de esas si el producto encaja claramente; si no encaja en ninguna, propón una categoría nueva y corta (nunca dejes el campo vacío).`,
