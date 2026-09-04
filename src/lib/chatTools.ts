@@ -35,10 +35,12 @@ export const buscarProductos = tool({
       select: {
         name: true,
         category: true,
+        description: true,
         price: true,
         stock: true,
         onSale: true,
         salePrice: true,
+        image: true,
       },
       orderBy: { createdAt: "desc" },
       take: 8,
@@ -53,10 +55,18 @@ export const buscarProductos = tool({
       productos: products.map((p) => ({
         nombre: p.name,
         categoria: p.category,
+        // Short spec hint for the model to use when comparing products —
+        // the chat UI never shows this raw, only the model reads it.
+        especificaciones: p.description.slice(0, 200),
         precio: `S/. ${(p.onSale && p.salePrice ? p.salePrice : p.price).toFixed(2)}`,
         precioRegular: p.onSale && p.salePrice ? `S/. ${p.price.toFixed(2)}` : null,
         disponible: p.stock > 0,
         stock: p.stock,
+        // Real product photo path (same one shown on /tienda) — the chat
+        // widget renders this as a photo card next to the message, `null`
+        // when the admin hasn't uploaded one yet (shows a category icon
+        // placeholder instead, same as the storefront).
+        imagen: p.image ?? null,
       })),
     };
   },
