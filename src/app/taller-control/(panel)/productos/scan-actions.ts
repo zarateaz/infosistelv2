@@ -220,7 +220,39 @@ export interface RecognizeImageResult {
    *  still get real photos straight from a single box photo instead of a
    *  manual search. */
   imageOptions?: string[];
+  /** Set when a product with (essentially) this same name already exists
+   *  in the catalog — same "no dupliques lo que ya subiste" warning the
+   *  barcode flow already gives when the exact barcode matches, just
+   *  matched by name instead since a re-scanned box has no barcode to
+   *  compare here. */
+  existingProductId?: string;
+  existingProductName?: string;
   error?: string;
+}
+
+/** Exact match first (both sides are already uppercased on save — see
+ *  createProduct/updateProduct), then a loose `contains` in either
+ *  direction so "MICRONICS MP-350" still catches an existing
+ *  "MICRONICS MP-350 FUENTE POWER 250W" typed with extra words, and vice
+ *  versa. Good enough to stop the obvious re-scan-the-same-box case
+ *  without a full fuzzy-matching library for what's meant to be a quick
+ *  heads-up, not a hard block — the admin still decides. */
+async function findExistingProductByName(
+  name: string
+): Promise<{ id: string; name: string } | null> {
+  const normalized = name.trim().toUpperCase();
+  if (!normalized) return null;
+
+  const exact = await prisma.product.findFirst({
+    where: { name: normalized },
+    select: { id: true, name: true },
+  });
+  if (exact) return exact;
+
+  return prisma.product.findFirst({
+    where: { name: { contains: normalized } },
+    select: { id: true, name: true },
+  });
 }
 
 export async function recognizeProductImage(
@@ -283,6 +315,20 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
         },
       ],
     });
+
+    // Catch a re-scan of a box already in the catalog before spending time
+    // (and, for the image search below, a DuckDuckGo request) on a product
+    // that's just going to get flagged as a duplicate anyway.
+    const existing = await findExistingProductByName(object.name);
+    if (existing) {
+      return {
+        name: object.name.toUpperCase(),
+        description: object.description.toUpperCase(),
+        category: object.category.toUpperCase(),
+        existingProductId: existing.id,
+        existingProductName: existing.name,
+      };
+    }
 
     // Best-effort, same as the barcode flow's imageOptions — a failed
     // search just means no photo suggestions, never blocks the recognition

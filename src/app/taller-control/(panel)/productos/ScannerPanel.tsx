@@ -74,7 +74,11 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const [cameraOpen, setCameraOpen] = useState(false);
 
   const [imageStatus, setImageStatus] = useState<
-    { kind: "idle" } | { kind: "loading" } | { kind: "done" } | { kind: "error"; message: string }
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "done" }
+    | { kind: "existing"; id: string; name: string }
+    | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -227,6 +231,13 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         setImageStatus({ kind: "error", message: result.error });
         return;
       }
+      if (result.existingProductId) {
+        // Don't fill the "new product" form for something that already
+        // exists — same reasoning as the barcode flow's "existing" case,
+        // just matched by name since a re-scanned box has no barcode here.
+        setImageStatus({ kind: "existing", id: result.existingProductId, name: result.existingProductName ?? "" });
+        return;
+      }
       onFill({ name: result.name, description: result.description, category: result.category });
       setImageStatus({ kind: "done" });
       if (result.imageOptions && result.imageOptions.length > 0) setImageOptions(result.imageOptions);
@@ -346,6 +357,14 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       {imageStatus.kind === "done" && imageOptions.length === 0 && (
         <p className="mt-1 text-xs text-fg-muted">
           No se encontraron fotos sugeridas en internet para este producto — puedes subir una a mano abajo.
+        </p>
+      )}
+      {imageStatus.kind === "existing" && (
+        <p className="mt-3 text-sm text-fg-muted">
+          Ya existe en el catálogo:{" "}
+          <Link href={`/taller-control/productos/${imageStatus.id}`} className="font-bold text-accent">
+            {imageStatus.name} — editar para actualizar stock
+          </Link>
         </p>
       )}
       {imageStatus.kind === "error" && (
