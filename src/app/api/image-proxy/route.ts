@@ -36,8 +36,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(parsed, { signal: AbortSignal.timeout(6000) });
+    // Many product-listing sites hotlink-protect their images (403 to any
+    // request without a browser-looking User-Agent, or whose Referer isn't
+    // their own domain) — a bare fetch() with no headers gets rejected by
+    // a real chunk of the DuckDuckGo candidates. A same-origin Referer is
+    // the standard trick to pass that check on most sites (not all —
+    // some also gate on cookies/session, which this can't replicate).
+    const upstream = await fetch(parsed, {
+      signal: AbortSignal.timeout(6000),
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        // Explicitly asks for formats ALLOWED_TYPES actually supports —
+        // an avif-first Accept header (the real Chrome default) makes some
+        // CDNs content-negotiate to AVIF, which isn't in ALLOWED_TYPES and
+        // would get rejected below for no good reason.
+        accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
+        referer: `${parsed.origin}/`,
+      },
+    });
     if (!upstream.ok || !upstream.body) {
+      console.error(`[image-proxy] upstream fetch failed: HTTP ${upstream.status} for ${parsed.origin}`);
       return new Response("No se pudo obtener la imagen.", { status: 502 });
     }
 
@@ -61,7 +80,9 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "private, max-age=300",
       },
     });
-  } catch {
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[image-proxy] request threw for ${parsed.origin}: ${reason}`);
     return new Response("No se pudo obtener la imagen.", { status: 502 });
   }
 }

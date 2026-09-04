@@ -8,6 +8,12 @@
  * Shared by both product-photo flows: the barcode scanner's fallback when
  * a listing has no photo (scan-actions.ts), and the Alta Rápida quick-add
  * scanner (api/scanner/route.ts).
+ *
+ * This is scraping an undocumented endpoint — DuckDuckGo can change the
+ * page markup or start blocking a server's IP/reputation at any time, with
+ * no warning. Every failure path below is logged (never silent) so a break
+ * shows up in `pm2 logs` instead of just quietly returning zero photos
+ * forever with no way to tell "no results" from "broken".
  */
 const DDG_HEADERS: HeadersInit = {
   "user-agent":
@@ -27,10 +33,20 @@ export async function searchProductImages(query: string, max = 4): Promise<strin
       headers: DDG_HEADERS,
       signal: AbortSignal.timeout(6000),
     });
-    if (!tokenRes.ok) return [];
+    if (!tokenRes.ok) {
+      console.error(
+        `[imageSearch] token request failed: HTTP ${tokenRes.status} for query "${fullQuery}" — DuckDuckGo may be blocking this server's IP.`
+      );
+      return [];
+    }
     const html = await tokenRes.text();
     const token = html.match(/vqd=([\d-]+)&/)?.[1];
-    if (!token) return [];
+    if (!token) {
+      console.error(
+        `[imageSearch] could not extract "vqd" token from DuckDuckGo's page for query "${fullQuery}" — they likely changed their markup, the scraping regex needs updating.`
+      );
+      return [];
+    }
 
     // Step 2: the actual image search, moderate filter on (p=1).
     const imagesUrl =
@@ -40,18 +56,29 @@ export async function searchProductImages(query: string, max = 4): Promise<strin
       headers: DDG_HEADERS,
       signal: AbortSignal.timeout(6000),
     });
-    if (!imagesRes.ok) return [];
+    if (!imagesRes.ok) {
+      console.error(`[imageSearch] image request failed: HTTP ${imagesRes.status} for query "${fullQuery}".`);
+      return [];
+    }
 
     const data = await imagesRes.json();
-    if (!Array.isArray(data?.results)) return [];
+    if (!Array.isArray(data?.results)) {
+      console.error(`[imageSearch] unexpected response shape for query "${fullQuery}":`, JSON.stringify(data).slice(0, 300));
+      return [];
+    }
 
-    return data.results
+    const urls = data.results
       .slice(0, max)
       .map((r: { image?: string }) => r.image)
-      .filter(
-        (url: unknown): url is string => typeof url === "string" && url.startsWith("https://")
-      );
-  } catch {
+      .filter((url: unknown): url is string => typeof url === "string" && url.startsWith("https://"));
+
+    if (urls.length === 0) {
+      console.error(`[imageSearch] DuckDuckGo returned ${data.results.length} result(s) but none had a usable https image URL for query "${fullQuery}".`);
+    }
+    return urls;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[imageSearch] request threw for query "${fullQuery}": ${reason}`);
     return [];
   }
 }

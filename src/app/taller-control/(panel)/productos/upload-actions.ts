@@ -95,14 +95,34 @@ export async function downloadProductImageFromUrl(url: string): Promise<UploadIm
 
   let buffer: Buffer;
   try {
-    const res = await fetch(parsed, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return { error: "No se pudo descargar la imagen del proveedor." };
+    // Same hotlink-protection issue as api/image-proxy/route.ts: a bare
+    // fetch() with no headers gets a 403 from plenty of product-listing
+    // sites. A same-origin Referer + real User-Agent passes that check on
+    // most of them (not all — some also gate on cookies/session).
+    const res = await fetch(parsed, {
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        // Same reasoning as api/image-proxy/route.ts: avoid an avif-first
+        // Accept header, which can make a CDN negotiate to a format sharp/
+        // this pipeline doesn't expect.
+        accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
+        referer: `${parsed.origin}/`,
+      },
+    });
+    if (!res.ok) {
+      console.error(`[upload-actions] downloadProductImageFromUrl failed: HTTP ${res.status} for ${parsed.origin}`);
+      return { error: "No se pudo descargar la imagen del proveedor." };
+    }
     const contentLength = Number(res.headers.get("content-length") ?? 0);
     if (contentLength > MAX_UPLOAD_BYTES) return { error: "Imagen externa demasiado grande." };
     const arrayBuffer = await res.arrayBuffer();
     if (arrayBuffer.byteLength > MAX_UPLOAD_BYTES) return { error: "Imagen externa demasiado grande." };
     buffer = Buffer.from(arrayBuffer);
-  } catch {
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[upload-actions] downloadProductImageFromUrl threw for ${parsed.origin}: ${reason}`);
     return { error: "No se pudo descargar la imagen del proveedor." };
   }
 

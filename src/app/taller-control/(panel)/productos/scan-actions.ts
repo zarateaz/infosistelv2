@@ -273,7 +273,9 @@ export async function recognizeProductImage(
 Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.
 Para "category": usa una de esas si el producto encaja claramente; si no encaja en ninguna, propón una categoría nueva y corta (nunca dejes el campo vacío).`,
             },
-            { type: "image", image: base64, mediaType: mimeType },
+            // "image" content parts are deprecated in ai@7 — "file" with a
+            // bare base64 `data` is the replacement (see @ai-sdk/provider-utils).
+            { type: "file", data: base64, mediaType: mimeType },
           ],
         },
       ],
@@ -281,8 +283,13 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
 
     // Best-effort, same as the barcode flow's imageOptions — a failed
     // search just means no photo suggestions, never blocks the recognition
-    // result the admin is waiting on.
-    const imageOptions = await searchProductImages(object.name, 4).catch(() => []);
+    // result the admin is waiting on. searchProductImages already logs its
+    // own failures internally; this .catch is only a safety net in case it
+    // ever throws unexpectedly.
+    const imageOptions = await searchProductImages(object.name, 4).catch((err) => {
+      console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
+      return [];
+    });
 
     return {
       name: object.name.toUpperCase(),
@@ -290,7 +297,10 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
       category: object.category.toUpperCase(),
       imageOptions: imageOptions.length > 0 ? imageOptions : undefined,
     };
-  } catch {
+  } catch (err) {
+    // Logged (never silent) so a DeepSeek outage/auth/quota failure shows
+    // up in `pm2 logs` instead of just being a generic error on screen.
+    console.error("[scan-actions] recognizeProductImage failed:", err);
     return { error: "No se pudo procesar la imagen. Intenta con otra foto más clara." };
   }
 }

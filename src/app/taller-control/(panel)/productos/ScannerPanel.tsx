@@ -343,6 +343,11 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           Datos leídos de la foto y completados abajo — revísalos antes de guardar.
         </p>
       )}
+      {imageStatus.kind === "done" && imageOptions.length === 0 && (
+        <p className="mt-1 text-xs text-fg-muted">
+          No se encontraron fotos sugeridas en internet para este producto — puedes subir una a mano abajo.
+        </p>
+      )}
       {imageStatus.kind === "error" && (
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>
       )}
