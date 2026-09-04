@@ -1,6 +1,7 @@
 import { DollarSign, TrendingUp, PieChart } from "lucide-react";
 import { getSaleStats, getRecentSales, deleteSale } from "./actions";
 import { DeleteSaleButton } from "./DeleteSaleButton";
+import { InvoiceCell } from "./InvoiceCell";
 
 const STAT_CARDS = [
   { key: "day" as const, label: "Ventas de hoy", icon: TrendingUp },
@@ -43,6 +44,7 @@ export default async function AdminSalesPage() {
               <th className="px-5 py-3">Total</th>
               <th className="px-5 py-3">Ganancia</th>
               <th className="px-5 py-3">Fecha</th>
+              <th className="px-5 py-3">Comprobante</th>
               <th className="px-5 py-3" />
             </tr>
           </thead>
@@ -60,6 +62,9 @@ export default async function AdminSalesPage() {
                   {new Date(s.date).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })}
                 </td>
                 <td className="px-5 py-3.5">
+                  <InvoiceCell invoice={s.invoice} />
+                </td>
+                <td className="px-5 py-3.5">
                   <DeleteSaleButton
                     productName={s.pName}
                     action={async () => {
@@ -72,7 +77,7 @@ export default async function AdminSalesPage() {
             ))}
             {sales.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-fg-muted">
+                <td colSpan={7} className="px-5 py-10 text-center text-fg-muted">
                   Todavía no hay ventas registradas.
                 </td>
               </tr>

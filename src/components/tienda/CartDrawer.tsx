@@ -29,8 +29,11 @@ export function CartDrawer({
 }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [docNumber, setDocNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invoiceNotice, setInvoiceNotice] = useState<string | null>(null);
 
   const total = cart.reduce((sum, line) => {
     const unit = line.product.onSale && line.product.salePrice ? line.product.salePrice : line.product.price;
@@ -49,11 +52,19 @@ export function CartDrawer({
 
     setIsSubmitting(true);
     try {
-      await createOrder({
+      const order = await createOrder({
         customerName: name,
         customerPhone: phone,
+        docNumber: docNumber.trim() || undefined,
+        customerEmail: email.trim() || undefined,
         items: cart.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
       });
+
+      if (order.invoiceStatus === "ACEPTADO" && email.trim()) {
+        setInvoiceNotice("Tu boleta/factura fue enviada a tu correo.");
+      } else if (order.invoiceStatus && order.invoiceStatus !== "ACEPTADO") {
+        setInvoiceNotice("Tu pedido se registró, pero hubo un problema al emitir el comprobante. Te contactaremos.");
+      }
 
       const lines = cart
         .map((line) => {
@@ -64,7 +75,9 @@ export function CartDrawer({
       const message = `Hola INFOSISTEL! Quisiera hacer un pedido:\n\n*Cliente:* ${name}\n*Celular:* ${phone}\n\n*Productos:*\n${lines}\n\n*Total:* S/. ${total.toFixed(2)}\n\n¿Tienen disponibilidad?`;
       window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
       onOrderPlaced();
-      onClose();
+      // Si hay algo que contarle sobre el comprobante, no cerramos el
+      // drawer todavía — se queda viendo el aviso hasta que lo cierre él.
+      if (!order.invoiceStatus) onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el pedido. Intenta de nuevo.");
     } finally {
@@ -94,7 +107,20 @@ export function CartDrawer({
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
-          {cart.length === 0 ? (
+          {invoiceNotice ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
+                <MessageCircle size={28} className="text-accent" />
+              </div>
+              <p className="text-sm font-bold text-fg">{invoiceNotice}</p>
+              <button
+                onClick={onClose}
+                className="rounded-xl bg-bg px-5 py-2.5 text-xs font-bold text-fg transition-colors hover:bg-accent/10"
+              >
+                Cerrar
+              </button>
+            </div>
+          ) : cart.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-bg">
                 <ShoppingCart size={28} className="text-fg-muted opacity-40" />
@@ -153,6 +179,23 @@ export function CartDrawer({
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
               />
+              <input
+                type="email"
+                placeholder="Correo (opcional, para tu boleta)"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
+              />
+              <input
+                type="text"
+                placeholder="DNI o RUC (opcional)"
+                value={docNumber}
+                onChange={(e) => setDocNumber(e.target.value)}
+                className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
+              />
+              <p className="text-[11px] text-fg-muted">
+                Con tu correo te enviamos la boleta/factura electrónica directo, sin papel.
+              </p>
             </div>
             {error && <p className="text-xs font-bold text-red-400">{error}</p>}
             <button

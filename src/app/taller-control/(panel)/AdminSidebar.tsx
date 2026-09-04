@@ -14,6 +14,7 @@ import {
   Wrench,
   ShoppingBag,
   TrendingUp,
+  Receipt,
   Users,
   LogOut,
   Menu,
@@ -30,6 +31,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/reparaciones": Wrench,
   "/taller-control/pedidos": ShoppingBag,
   "/taller-control/ventas": TrendingUp,
+  "/taller-control/facturas": Receipt,
   "/taller-control/usuarios": Users,
 };
 
@@ -42,6 +44,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/caja": "Ventas",
   "/taller-control/pedidos": "Ventas",
   "/taller-control/ventas": "Ventas",
+  "/taller-control/facturas": "Ventas",
   "/taller-control/inventario": "Inventario",
   "/taller-control/productos": "Inventario",
   "/taller-control/alta-rapida": "Inventario",

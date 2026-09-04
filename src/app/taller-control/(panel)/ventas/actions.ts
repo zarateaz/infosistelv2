@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { retryInvoiceEmission } from "@/lib/invoicing";
 
 export interface SaleStatBucket {
   total: number;
@@ -43,17 +44,34 @@ export interface AdminSale {
   price: number;
   profit: number;
   date: Date;
+  invoice: { id: string; estado: string; pdfUrl: string | null } | null;
 }
 
 export async function getRecentSales(limit = 30): Promise<AdminSale[]> {
-  return prisma.sale.findMany({
+  const sales = await prisma.sale.findMany({
     orderBy: { date: "desc" },
     take: limit,
-    select: { id: true, pName: true, category: true, quantity: true, price: true, profit: true, date: true },
+    select: {
+      id: true,
+      pName: true,
+      category: true,
+      quantity: true,
+      price: true,
+      profit: true,
+      date: true,
+      invoices: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, estado: true, pdfUrl: true } },
+    },
   });
+
+  return sales.map(({ invoices, ...s }) => ({ ...s, invoice: invoices[0] ?? null }));
 }
 
 export async function deleteSale(id: string): Promise<void> {
   await prisma.sale.delete({ where: { id } });
+  revalidatePath("/taller-control/ventas");
+}
+
+export async function retrySaleInvoice(invoiceId: string): Promise<void> {
+  await retryInvoiceEmission(invoiceId);
   revalidatePath("/taller-control/ventas");
 }

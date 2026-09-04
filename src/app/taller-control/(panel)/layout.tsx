@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { href: "/taller-control/reparaciones", label: "Reparaciones" },
   { href: "/taller-control/pedidos", label: "Pedidos" },
   { href: "/taller-control/ventas", label: "Ventas" },
+  { href: "/taller-control/facturas", label: "Facturas" },
 ];
 
 const SUPERADMIN_NAV_LINKS = [{ href: "/taller-control/usuarios", label: "Usuarios" }];

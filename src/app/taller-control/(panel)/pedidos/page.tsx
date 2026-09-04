@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { getAdminOrders } from "./actions";
+import { InvoiceCell } from "./InvoiceCell";
 
 export default async function AdminOrdersPage({
   searchParams,
@@ -46,7 +47,10 @@ export default async function AdminOrdersPage({
                   })}
                 </p>
               </div>
-              <p className="text-lg font-bold text-accent">S/. {order.total.toFixed(2)}</p>
+              <div className="flex flex-col items-end gap-1.5">
+                <p className="text-lg font-bold text-accent">S/. {order.total.toFixed(2)}</p>
+                <InvoiceCell invoice={order.invoice} />
+              </div>
             </div>
 
             <ul className="mt-4 space-y-1.5 border-t border-border pt-4 text-sm">

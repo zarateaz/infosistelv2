@@ -42,6 +42,7 @@ model Order {
   total              Float // always server-calculated at creation time — never trust a client-sent total
   date               DateTime    @default(now())
   items              OrderItem[]
+  invoices           Invoice[]
   createdAt          DateTime    @default(now())
 
   @@index([customerPhoneIndex])
@@ -59,32 +60,82 @@ model OrderItem {
 }
 
 model Repair {
-  id            String   @id @default(cuid())
-  code          String   @unique // e.g. "INF102" — assigned sequentially, see actions.ts
-  dniEncrypted  String // AES-256-GCM ciphertext ("iv:authTag:cipher", hex) — see lib/crypto.ts. Never read/write raw.
-  dniIndex      String // HMAC-SHA256 blind index of the DNI, for exact-match lookup without decrypting
-  equipment     String
-  problem       String
-  progress      Int      @default(0) // 0-100
-  statusText    String
-  lastUpdate    DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  code         String   @unique // e.g. "INF102" — assigned sequentially, see actions.ts
+  dniEncrypted String // AES-256-GCM ciphertext ("iv:authTag:cipher", hex) — see lib/crypto.ts. Never read/write raw.
+  dniIndex     String // HMAC-SHA256 blind index of the DNI, for exact-match lookup without decrypting
+  equipment    String
+  problem      String
+  progress     Int      @default(0) // 0-100
+  statusText   String
+  lastUpdate   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([dniIndex])
 }
 
 model Sale {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   productId String? // reference to Product, if sold from the catalog (Inventario's "Vender" button) — null for a manual entry
   pName     String
   category  String?
-  quantity  Int      @default(1)
+  quantity  Int       @default(1)
   price     Float
-  costPrice Float    @default(0)
+  costPrice Float     @default(0)
   profit    Float // (price - costPrice) * quantity, computed at creation time
-  date      DateTime @default(now())
-  createdAt DateTime @default(now())
+  date      DateTime  @default(now())
+  createdAt DateTime  @default(now())
+  invoices  Invoice[]
+}
+
+/**
+ * Comprobante SUNAT (boleta/factura) emitido vía NubeFacT — Fase 5, ver
+ * src/lib/invoicing.ts. Vinculado a lo sumo a un Order o a un Sale (nunca
+ * ambos), nunca revierte la venta/pedido que lo originó: un fallo de
+ * NubeFacT/SUNAT queda registrado aquí como estado ERROR/RECHAZADO, no
+ * como una excepción que tumbe la transacción.
+ */
+model Invoice {
+  id                  String   @id @default(cuid())
+  tipo                String // "FACTURA" | "BOLETA"
+  serie               String // "F001" | "B001"
+  numero              Int
+  orderId             String?
+  order               Order?   @relation(fields: [orderId], references: [id])
+  saleId              String?
+  sale                Sale?    @relation(fields: [saleId], references: [id])
+  clienteTipoDoc      String // "6" RUC | "1" DNI | "0" sin documento
+  clienteNumDoc       String? // DNI cifrado (encryptPII, ver lib/crypto.ts) | RUC en claro | null
+  clienteDenominacion String   @default("Cliente varios")
+  clienteEmail        String?
+  clienteTelefono     String? // AES-256-GCM ciphertext (encryptPII) — para "Enviar por WhatsApp" en /taller-control/facturas. Null si el pedido/venta no capturó teléfono.
+  moneda              String   @default("PEN")
+  total               Float
+  estado              String // "ACEPTADO" | "RECHAZADO" | "ERROR"
+  pdfUrl              String?
+  xmlUrl              String?
+  cdrUrl              String?
+  hash                String?
+  mensajeError        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([serie, numero])
+  @@index([orderId])
+  @@index([saleId])
+}
+
+/**
+ * Correlativo atómico por serie SUNAT — reemplaza el patrón "count()+1" de
+ * Repair.code (ver reparaciones/actions.ts): un correlativo legal no puede
+ * repetirse ni saltarse, así que se incrementa dentro de una
+ * prisma.$transaction (ver lib/invoicing.ts), con el @@unique de Invoice
+ * como red de seguridad ante una colisión.
+ */
+model InvoiceCounter {
+  serie      String @id // "B001" | "F001"
+  lastNumber Int    @default(0)
 }
 
 model CashboxTransaction {
@@ -99,13 +150,15 @@ model CashboxTransaction {
   updatedAt     DateTime @updatedAt
 }
 
-/** One row per calendar month of cash-box tracking — just who's responsible
- *  for that period. The opening balance itself is never a separate field:
- *  it's the first CashboxTransaction of the month (an INCOME row titled
- *  "SALDO INICIAL"), same convention as the spreadsheet this replaces. No
- *  relation to CashboxTransaction — a month's transactions are found by
- *  date range, not a foreign key, so nothing here blocks logging a
- *  transaction before its period row exists. */
+/**
+ * One row per calendar month of cash-box tracking — just who's responsible
+ * for that period. The opening balance itself is never a separate field:
+ * it's the first CashboxTransaction of the month (an INCOME row titled
+ * "SALDO INICIAL"), same convention as the spreadsheet this replaces. No
+ * relation to CashboxTransaction — a month's transactions are found by
+ * date range, not a foreign key, so nothing here blocks logging a
+ * transaction before its period row exists.
+ */
 model CashboxPeriod {
   id          String   @id @default(cuid())
   month       String   @unique // "2026-09" (YYYY-MM)

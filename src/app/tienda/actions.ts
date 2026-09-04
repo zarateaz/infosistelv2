@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { sanitizeName, sanitizePhone, sanitizeInt, digitsOnly } from "@/lib/sanitize";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { encryptPII, blindIndex } from "@/lib/crypto";
+import { emitInvoice } from "@/lib/invoicing";
 import type { Product, Category } from "@/types";
 
 export async function getProducts(): Promise<Product[]> {
@@ -35,6 +36,10 @@ interface CreateOrderInput {
   customerName: string;
   customerPhone: string;
   items: { productId: string; quantity: number }[];
+  // Fase 5 — facturación electrónica. Todos opcionales: sin ellos igual se
+  // emite una boleta "sin documento" (sin envío automático por correo).
+  docNumber?: string;
+  customerEmail?: string;
 }
 
 export async function createOrder(input: unknown) {
@@ -93,5 +98,26 @@ export async function createOrder(input: unknown) {
     include: { items: true },
   });
 
-  return { id: order.id, total: order.total };
+  // Fase 5: se emite el comprobante justo después de crear el pedido, nunca
+  // dentro de la misma transacción — un problema con NubeFacT/SUNAT no debe
+  // impedir que el pedido quede registrado.
+  const invoice = await emitInvoice({
+    orderId: order.id,
+    docNumber: typeof data.docNumber === "string" ? data.docNumber : undefined,
+    nombre: customerName,
+    email: typeof data.customerEmail === "string" ? data.customerEmail : undefined,
+    total: order.total,
+    items: orderItems.map((item) => ({
+      descripcion: item.name,
+      cantidad: item.quantity,
+      precioUnitarioConIgv: item.unitPrice,
+    })),
+  });
+
+  return {
+    id: order.id,
+    total: order.total,
+    invoiceStatus: invoice?.estado ?? null,
+    invoicePdfUrl: invoice?.pdfUrl ?? null,
+  };
 }
