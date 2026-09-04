@@ -14,23 +14,40 @@
  * no warning. Every failure path below is logged (never silent) so a break
  * shows up in `pm2 logs` instead of just quietly returning zero photos
  * forever with no way to tell "no results" from "broken".
+ *
+ * CONFIRMED IN PRODUCTION (2026-09-04): the image endpoint (i.js) 403'd
+ * from the VPS's IP even though the token page (step 1) succeeded — but
+ * passed once the session cookie DuckDuckGo sets on step 1 was forwarded
+ * to step 2, along with a couple of Sec-Fetch-* headers. A plain
+ * `fetch()` never carries cookies between two separate calls on its own,
+ * so this needs to be done by hand.
  */
-const DDG_HEADERS: HeadersInit = {
+const BASE_HEADERS: HeadersInit = {
   "user-agent":
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
-  accept: "application/json, text/javascript, */*; q=0.01",
-  "x-requested-with": "XMLHttpRequest",
-  referer: "https://duckduckgo.com/",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "accept-language": "es-PE,es;q=0.9,en;q=0.8",
 };
+
+/** DuckDuckGo's Set-Cookie values are full `name=value; Domain=...; Path=...`
+ *  attribute strings — a request Cookie header only wants the `name=value`
+ *  part of each, joined with "; ". */
+function cookieHeaderFrom(setCookieValues: string[]): string {
+  return setCookieValues.map((raw) => raw.split(";")[0]).join("; ");
+}
 
 export async function searchProductImages(query: string, max = 4): Promise<string[]> {
   const fullQuery = `${query} isolated white background product`;
   try {
     // Step 1: DuckDuckGo's HTML search page embeds a short-lived "vqd"
     // token in an inline script — the image endpoint rejects requests
-    // without a valid one.
+    // without a valid one. It also sets a session cookie that step 2
+    // requires (see the file header comment) — captured via
+    // getSetCookie(), available on Node's built-in fetch since Node 18.14.
     const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(fullQuery)}`, {
-      headers: DDG_HEADERS,
+      headers: {
+        ...BASE_HEADERS,
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
       signal: AbortSignal.timeout(6000),
     });
     if (!tokenRes.ok) {
@@ -47,13 +64,23 @@ export async function searchProductImages(query: string, max = 4): Promise<strin
       );
       return [];
     }
+    const cookie = cookieHeaderFrom(tokenRes.headers.getSetCookie());
 
     // Step 2: the actual image search, moderate filter on (p=1).
     const imagesUrl =
       `https://duckduckgo.com/i.js?l=wt-wt&o=json&q=${encodeURIComponent(fullQuery)}` +
       `&vqd=${token}&f=,,,&p=1`;
     const imagesRes = await fetch(imagesUrl, {
-      headers: DDG_HEADERS,
+      headers: {
+        ...BASE_HEADERS,
+        accept: "application/json, text/javascript, */*; q=0.01",
+        "x-requested-with": "XMLHttpRequest",
+        referer: "https://duckduckgo.com/",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+        ...(cookie ? { cookie } : {}),
+      },
       signal: AbortSignal.timeout(6000),
     });
     if (!imagesRes.ok) {
