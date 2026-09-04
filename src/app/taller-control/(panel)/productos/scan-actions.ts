@@ -168,8 +168,11 @@ async function lookupExternalUPC(
     // on guessCategory: most of this store's inventory has no public UPC
     // listing at all, and even a matched listing often lacks images). Fall
     // back to an image search instead of leaving the admin to always find
-    // a photo by hand.
-    const imageOptions = imageUrl ? undefined : await searchProductImages(title, 4);
+    // a photo by hand. Appending the category (when known) disambiguates a
+    // bare model number that's reused across unrelated product lines — see
+    // the same fix in recognizeProductImage below.
+    const searchQuery = category ? `${title} ${category}` : title;
+    const imageOptions = imageUrl ? undefined : await searchProductImages(searchQuery, 4);
 
     return {
       source: "external",
@@ -286,7 +289,14 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
     // result the admin is waiting on. searchProductImages already logs its
     // own failures internally; this .catch is only a safety net in case it
     // ever throws unexpectedly.
-    const imageOptions = await searchProductImages(object.name, 4).catch((err) => {
+    //
+    // Search by name ALONE, without the category, routinely returns
+    // completely unrelated products: a model number like "MP550" is reused
+    // across unrelated product lines (a Micronics power supply vs. a
+    // Compumatic time clock, observed in production), and DuckDuckGo has no
+    // way to disambiguate without more context. Appending the category the
+    // vision model just read off the box narrows it back down.
+    const imageOptions = await searchProductImages(`${object.name} ${object.category}`, 4).catch((err) => {
       console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
       return [];
     });
