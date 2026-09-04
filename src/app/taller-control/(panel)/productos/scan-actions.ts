@@ -173,7 +173,9 @@ async function lookupExternalUPC(
     // bare model number that's reused across unrelated product lines — see
     // the same fix in recognizeProductImage below.
     const searchQuery = category ? `${title} ${category}` : title;
-    const imageOptions = imageUrl ? undefined : await searchProductImages(searchQuery, 4);
+    const imageOptions = imageUrl
+      ? undefined
+      : await searchProductImages(searchQuery, 4, category ? title : undefined);
 
     return {
       source: "external",
@@ -352,10 +354,12 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
     // Compumatic time clock, observed in production), and DuckDuckGo has no
     // way to disambiguate without more context. Appending the category the
     // vision model just read off the box narrows it back down.
-    const imageOptions = await searchProductImages(`${object.name} ${object.category}`, 4).catch((err) => {
-      console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
-      return [];
-    });
+    const imageOptions = await searchProductImages(`${object.name} ${object.category}`, 4, object.name).catch(
+      (err) => {
+        console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
+        return [];
+      }
+    );
 
     return {
       name: object.name.toUpperCase(),

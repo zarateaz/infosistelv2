@@ -201,10 +201,44 @@ async function searchViaDuckDuckGo(fullQuery: string, max: number): Promise<stri
   }
 }
 
-export async function searchProductImages(query: string, max = 4): Promise<string[]> {
+async function runSearch(query: string, max: number): Promise<string[]> {
   const fullQuery = `${query} isolated white background product`;
   if (process.env.SERPER_API_KEY) {
     return searchViaSerper(fullQuery, max);
   }
   return searchViaDuckDuckGo(fullQuery, max);
+}
+
+/**
+ * `query` is usually name+color+category (see scan-actions.ts) — good for
+ * precision, but a search engine can have very few indexed photos for that
+ * exact combination (a specific ink color, a store-specific category name
+ * appended in Spanish), leaving the admin with just 1-2 options instead of
+ * `max`. When that happens, retry with `broaderQuery` (typically just the
+ * bare product name the caller already has, no category) and top up with
+ * any new, not-already-seen URLs — strictly additive, never replaces a
+ * result the precise query already found.
+ */
+export async function searchProductImages(
+  query: string,
+  max = 4,
+  broaderQuery?: string
+): Promise<string[]> {
+  const primary = await runSearch(query, max);
+  if (primary.length >= max || !broaderQuery || broaderQuery === query) {
+    return primary;
+  }
+
+  const extra = await runSearch(broaderQuery, max);
+  const merged = [...primary];
+  for (const url of extra) {
+    if (merged.length >= max) break;
+    if (!merged.includes(url)) merged.push(url);
+  }
+  if (merged.length < max) {
+    console.error(
+      `[imageSearch] only ${merged.length}/${max} photo(s) found even after broadening "${query}" -> "${broaderQuery}".`
+    );
+  }
+  return merged;
 }
