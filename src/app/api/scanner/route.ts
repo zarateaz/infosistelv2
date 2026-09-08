@@ -1,5 +1,8 @@
 import { NextRequest } from "next/server";
+import { headers } from "next/headers";
 import { searchProductImages } from "@/lib/imageSearch";
+import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/scanner
@@ -99,6 +102,22 @@ async function lookupBarcodeSpider(
 const searchDuckDuckGoImages = searchProductImages;
 
 export async function POST(request: NextRequest) {
+  // Admin-only tool (used by FastProductScanner inside /taller-control/productos).
+  // `proxy.ts`'s matcher deliberately excludes `/api/*`, so this route must
+  // verify the session itself — without this it was reachable by anyone on
+  // the internet, unauthenticated, to burn paid-API quota (upcitemdb,
+  // barcodespider, image search).
+  const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value ?? "");
+  if (!session) {
+    return Response.json({ error: "No autorizado." }, { status: 401 });
+  }
+
+  const ip = getClientIP(await headers());
+  const rateCheck = checkRateLimit(rateLimitKey("scanner", ip), 20, 60 * 1000);
+  if (!rateCheck.allowed) {
+    return Response.json({ error: "Demasiadas solicitudes." }, { status: 429 });
+  }
+
   try {
     const body = await request.json();
     const barcode: string = typeof body.barcode === "string" ? body.barcode.trim() : "";

@@ -318,9 +318,13 @@ vive en el código, y **cómo verificarlo**.
 
 ## Pendiente (fases siguientes — no implementado aún)
 - Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
-  la que da nombre a la tesis. Requiere un VPS real desplegado; no aplica en local. Runbook listo
-  en `docs/security/fase5-vps-hardening.md` — el usuario lo ejecuta manualmente en el VPS y pega
-  la salida de verificación aquí para documentar el resultado real (entrada #24, pendiente).
+  la que da nombre a la tesis. v2 ya está desplegado en el VPS real; falta ejecutar el runbook de
+  infraestructura. Runbook listo en `docs/security/fase5-vps-hardening.md` — el usuario lo ejecuta
+  manualmente en el VPS y pega la salida de verificación aquí para documentar el resultado real
+  (próxima entrada disponible: #39).
+- V8.1.5/V8.1.6 (respaldos periódicos y verificados): no existe ningún mecanismo de respaldo en
+  `infosistel-v2` — brecha real, no solo de documentación. Ver auditoría 2026-09-08 en la tesis,
+  Tabla 3.x (corregida de "Parcial" a "No cumple").
 
 ### 20. Roles de administrador (superadmin/admin) para la sección Usuarios (2026-08-28)
 - **Qué**: `Admin.role` (`"admin"` | `"superadmin"`, default `"admin"`) se agrega al esquema y se
@@ -832,3 +836,22 @@ despliegue real:
   entropía, para simular el peso real de una foto de celular sin comprimir) — el reconocimiento
   completó todo el flujo (lectura de imagen, búsqueda de fotos) en unos pocos segundos, sin ningún
   fallo relacionado a tamaño.
+
+### 38. `/api/scanner` accesible sin autenticación ni límite de tasa propio (2026-09-08)
+- **Qué**: auditoría de la matriz ASVS de la tesis contra el código actual (ver sección
+  "Pendiente" más abajo) encontró que `/api/scanner` — el motor de "Reconocer con IA" y búsqueda
+  de código de barras usado por `FastProductScanner.tsx` dentro del panel admin — no verificaba
+  sesión ni tenía su propio límite de tasa, a diferencia de `chat/route.ts` e `image-proxy/route.ts`.
+  `proxy.ts` excluye deliberadamente `/api/*` de su matcher (entrada #13), así que cualquier ruta
+  de API es responsable de su propia autenticación si la necesita — esta no lo hacía. El endpoint
+  llama a APIs externas de pago/cuota limitada (upcitemdb, barcodespider, la búsqueda de fotos), así
+  que quedaba expuesto tanto a acceso no autorizado a una herramienta admin-only como a agotamiento
+  de cuota por cualquier visitante anónimo.
+- **Por qué**: mismo principio de mínimo privilegio ya aplicado en el resto del panel (`Admin.role`,
+  entrada #20) — una herramienta que solo tiene sentido para un admin autenticado no debe quedar
+  alcanzable por una petición HTTP directa sin sesión.
+- **Solución**: verificación de `SESSION_COOKIE` vía `verifySessionToken()` (401 si no hay sesión
+  válida) + `checkRateLimit()` con bucket propio (`"scanner"`, 20 peticiones/min por IP), mismo
+  patrón que `image-proxy/route.ts`.
+- **Dónde**: `src/app/api/scanner/route.ts`.
+- **Verificación**: `npx tsc --noEmit` sin errores tras el cambio.
