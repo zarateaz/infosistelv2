@@ -863,3 +863,36 @@ despliegue real:
   patrón que `image-proxy/route.ts`.
 - **Dónde**: `src/app/api/scanner/route.ts`.
 - **Verificación**: `npx tsc --noEmit` sin errores tras el cambio.
+
+### 39. Incidente en producción: `pacman -Syu` (Fase 5, actualizaciones) tumbó el sitio — módulos nativos no compilados (2026-09-08)
+- **Qué**: al ejecutar la actualización completa de sistema recomendada por `arch-audit` (Fase 5,
+  §5.5) para parchar vulnerabilidades "High risk" en el kernel, `openssl` y `nginx`, Node.js saltó
+  de version LTS a `v26.8.1` como efecto colateral (Arch es *rolling release*, no separa parches de
+  seguridad de actualizaciones mayores). El sitio quedó caído (`500`, luego `502`) porque el nuevo
+  npm que vino con ese Node introdujo por defecto un bloqueo de *lifecycle scripts* de paquetes no
+  aprobados explícitamente (`npm install-scripts` / `allowScripts`) — bloqueó silenciosamente el
+  paso de compilación nativa de 5 paquetes (`better-sqlite3`, `esbuild`, `prisma`,
+  `@prisma/engines`, `unrs-resolver`) durante el `npm ci` del propio `scripts/deploy-vps.sh`.
+  `better-sqlite3` específicamente nunca generó su binario `.node` (`ERR_DLOPEN_FAILED: Module did
+  not self-register`), tumbando cualquier ruta que tocara Prisma/SQLite.
+- **Por qué importa para la tesis**: es la validación práctica, con un incidente real, de la
+  decisión de diseño documentada en `docs/security/fase5-vps-hardening.md` §5.5 de **no** automatizar
+  `pacman -Syu` completo sin supervisión en este VPS — un solo comando de "aplicar todos los
+  parches" tocó simultáneamente el kernel, `openssl`/`nginx` (el objetivo real) y, sin relación
+  aparente, el runtime de la aplicación, con un modo de falla (bloqueo silencioso de scripts de
+  instalación) que ningún changelog de seguridad anticipa. Confirma que en un rolling release
+  "actualizar" y "parchar" no son la misma operación de bajo riesgo que en Debian/RHEL.
+- **Solución**: `npm install-scripts approve better-sqlite3 esbuild prisma unrs-resolver
+  @prisma/engines`, seguido de `npm ci` limpio (esta vez sí compiló los 5 módulos nativos) y
+  `bash scripts/deploy-vps.sh` de nuevo para reconstruir y reiniciar PM2.
+- **Dónde**: ningún archivo del repo — configuración de npm en el VPS (`~/.npmrc` /
+  `install-scripts` allowlist) y el propio `node_modules` reinstalado.
+- **Verificación**: smoke test del propio `deploy-vps.sh` (`HTTP/1.1 200 OK`), confirmado además
+  desde una máquina externa contra `/` y `/tienda` (esta última ejercita `prisma.product.findMany`,
+  la ruta que había fallado) — ambas en `200`.
+- **Recomendación para el siguiente ciclo de parches**: antes de un `pacman -Syu` en este VPS,
+  correr `npm install-scripts ls` en `infosistel-v2` para ver si hay paquetes nuevos sin aprobar, y
+  probar el sitio en un puerto de prueba (patrón ya usado en el despliegue inicial,
+  `docs/deploy-vps.md`) antes de asumir que un `deploy-vps.sh` exitoso significa que todo compiló
+  correctamente — el build de Next.js puede completar con éxito aunque un módulo nativo específico
+  no se haya reconstruido, porque usa un cliente Prisma ya generado en una corrida anterior.
