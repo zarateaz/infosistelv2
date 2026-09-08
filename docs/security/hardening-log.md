@@ -322,9 +322,17 @@ vive en el código, y **cómo verificarlo**.
   infraestructura. Runbook listo en `docs/security/fase5-vps-hardening.md` — el usuario lo ejecuta
   manualmente en el VPS y pega la salida de verificación aquí para documentar el resultado real
   (próxima entrada disponible: #39).
-- V8.1.5/V8.1.6 (respaldos periódicos y verificados): no existe ningún mecanismo de respaldo en
-  `infosistel-v2` — brecha real, no solo de documentación. Ver auditoría 2026-09-08 en la tesis,
-  Tabla 3.x (corregida de "Parcial" a "No cumple").
+- V8.1.5/V8.1.6 (respaldos periódicos y verificados): corregido dos veces en la auditoría del
+  2026-09-08 — primero de "Parcial" a "No cumple" (el repo no tiene `scripts/backup.sh`/`restore.sh`
+  como citaba el texto original), y luego de vuelta a "Parcial" al verificar el VPS real:
+  `scripts/deploy-vps.sh` sí respalda `dev.db` automáticamente antes de cada
+  `prisma migrate deploy` (38 copias en `infosistel-v2-data/backups/` entre 2026-08-25 y
+  2026-09-04, confirmado por `ls` en el VPS). Sigue siendo una brecha real frente al requisito
+  completo: el respaldo depende de que ocurra un despliegue (no hay cronograma fijo), nunca se ha
+  probado una restauración, y las copias viven en el mismo VPS sin destino externo — si el VPS se
+  pierde completo, se pierden también los respaldos. **Lección**: verificar contra el sistema real
+  (VPS), no solo contra el repositorio de git — el mecanismo de respaldo vive fuera de git,
+  embebido en un script de despliegue, no como un archivo dedicado.
 
 ### 20. Roles de administrador (superadmin/admin) para la sección Usuarios (2026-08-28)
 - **Qué**: `Admin.role` (`"admin"` | `"superadmin"`, default `"admin"`) se agrega al esquema y se
