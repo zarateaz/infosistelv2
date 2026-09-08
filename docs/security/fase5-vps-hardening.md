@@ -17,14 +17,9 @@ salidas de los comandos de verificación — con eso redacto la entrada #24 de `
 el contenido real del Capítulo IV de la tesis (la fase de VPS), en vez de que yo intente
 adivinarlo.
 
-Antes de empezar, identifica tu distribución (los comandos de paquetes cambian según cuál sea):
-
-```bash
-cat /etc/os-release
-```
-
-- Si dice `ID=ubuntu` o `ID=debian` → usa los bloques marcados **[apt]**.
-- Si dice `ID="almalinux"`, `ID="rocky"` o `ID="centos"` → usa los bloques marcados **[dnf]**.
+El VPS corre **Arch Linux** — usa los bloques marcados **[pacman]** en todo este documento (se
+dejan los bloques `[apt]`/`[dnf]` como referencia, por si este runbook se reutiliza en otro
+servidor, pero no aplican aquí).
 
 ---
 
@@ -75,6 +70,19 @@ Referencia: NIST SP 800-123 §3.1 (autenticación), OWASP ASVS V2 (autenticació
 Referencia: NIST SP 800-123 §3.4 (servicios innecesarios deshabilitados), OWASP ASVS V1
 (arquitectura, superficie de exposición mínima).
 
+**[pacman] Arch Linux — `ufw`** (está en el repo `extra`, no necesita AUR):
+```bash
+sudo pacman -S --needed ufw
+sudo systemctl enable --now ufw
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp      # o el puerto que hayas elegido en 5.1
+sudo ufw allow 80/tcp      # HTTP — necesario para el desafío de certbot
+sudo ufw allow 443/tcp     # HTTPS
+sudo ufw enable
+sudo ufw status verbose
+```
+
 **[apt] Ubuntu/Debian — `ufw`:**
 ```bash
 sudo ufw default deny incoming
@@ -112,6 +120,12 @@ Referencia: OWASP ASVS V2.2.1 (protección contra ataques automatizados de crede
 el rate-limit a nivel de aplicación que ya existe en `/taller-control/login` (entrada #13) con uno
 a nivel de SO para SSH.
 
+**[pacman]:**
+```bash
+sudo pacman -S --needed fail2ban
+sudo systemctl enable --now fail2ban
+```
+
 **[apt]:**
 ```bash
 sudo apt install -y fail2ban
@@ -126,11 +140,14 @@ sudo systemctl enable --now fail2ban
 ```
 
 Configura una jail básica para SSH (no edites `jail.conf` directamente — se sobreescribe en cada
-actualización del paquete):
+actualización del paquete). **En Arch** ssh registra en `journald`, no en un archivo de texto plano
+como `/var/log/auth.log` (eso es lo normal en Debian/Ubuntu) — hace falta `backend = systemd` o la
+jail se queda activa pero nunca detecta nada:
 ```bash
 sudo tee /etc/fail2ban/jail.local <<'EOF'
 [sshd]
 enabled = true
+backend = systemd
 maxretry = 4
 bantime = 1h
 findtime = 10m
@@ -154,12 +171,15 @@ app (`next.config.ts` + `src/proxy.ts`, con nonce por request). No las agregues 
 o quedarán duplicadas con valores distintos.
 
 - [ ] **Certificado TLS real** (si no lo tienes ya — el dominio anterior puede que ya sirva por
-  HTTPS, confírmalo primero):
+  HTTPS, confírmalo primero). **[pacman]** certbot está en el repo `extra`, no en AUR:
   ```bash
+  sudo pacman -S --needed certbot certbot-nginx
   sudo certbot --nginx -d infosistel.com.pe -d www.infosistel.com.pe
   ```
-  Certbot instala un cronjob/timer de renovación automática — confírmalo:
+  A diferencia de Debian/Ubuntu (donde el paquete `certbot` instala el timer solo), en Arch hay que
+  habilitarlo tú mismo la primera vez:
   ```bash
+  sudo systemctl enable --now certbot-renew.timer
   sudo systemctl list-timers | grep certbot
   ```
 
@@ -198,6 +218,58 @@ Referencia: NIST SP 800-123 §3.3 (aplicación oportuna de parches), OWASP Top 1
 (Vulnerable and Outdated Components) — mismo principio que ya se aplicó a nivel de dependencias
 npm en la entrada #5, ahora a nivel de sistema operativo.
 
+**[pacman] — nota importante antes de aplicar esto:** Arch es *rolling release*, no tiene un canal
+separado de "solo parches de seguridad" como Debian (`-security`) o RHEL. Un `pacman -Syu`
+automático actualiza **todo el sistema** de una sola vez — kernel, nginx, node, todo — sin la
+posibilidad de aplicar solo el parche de seguridad puntual. En un servidor de producción con "0
+margen de error" ([[feedback-vps-production-caution]]), un `pacman -Syu` desatendido que rompa algo
+a las 3am sin nadie mirando es peor que el riesgo que se busca mitigar. Por eso este runbook NO
+automatiza la actualización completa; en su lugar automatiza la **detección** de vulnerabilidades
+conocidas con `arch-audit` (mismo principio NIST 800-123 §3.3 — aplicación oportuna de parches —
+adaptado a que en un rolling release "oportuno" significa alertar rápido para que decidas tú cuándo
+actualizar, no actualizar solo):
+
+```bash
+sudo pacman -S --needed arch-audit
+```
+
+Timer diario que revisa paquetes instalados contra la base de datos de vulnerabilidades de
+Arch Linux Security Tracker y deja el resultado en el log de systemd:
+```bash
+sudo tee /etc/systemd/system/arch-audit.service <<'EOF'
+[Unit]
+Description=Revisión diaria de vulnerabilidades conocidas (arch-audit)
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/pacman -Sy --noconfirm
+ExecStart=/usr/bin/arch-audit
+EOF
+sudo tee /etc/systemd/system/arch-audit.timer <<'EOF'
+[Unit]
+Description=Ejecuta arch-audit.service todos los días
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl enable --now arch-audit.timer
+```
+
+- [ ] Verifica que el timer quedó activo y corre una vez a mano para ver el estado real hoy:
+  ```bash
+  systemctl status arch-audit.timer
+  sudo arch-audit
+  ```
+  Si `arch-audit` reporta paquetes vulnerables, decide tú cuándo aplicar
+  `sudo pacman -Syu` para esos paquetes — no lo automaticé por lo explicado arriba. Para la tesis,
+  esto documenta honestamente que V14.2.1 (dependencias actualizadas) en la capa de infraestructura
+  se cumple mediante *detección* automatizada + *aplicación* manual, no auto-parcheo, y por qué esa
+  es la decisión correcta para este tipo de distribución en un servidor de producción.
+
 **[apt]:**
 ```bash
 sudo apt install -y unattended-upgrades
@@ -213,8 +285,8 @@ sudo sed -i 's/^apply_updates = no/apply_updates = yes/' /etc/dnf/automatic.conf
 sudo systemctl enable --now dnf-automatic.timer
 ```
 
-- [ ] Verifica que el timer/servicio quedó activo (`systemctl status unattended-upgrades` o
-  `systemctl status dnf-automatic.timer`).
+- [ ] Verifica que el timer/servicio quedó activo (`systemctl status unattended-upgrades`,
+  `systemctl status dnf-automatic.timer`, o `systemctl status arch-audit.timer` en Arch).
 
 ---
 
@@ -245,11 +317,11 @@ VPS) en vez de tener que suponer el resultado:
 
 ```bash
 echo "== SSH ==" && sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"
-echo "== Firewall ==" && (sudo ufw status verbose 2>/dev/null || sudo firewall-cmd --list-all)
+echo "== Firewall ==" && sudo ufw status verbose
 echo "== fail2ban ==" && sudo fail2ban-client status sshd
 echo "== nginx ==" && sudo nginx -T 2>/dev/null | grep -E "server_tokens|ssl_protocol"
 echo "== TLS cert ==" && sudo certbot certificates
-echo "== updates ==" && (systemctl is-active unattended-upgrades 2>/dev/null || systemctl is-active dnf-automatic.timer)
+echo "== updates ==" && systemctl is-active arch-audit.timer && sudo arch-audit
 echo "== permisos ==" && ls -l /home/zarate/infosistel-v2/.env && ls -ld /home/zarate/infosistel-v2-data
 ```
 
