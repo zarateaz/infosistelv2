@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: "/taller-control/alta-rapida", label: "Alta Rápida" },
   { href: "/taller-control/categorias", label: "Categorías" },
   { href: "/taller-control/reparaciones", label: "Reparaciones" },
+  { href: "/taller-control/servicios", label: "Servicios técnicos" },
   { href: "/taller-control/pedidos", label: "Pedidos" },
   { href: "/taller-control/ventas", label: "Ventas" },
   { href: "/taller-control/facturas", label: "Facturas" },

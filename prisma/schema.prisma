@@ -75,6 +75,63 @@ model Repair {
   @@index([dniIndex])
 }
 
+/**
+ * Registro de servicios técnicos realizados (distinto de Repair: Repair es
+ * el tracker público de progreso por DNI; Technician/Service/ServicePhoto
+ * es el libro interno de trabajos ya ejecutados — cliente, técnico
+ * asignado, monto, forma de pago y evidencia fotográfica).
+ */
+model Technician {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String?
+  specialty String?
+  isActive  Boolean   @default(true)
+  services  Service[]
+  createdAt DateTime  @default(now())
+
+  @@index([isActive])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  clientName  String
+  title       String
+  description String
+  serviceDate DateTime // día del trabajo (fecha, sin hora) — distinto de createdAt/updatedAt
+
+  amount Float
+
+  // "Efectivo" | "Yape" | "Pendiente de pago" — paymentStatus se deriva de
+  // este campo al guardar (Pendiente de pago -> PENDIENTE, cualquier otro
+  // -> PAGADO); marcar como pagado más tarde reemplaza paymentMethod por
+  // "Efectivo" o "Yape" y pasa paymentStatus a PAGADO.
+  paymentMethod String
+  paymentStatus String // "PAGADO" | "PENDIENTE"
+
+  technicianId String
+  technician   Technician     @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  photos       ServicePhoto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([serviceDate])
+  @@index([technicianId])
+  @@index([paymentStatus])
+}
+
+model ServicePhoto {
+  id           String   @id @default(cuid())
+  serviceId    String
+  service      Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  path         String // e.g. "/img/servicios/<uuid>.webp"
+  originalName String
+  uploadedAt   DateTime @default(now())
+
+  @@index([serviceId])
+}
+
 model Sale {
   id        String    @id @default(cuid())
   productId String? // reference to Product, if sold from the catalog (Inventario's "Vender" button) — null for a manual entry

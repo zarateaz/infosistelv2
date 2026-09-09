@@ -12,6 +12,7 @@ import {
   ScanBarcode,
   Tags,
   Wrench,
+  ClipboardList,
   ShoppingBag,
   TrendingUp,
   Receipt,
@@ -29,6 +30,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/alta-rapida": ScanBarcode,
   "/taller-control/categorias": Tags,
   "/taller-control/reparaciones": Wrench,
+  "/taller-control/servicios": ClipboardList,
   "/taller-control/pedidos": ShoppingBag,
   "/taller-control/ventas": TrendingUp,
   "/taller-control/facturas": Receipt,
@@ -50,6 +52,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/alta-rapida": "Inventario",
   "/taller-control/categorias": "Inventario",
   "/taller-control/reparaciones": "Servicio técnico",
+  "/taller-control/servicios": "Servicio técnico",
   "/taller-control/usuarios": "Sistema",
 };
 const GROUP_ORDER = ["General", "Ventas", "Inventario", "Servicio técnico", "Sistema"];
