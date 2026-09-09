@@ -317,11 +317,8 @@ vive en el código, y **cómo verificarlo**.
 ---
 
 ## Pendiente (fases siguientes — no implementado aún)
-- Hardening de infraestructura a nivel de VPS (SSH, firewall, Nginx/TLS, actualizaciones) — Fase 5,
-  la que da nombre a la tesis. v2 ya está desplegado en el VPS real; falta ejecutar el runbook de
-  infraestructura. Runbook listo en `docs/security/fase5-vps-hardening.md` — el usuario lo ejecuta
-  manualmente en el VPS y pega la salida de verificación aquí para documentar el resultado real
-  (próxima entrada disponible: #39).
+- ~~Hardening de infraestructura a nivel de VPS — Fase 5~~ **Completada el 2026-09-08, ver entrada
+  #40.**
 - V8.1.5/V8.1.6 (respaldos periódicos y verificados): corregido dos veces en la auditoría del
   2026-09-08 — primero de "Parcial" a "No cumple" (el repo no tiene `scripts/backup.sh`/`restore.sh`
   como citaba el texto original), y luego de vuelta a "Parcial" al verificar el VPS real:
@@ -896,3 +893,63 @@ despliegue real:
   `docs/deploy-vps.md`) antes de asumir que un `deploy-vps.sh` exitoso significa que todo compiló
   correctamente — el build de Next.js puede completar con éxito aunque un módulo nativo específico
   no se haya reconstruido, porque usa un cliente Prisma ya generado en una corrida anterior.
+
+### 40. Fase 5 completa — hardening de infraestructura VPS (SSH, firewall, TLS, fail2ban, actualizaciones) (2026-09-08)
+- **Qué**: ejecución completa del runbook `docs/security/fase5-vps-hardening.md` contra el VPS real
+  (Hostinger, Arch Linux), la fase que da nombre a la tesis. Resultado por sección:
+  - **5.1 SSH**: `PermitRootLogin no`, `PasswordAuthentication no`, `PubkeyAuthentication yes`,
+    `PermitEmptyPasswords no`, `MaxAuthTries 4` — confirmado con `sshd -T` (config *efectiva*, no
+    solo el archivo). **Hallazgo real durante la implementación**: el `Include
+    /etc/ssh/sshd_config.d/*.conf` del `sshd_config` de Arch carga `50-cloud-init.conf`, que traía
+    `PasswordAuthentication yes` explícito — al estar incluido cerca del inicio del archivo, ganaba
+    sobre lo escrito al final de `sshd_config` (sshd usa la *primera* coincidencia de cada
+    directiva). Corregido editando ese archivo directamente. Verificado con login por clave desde
+    una máquina externa real (no desde el propio VPS) y con un intento de contraseña desde dentro
+    del VPS, que correctamente devolvió `Permission denied (publickey)`.
+  - **5.2 Firewall**: `ufw` fue descartado — bug reproducible de `ufw` en este kernel/Arch
+    (`ERROR: Could not load logging rules`, causa raíz rastreada hasta el código fuente de Python:
+    `update_logging()` intenta listar la cadena `ufw-before-logging-input` antes de que `ufw-init`
+    la haya creado, con cualquier `LOGLEVEL`). Se usó `firewalld` en su lugar. Zona `public`: solo
+    `ssh`, `http`, `https`. Verificado con `nmap -Pn -p 22,80,443,3000,3010` desde una máquina
+    externa: 22/80/443 `open`, 3000/3010 (PM2 directo) `filtered`.
+  - **5.3 fail2ban**: jail `sshd` activa con `backend = systemd` (Arch loguea sshd en `journald`, no
+    en un archivo plano — sin esto la jail queda activa pero nunca detecta nada).
+  - **5.4 nginx/TLS**: certificado real ya emitido (Let's Encrypt, válido hasta 2026-11-22); timer
+    `certbot-renew.timer` no estaba habilitado por defecto en Arch (a diferencia de Debian/Ubuntu) —
+    corregido. `server_tokens off` y `ssl_protocols TLSv1.2 TLSv1.3` ya presentes.
+  - **5.5 Actualizaciones**: `arch-audit` + timer diario (detección, no auto-parcheo — decisión de
+    diseño documentada en el runbook por ser un rolling release en producción). Primera corrida
+    encontró 9 paquetes vulnerables, varios "High risk" (`linux`, `pam`, `grub`, `libxml2`) y dos
+    relevantes a la web (`nginx`, `openssl`). Se aplicó `pacman -Syu` completo — **esto causó un
+    incidente real en producción, ver entrada #39** — resuelto en la misma sesión. Tras el
+    incidente: kernel `7.2.3.arch1-3` corriendo (post-reinicio, confirmado con `uname -r`), nginx y
+    PM2 sobrevivieron el reinicio sin intervención manual (`pm2-zarate.service` + `pm2 save` ya
+    configurados desde la recuperación del incidente anterior). `arch-audit -u` quedó vacío tras el
+    parche — sin actualizaciones adicionales pendientes para lo que Arch tiene publicado hoy.
+  - **5.6 Permisos**: `.env` ya estaba en `600`. **Hallazgo real**: `infosistel-v2-data/dev.db`
+    (la base de datos SQLite en producción) estaba en `644` — legible por cualquier usuario del
+    sistema, exponiendo `Admin.passwordHash` y los índices ciegos HMAC de DNI/teléfono. Corregido a
+    `600` — no afecta a nginx (que nunca lee la base de datos, solo las fotos de producto vía
+    `infosistel-v2-data`, que sí necesita quedarse en `755` porque el proceso de nginx corre como el
+    usuario `http`, distinto de `zarate`, con acceso vía ACL específica en el home, no por `other`).
+- **Por qué**: cierra el objetivo específico de la tesis que quedaba pendiente — hardening a nivel
+  de infraestructura, complementando las Fases 0–4 (aplicación) ya implementadas.
+- **Dónde**: configuración del sistema operativo del VPS (`sshd_config`, `firewalld`, `fail2ban`,
+  `certbot`, `arch-audit`) — ningún archivo de este repositorio, salvo `docs/security/
+  fase5-vps-hardening.md` (actualizado con los bloques `[pacman]` y las correcciones de Arch
+  encontradas durante la ejecución real).
+- **Verificación** (bloque completo corrido en el VPS el 2026-09-08):
+  ```
+  PermitRootLogin no / PasswordAuthentication no / PermitEmptyPasswords no
+  firewalld: public (active) — services: dhcpv6-client http https ssh
+  nmap externo: 22/80/443 open, 3000/3010 filtered
+  fail2ban sshd: activa (0 baneos, recién configurada)
+  certbot: infosistel.com.pe válido hasta 2026-11-22, certbot-renew.timer activo
+  server_tokens off; ssl_protocols TLSv1.2 TLSv1.3;
+  arch-audit -u: vacío (sin parches disponibles pendientes)
+  .env: -rw------- · dev.db: -rw------- · infosistel-v2-data: drwxr-xr-x (deliberado, ver arriba)
+  kernel: 7.2.3.arch1-3 (post-reinicio) · nginx activo · PM2 online sin intervención manual
+  ```
+  Pendiente opcional (no bloquea el cierre de esta fase): correr el test externo de
+  [SSL Labs](https://www.ssllabs.com/ssltest/) contra `infosistel.com.pe` para el anexo de la
+  tesis — el usuario lo hace desde su navegador cuando quiera.
