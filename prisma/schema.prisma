@@ -97,7 +97,7 @@ model Service {
   id          String   @id @default(cuid())
   clientName  String
   title       String
-  description String
+  description String // notas generales opcionales — el detalle de "qué se hizo" vive en `processes`
   serviceDate DateTime // día del trabajo (fecha, sin hora) — distinto de createdAt/updatedAt
 
   amount Float
@@ -110,8 +110,9 @@ model Service {
   paymentStatus String // "PAGADO" | "PENDIENTE"
 
   technicianId String
-  technician   Technician     @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  technician   Technician       @relation(fields: [technicianId], references: [id], onDelete: Restrict)
   photos       ServicePhoto[]
+  processes    ServiceProcess[] // lista itemizada de trabajos/procesos realizados en esta visita
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -119,6 +120,17 @@ model Service {
   @@index([serviceDate])
   @@index([technicianId])
   @@index([paymentStatus])
+}
+
+model ServiceProcess {
+  id          String   @id @default(cuid())
+  serviceId   String
+  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  description String // un paso/proceso realizado, ej. "Cambio de pasta térmica"
+  order       Int      @default(0) // orden de entrada, para mostrarlos en la secuencia en que se registraron
+  createdAt   DateTime @default(now())
+
+  @@index([serviceId])
 }
 
 model ServicePhoto {

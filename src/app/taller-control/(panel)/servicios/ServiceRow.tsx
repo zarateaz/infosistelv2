@@ -13,6 +13,7 @@ import {
   type ServiceFormState,
 } from "./actions";
 import { ServicePhotosField } from "./ServicePhotosField";
+import { ProcessesField } from "./ProcessesField";
 
 const initialState: ServiceFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -76,7 +77,17 @@ export function ServiceRow({ service, technicians }: { service: AdminService; te
           <p className="mt-1 text-xs text-fg-muted">
             {new Date(service.serviceDate).toLocaleDateString("es-PE", { dateStyle: "medium" })}
           </p>
-          <p className="mt-2 max-w-xl text-sm text-fg-muted">{service.description}</p>
+          {service.processes.length > 0 && (
+            <ul className="mt-2 max-w-xl space-y-1">
+              {service.processes.map((process, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-fg-muted">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
+                  {process}
+                </li>
+              ))}
+            </ul>
+          )}
+          {service.description && <p className="mt-2 max-w-xl text-sm italic text-fg-muted">{service.description}</p>}
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
@@ -223,9 +234,11 @@ function EditServiceForm({
           />
         </div>
 
+        <ProcessesField defaultProcesses={service.processes} />
+
         <div className="sm:col-span-2">
-          <label className={labelClass}>Descripción</label>
-          <textarea name="description" defaultValue={service.description} required rows={3} maxLength={2000} className={inputClass} />
+          <label className={labelClass}>Notas generales (opcional)</label>
+          <textarea name="description" defaultValue={service.description} rows={2} maxLength={2000} className={inputClass} />
         </div>
 
         <div>

@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { createService, type ServiceFormState } from "./actions";
 import type { AdminTechnician } from "./actions";
 import { ServicePhotosField } from "./ServicePhotosField";
+import { ProcessesField } from "./ProcessesField";
 
 const initialState: ServiceFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -87,11 +88,13 @@ export function AddServiceForm({ technicians }: { technicians: AdminTechnician[]
           />
         </div>
 
+        <ProcessesField />
+
         <div className="sm:col-span-2">
           <label className={labelClass} htmlFor="description">
-            Descripción del trabajo
+            Notas generales (opcional)
           </label>
-          <textarea id="description" name="description" required rows={3} maxLength={2000} className={inputClass} />
+          <textarea id="description" name="description" rows={2} maxLength={2000} className={inputClass} />
         </div>
 
         <div>

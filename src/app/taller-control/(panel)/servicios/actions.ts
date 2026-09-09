@@ -179,6 +179,7 @@ export interface AdminService {
   clientName: string;
   title: string;
   description: string;
+  processes: string[];
   serviceDate: Date;
   amount: number;
   paymentMethod: string;
@@ -212,11 +213,16 @@ export async function getAdminServices(filters: ServiceFilters = {}): Promise<Ad
               { title: { contains: q.trim() } },
               { description: { contains: q.trim() } },
               { technician: { name: { contains: q.trim() } } },
+              { processes: { some: { description: { contains: q.trim() } } } },
             ],
           }
         : {}),
     },
-    include: { technician: true, photos: { orderBy: { uploadedAt: "asc" } } },
+    include: {
+      technician: true,
+      photos: { orderBy: { uploadedAt: "asc" } },
+      processes: { orderBy: { order: "asc" } },
+    },
     orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }],
   });
 
@@ -225,6 +231,7 @@ export async function getAdminServices(filters: ServiceFilters = {}): Promise<Ad
     clientName: s.clientName,
     title: s.title,
     description: s.description,
+    processes: s.processes.map((p) => p.description),
     serviceDate: s.serviceDate,
     amount: s.amount,
     paymentMethod: s.paymentMethod,
@@ -241,11 +248,16 @@ export interface ServiceFormState {
 }
 
 const photoSchema = z.object({ path: z.string().min(1), originalName: z.string().max(255) });
+const processSchema = z.string().trim().min(1).max(300);
 
 const serviceSchema = z.object({
   clientName: z.string().trim().min(1, "El nombre del cliente es obligatorio.").max(150),
   title: z.string().trim().min(1, "El trabajo realizado es obligatorio.").max(150),
-  description: z.string().trim().min(1, "La descripción del trabajo es obligatoria.").max(2000),
+  description: z.string().trim().max(2000).optional(),
+  processes: z
+    .array(processSchema)
+    .min(1, "Registra al menos un proceso realizado.")
+    .max(30, "Demasiados procesos — máximo 30 por servicio."),
   serviceDate: z.string().trim().min(1, "La fecha del servicio es obligatoria."),
   amount: z.coerce.number().min(0, "El monto no puede ser negativo."),
   paymentMethod: z.enum(PAYMENT_METHODS, { message: "Forma de pago inválida." }),
@@ -267,6 +279,21 @@ function parsePhotosField(raw: FormDataEntryValue | null): { path: string; origi
   }
 }
 
+/** Same JSON-in-hidden-input convention as parsePhotosField — the client
+ *  (ProcessesField) keeps a dynamic list of rows and serializes it on every
+ *  change, since a plain <form> can't submit a variable-length list of
+ *  same-named text inputs through a server action any other way. */
+function parseProcessesField(raw: FormDataEntryValue | null): string[] {
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const decoded = JSON.parse(raw);
+    if (!Array.isArray(decoded)) return [];
+    return decoded.filter((v): v is string => typeof v === "string");
+  } catch {
+    return [];
+  }
+}
+
 export async function createService(
   _prevState: ServiceFormState,
   formData: FormData
@@ -275,6 +302,7 @@ export async function createService(
     clientName: formData.get("clientName"),
     title: formData.get("title"),
     description: formData.get("description"),
+    processes: parseProcessesField(formData.get("processes")),
     serviceDate: formData.get("serviceDate"),
     amount: formData.get("amount"),
     paymentMethod: formData.get("paymentMethod"),
@@ -290,12 +318,18 @@ export async function createService(
     data: {
       clientName: sanitizeName(parsed.data.clientName, 150),
       title: sanitizeName(parsed.data.title, 150),
-      description: parsed.data.description,
+      description: parsed.data.description ?? "",
       serviceDate: new Date(parsed.data.serviceDate),
       amount: Math.round(parsed.data.amount * 100) / 100,
       paymentMethod: parsed.data.paymentMethod,
       paymentStatus: statusFor(parsed.data.paymentMethod),
       technicianId: parsed.data.technicianId,
+      processes: {
+        create: parsed.data.processes.map((description, order) => ({
+          description: sanitizeName(description, 300),
+          order,
+        })),
+      },
       photos: {
         create: (parsed.data.photos ?? []).map((p) => ({
           path: p.path,
@@ -318,6 +352,7 @@ export async function updateService(
     clientName: formData.get("clientName"),
     title: formData.get("title"),
     description: formData.get("description"),
+    processes: parseProcessesField(formData.get("processes")),
     serviceDate: formData.get("serviceDate"),
     amount: formData.get("amount"),
     paymentMethod: formData.get("paymentMethod"),
@@ -334,12 +369,23 @@ export async function updateService(
     data: {
       clientName: sanitizeName(parsed.data.clientName, 150),
       title: sanitizeName(parsed.data.title, 150),
-      description: parsed.data.description,
+      description: parsed.data.description ?? "",
       serviceDate: new Date(parsed.data.serviceDate),
       amount: Math.round(parsed.data.amount * 100) / 100,
       paymentMethod: parsed.data.paymentMethod,
       paymentStatus: statusFor(parsed.data.paymentMethod),
       technicianId: parsed.data.technicianId,
+      // The itemized process list is the edit's source of truth each time
+      // (delete-and-recreate) — unlike photos, there's no separate
+      // "remove one process" action, so the submitted list must fully
+      // replace the previous one or a removed row would never disappear.
+      processes: {
+        deleteMany: {},
+        create: parsed.data.processes.map((description, order) => ({
+          description: sanitizeName(description, 300),
+          order,
+        })),
+      },
       // Edits only ever ADD photos (matches the original tool's behavior) —
       // removing one is its own action (deleteServicePhoto) so a half-typed
       // edit can never silently drop evidence already on file.
