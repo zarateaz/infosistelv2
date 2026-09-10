@@ -2,6 +2,27 @@ import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
+// Feeds the system prompt's category list at request time instead of
+// hardcoding it in route.ts — categories are admin-editable
+// (/taller-control/categorias), so a hardcoded list silently goes stale
+// the moment someone adds or renames one (caught "WIRELESS ROUTERS" and
+// "SIN CATEGORÍA" missing from the old static list). "SIN CATEGORÍA" is
+// filtered out — it's the internal catch-all for unsorted products, not
+// something to describe to a customer as a browsable category.
+export async function getCategoryNames(): Promise<string[]> {
+  const categories = await prisma.category.findMany({
+    where: { name: { not: "SIN CATEGORÍA" } },
+    orderBy: { name: "asc" },
+    select: { name: true },
+  });
+  return categories.map((c) => toSentenceCase(c.name));
+}
+
+function toSentenceCase(s: string): string {
+  const lower = s.toLocaleLowerCase("es-PE");
+  return lower.charAt(0).toLocaleUpperCase("es-PE") + lower.slice(1);
+}
+
 // Lets the chatbot answer price/stock questions against the real catalog
 // instead of guessing or blanket-deferring to WhatsApp. Read-only, public
 // data only — same field allowlist as the /tienda queries (no costPrice).
