@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import ChatBot from "@/components/ChatBotLazy";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { WhatsAppButton } from "@/components/WhatsAppButton";
 
 /**
  * The marketing Navbar/Footer/chat widget wrap every page from the root
@@ -22,6 +23,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
       <Navbar />
       {children}
       <Footer />
+      <WhatsAppButton />
       <ChatBot />
     </>
   );
