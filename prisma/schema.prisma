@@ -242,4 +242,14 @@ model Admin {
   passwordHash String // "salt:hash", both hex — see src/lib/auth.ts (scrypt, not bcrypt: no native deps)
   role         String   @default("admin") // "admin" or "superadmin" — only superadmin can manage other admins (Usuarios section)
   createdAt    DateTime @default(now())
+
+  // Fase 6 — MFA (V4.3.1). AES-256-GCM ciphertext via lib/crypto.ts, same
+  // pattern as Order.customerPhone. Set (with totpEnabled=false) while the
+  // user is mid-enrollment, so a QR they never confirm doesn't half-protect
+  // the account.
+  totpSecret        String?
+  totpEnabled       Boolean @default(false)
+  // Comma-joined "salt:hash" entries (lib/auth.ts hashPassword, reused as-is
+  // — no new hash primitive), one per unused one-time recovery code.
+  recoveryCodesHash String?
 }

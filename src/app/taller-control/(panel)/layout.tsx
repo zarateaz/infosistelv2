@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: "/taller-control/pedidos", label: "Pedidos" },
   { href: "/taller-control/ventas", label: "Ventas" },
   { href: "/taller-control/facturas", label: "Facturas" },
+  { href: "/taller-control/seguridad", label: "Seguridad" },
 ];
 
 const SUPERADMIN_NAV_LINKS = [{ href: "/taller-control/usuarios", label: "Usuarios" }];

@@ -953,3 +953,30 @@ despliegue real:
   Pendiente opcional (no bloquea el cierre de esta fase): correr el test externo de
   [SSL Labs](https://www.ssllabs.com/ssltest/) contra `infosistel.com.pe` para el anexo de la
   tesis — el usuario lo hace desde su navegador cuando quiera.
+
+### 41. MFA (TOTP) en el panel admin — cierra V4.3.1 (2026-09-10)
+- **Qué**: segundo factor por TOTP (RFC 6238, `otpauth`) para cualquier cuenta `Admin`, con 8
+  códigos de recuperación de un solo uso. `Admin.totpSecret` se cifra con el mismo AES-256-GCM de
+  `lib/crypto.ts` que ya protege `Order.customerPhone` (Fase 4); los códigos de recuperación se
+  hashean con `hashPassword`/`verifyPassword` de `lib/auth.ts` (scrypt), sin ninguna primitiva
+  nueva. El login (`login/actions.ts`) no emite la cookie de sesión real hasta que el segundo
+  factor se confirma: una cuenta con `totpEnabled` pasa primero por una cookie httpOnly de
+  "pendiente" (JWT de 5 min, claim `mfaPending` que `verifySessionToken`/`proxy.ts` nunca aceptan
+  como sesión válida) antes de llegar a `verifyMfaAction`. Cada admin se inscribe desde
+  `/taller-control/seguridad` (QR + clave manual, un código confirma y revela los códigos de
+  recuperación una sola vez); una cuenta sin inscribir sigue entrando en un solo paso, así que
+  ninguna cuenta existente quedó bloqueada por el cambio.
+- **Por qué**: el propio Capítulo III/VI de la tesis dejaba V4.3.1 como "No cumple" y como
+  recomendación pendiente. El usuario planea sumar pasarela de pagos y facturación electrónica —
+  ya en producción vía NubeFacT (ver commit `88ff877`) — y pidió explícitamente adoptar los
+  controles Nivel 3 de mayor impacto antes de eso, manteniendo Nivel 2 como meta ASVS formal (ver
+  `docs/security/hardening-log.md` y la sección "Hacia el Nivel 3" de la tesis). MFA en la única
+  cuenta administrativa es el control de mayor relación impacto/esfuerzo de esa lista.
+- **Dónde**: `prisma/schema.prisma` (migración `20260910164115_add_admin_mfa`), `src/lib/totp.ts`
+  (nuevo), `src/lib/session.ts` (cookie/JWT de MFA pendiente), `src/app/taller-control/login/
+  actions.ts` y `page.tsx`, `src/app/taller-control/(panel)/seguridad/` (nuevo), `src/lib/
+  requireSession.ts` (nuevo, extraído de `requireSuperAdmin.ts` para reuso).
+- **Verificación**: `npm run build` limpio (0 errores TS). Probado en dev con una cuenta
+  descartable (`mfatest`, borrada al terminar): inscripción con QR real, código incorrecto
+  rechazado, código TOTP válido entra, código de recuperación válido entra y se consume (8 → 7
+  hashes restantes verificado directo en `dev.db`), cuenta sin MFA sigue entrando en un paso.

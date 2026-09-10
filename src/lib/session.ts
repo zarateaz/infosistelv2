@@ -46,3 +46,33 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     return null;
   }
 }
+
+// Fase 6 — MFA (V4.3.1). A separate cookie/claim shape from the real
+// session above, on purpose: verifySessionToken() rejects this token
+// outright (no `username`/`role` claims), so proxy.ts can never mistake a
+// password-only, not-yet-second-factor login for an authenticated one.
+export const MFA_PENDING_COOKIE = "infosistel_mfa_pending";
+const MFA_PENDING_TTL_SECONDS = 60 * 5; // 5 min — just long enough to type a code
+
+interface MfaPendingPayload extends JWTPayload {
+  sub: string; // Admin.id
+  mfaPending: true;
+}
+
+export async function createMfaPendingToken(adminId: string): Promise<string> {
+  return new SignJWT({ sub: adminId, mfaPending: true } satisfies MfaPendingPayload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${MFA_PENDING_TTL_SECONDS}s`)
+    .sign(getSecretKey());
+}
+
+export async function verifyMfaPendingToken(token: string): Promise<{ sub: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.mfaPending !== true || typeof payload.sub !== "string") return null;
+    return { sub: payload.sub };
+  } catch {
+    return null;
+  }
+}
