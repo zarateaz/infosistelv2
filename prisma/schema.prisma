@@ -236,6 +236,46 @@ model CashboxPeriod {
   updatedAt   DateTime @updatedAt
 }
 
+/**
+ * Cuentas por cobrar — dinero que un cliente todavía debe por una venta o
+ * servicio ya facturado. `collected` se actualiza con cada abono parcial;
+ * saldo, estado (VENCIDO/PENDIENTE/PAGADO) y días vencidos se derivan en
+ * actions.ts a partir de `total - collected` y `dueDate` contra la fecha
+ * actual — nunca se persisten, para que nunca queden desincronizados.
+ */
+model Receivable {
+  id            String   @id @default(cuid())
+  issueDate     DateTime @default(now())
+  clientName    String
+  ruc           String?
+  documentType  String? // "FACTURA" | "BOLETA" | null (sin comprobante)
+  concept       String
+  total         Float
+  collected     Float    @default(0)
+  dueDate       DateTime
+  paymentMethod String? // null hasta que se registre el cobro
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/** Cuentas por pagar — el espejo de Receivable, para deudas con proveedores. */
+model Payable {
+  id            String   @id @default(cuid())
+  issueDate     DateTime @default(now())
+  providerName  String
+  ruc           String?
+  documentType  String?
+  concept       String
+  total         Float
+  paid          Float    @default(0)
+  dueDate       DateTime
+  paymentMethod String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model Admin {
   id           String   @id @default(cuid())
   username     String   @unique

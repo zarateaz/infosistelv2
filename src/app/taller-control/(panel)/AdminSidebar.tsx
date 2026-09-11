@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   TrendingUp,
   Receipt,
+  HandCoins,
   Users,
   LogOut,
   Menu,
@@ -34,6 +35,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/pedidos": ShoppingBag,
   "/taller-control/ventas": TrendingUp,
   "/taller-control/facturas": Receipt,
+  "/taller-control/cuentas": HandCoins,
   "/taller-control/usuarios": Users,
 };
 
@@ -47,6 +49,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/pedidos": "Ventas",
   "/taller-control/ventas": "Ventas",
   "/taller-control/facturas": "Ventas",
+  "/taller-control/cuentas": "Ventas",
   "/taller-control/inventario": "Inventario",
   "/taller-control/productos": "Inventario",
   "/taller-control/alta-rapida": "Inventario",
