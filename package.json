@@ -47,5 +47,12 @@
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true,
+    "prisma@7.10.0": true,
+    "unrs-resolver@1.12.2": true,
+    "@prisma/engines@7.10.0": true
   }
 }
