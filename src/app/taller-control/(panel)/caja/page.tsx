@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Banknote, Smartphone } from "lucide-react";
 import {
   getCashboxTransactions,
   getCashboxTransactionsForMonth,
@@ -14,6 +14,18 @@ import { TransactionRow } from "./TransactionRow";
 import { PeriodHeader } from "./PeriodHeader";
 import { MonthlyReport } from "./MonthlyReport";
 import { MonthSelector } from "./MonthSelector";
+import { StatCard, type StatTint } from "../StatCard";
+
+const METHOD_ICON: Record<(typeof PAYMENT_METHODS)[number], typeof Banknote> = {
+  EFECTIVO: Banknote,
+  "YAPE 1": Smartphone,
+  "YAPE 2": Smartphone,
+};
+const METHOD_TINT: Record<(typeof PAYMENT_METHODS)[number], StatTint> = {
+  EFECTIVO: "emerald",
+  "YAPE 1": "violet",
+  "YAPE 2": "fuchsia",
+};
 
 function adjacentMonth(month: string, delta: number): string {
   const [year, monthNum] = month.split("-").map(Number);
@@ -52,12 +64,15 @@ export default async function AdminCashboxPage({
         <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Caja</h1>
         <p className="mt-1 text-sm text-fg-muted">Saldo actual: S/. {balance.toFixed(2)}</p>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {PAYMENT_METHODS.map((method) => (
-            <div key={method} className="admin-glass rounded-[var(--radius-lg)] p-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-fg-muted">{method}</p>
-              <p className="mt-2 text-xl font-bold text-fg">S/. {totalsByMethod[method].toFixed(2)}</p>
-            </div>
+            <StatCard
+              key={method}
+              icon={METHOD_ICON[method]}
+              label={method}
+              value={`S/. ${totalsByMethod[method].toFixed(2)}`}
+              tint={METHOD_TINT[method]}
+            />
           ))}
         </div>
 

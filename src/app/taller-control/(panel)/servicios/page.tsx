@@ -4,6 +4,7 @@ import { getAdminServices, getServiceStats, getTechnicians, type StatsPeriod } f
 import { AddServiceForm } from "./AddServiceForm";
 import { TechnicianManager } from "./TechnicianManager";
 import { ServiceRow } from "./ServiceRow";
+import { StatCard } from "../StatCard";
 
 const PERIODS: { value: StatsPeriod; label: string }[] = [
   { value: "hoy", label: "Hoy" },
@@ -42,19 +43,22 @@ export default async function AdminServiciosPage({
       icon: ClipboardList,
       label: `Servicios (${PERIODS.find((p) => p.value === period)?.label.toLowerCase()})`,
       value: stats.periodCount,
+      tint: "blue" as const,
     },
     {
       icon: Wallet,
       label: `Cobrado (${PERIODS.find((p) => p.value === period)?.label.toLowerCase()})`,
       value: `S/. ${stats.periodPaidAmount.toFixed(2)}`,
+      tint: "emerald" as const,
     },
     {
       icon: Clock3,
       label: "Pendiente de cobro (total)",
       value: `S/. ${stats.pendingAmount.toFixed(2)}`,
       warn: stats.pendingAmount > 0,
+      tint: "amber" as const,
     },
-    { icon: UserCheck, label: "Técnicos activos", value: stats.activeTechnicians },
+    { icon: UserCheck, label: "Técnicos activos", value: stats.activeTechnicians, tint: "violet" as const },
   ];
 
   return (
@@ -84,19 +88,7 @@ export default async function AdminServiciosPage({
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((s) => (
-          <div key={s.label} className="admin-glass rounded-[var(--radius-lg)] p-5">
-            <div
-              className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-inner ${
-                s.warn
-                  ? "bg-red-50 text-red-600 shadow-[0_0_16px_-4px_rgba(220,38,38,0.35)]"
-                  : "bg-accent/10 text-accent shadow-[0_0_16px_-4px_rgba(10,95,219,0.35)]"
-              }`}
-            >
-              <s.icon size={17} strokeWidth={1.75} />
-            </div>
-            <p className="mt-4 text-2xl font-bold text-fg">{s.value}</p>
-            <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-fg-muted">{s.label}</p>
-          </div>
+          <StatCard key={s.label} icon={s.icon} label={s.label} value={s.value} tint={s.tint} warn={s.warn} />
         ))}
       </div>
 

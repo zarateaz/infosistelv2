@@ -2,11 +2,12 @@ import { DollarSign, TrendingUp, PieChart } from "lucide-react";
 import { getSaleStats, getRecentSales, deleteSale } from "./actions";
 import { DeleteSaleButton } from "./DeleteSaleButton";
 import { InvoiceCell } from "./InvoiceCell";
+import { StatCard, type StatTint } from "../StatCard";
 
-const STAT_CARDS = [
-  { key: "day" as const, label: "Ventas de hoy", icon: TrendingUp },
-  { key: "week" as const, label: "Semana actual", icon: PieChart },
-  { key: "month" as const, label: "Este mes", icon: DollarSign },
+const STAT_CARDS: { key: "day" | "week" | "month"; label: string; icon: typeof TrendingUp; tint: StatTint }[] = [
+  { key: "day", label: "Ventas de hoy", icon: TrendingUp, tint: "emerald" },
+  { key: "week", label: "Semana actual", icon: PieChart, tint: "violet" },
+  { key: "month", label: "Este mes", icon: DollarSign, tint: "cyan" },
 ];
 
 export default async function AdminSalesPage() {
@@ -17,20 +18,18 @@ export default async function AdminSalesPage() {
       <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Ventas</h1>
       <p className="mt-1 text-sm text-fg-muted">Resumen de ingresos y ganancias.</p>
 
-      <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
-        {STAT_CARDS.map(({ key, label, icon: Icon }) => {
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {STAT_CARDS.map(({ key, label, icon, tint }) => {
           const bucket = stats[key];
           return (
-            <div key={key} className="admin-glass rounded-[var(--radius-lg)] p-6">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
-                <Icon size={18} />
-              </div>
-              <p className="mt-4 text-2xl font-bold text-fg">S/. {bucket.total.toFixed(2)}</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-fg-muted">{label}</p>
-              <p className="mt-2 text-xs text-fg-muted">
-                Ganancia: S/. {bucket.profit.toFixed(2)} · {bucket.count} venta{bucket.count === 1 ? "" : "s"}
-              </p>
-            </div>
+            <StatCard
+              key={key}
+              icon={icon}
+              label={label}
+              value={`S/. ${bucket.total.toFixed(2)}`}
+              sub={`Ganancia: S/. ${bucket.profit.toFixed(2)} · ${bucket.count} venta${bucket.count === 1 ? "" : "s"}`}
+              tint={tint}
+            />
           );
         })}
       </div>

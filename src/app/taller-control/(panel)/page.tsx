@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Package, ShoppingBag, TrendingUp, AlertTriangle, Wrench, Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getAdminOrders } from "./pedidos/actions";
+import { StatCard, type StatTint } from "./StatCard";
 
 const LOW_STOCK_THRESHOLD = 3;
 
@@ -31,7 +32,7 @@ export default async function AdminDashboardPage() {
 
   const todayCajaTotal = (todayIncomeAgg._sum.amount ?? 0) - (todayExpenseAgg._sum.amount ?? 0);
 
-  const stats = [
+  const stats: { icon: typeof Package; label: string; value: string | number; href: string; tint: StatTint }[] = [
     { icon: Package, label: "Productos", value: productCount, href: "/taller-control/productos", tint: "blue" },
     { icon: ShoppingBag, label: "Pedidos", value: orderCount, href: "/taller-control/pedidos", tint: "violet" },
     {
@@ -56,20 +57,7 @@ export default async function AdminDashboardPage() {
       tint: "amber",
     },
     { icon: Wallet, label: "Caja de hoy", value: `S/. ${todayCajaTotal.toFixed(2)}`, href: "/taller-control/caja", tint: "cyan" },
-  ] as const;
-
-  const TINTS: Record<(typeof stats)[number]["tint"], string> = {
-    blue: "bg-accent/10 text-accent shadow-[0_0_20px_-6px_rgba(10,95,219,0.5)] group-hover:bg-accent group-hover:text-accent-fg",
-    violet:
-      "bg-violet-500/10 text-violet-600 shadow-[0_0_20px_-6px_rgba(139,92,246,0.5)] group-hover:bg-violet-500 group-hover:text-white",
-    emerald:
-      "bg-emerald-500/10 text-emerald-600 shadow-[0_0_20px_-6px_rgba(16,185,129,0.5)] group-hover:bg-emerald-500 group-hover:text-white",
-    amber:
-      "bg-amber-500/10 text-amber-600 shadow-[0_0_20px_-6px_rgba(245,158,11,0.5)] group-hover:bg-amber-500 group-hover:text-white",
-    cyan: "bg-cyan-500/10 text-cyan-600 shadow-[0_0_20px_-6px_rgba(6,182,212,0.5)] group-hover:bg-cyan-500 group-hover:text-white",
-    red: "bg-red-500/10 text-red-600 shadow-[0_0_20px_-6px_rgba(220,38,38,0.5)] group-hover:bg-red-500 group-hover:text-white",
-    slate: "bg-fg-muted/10 text-fg-muted shadow-none group-hover:bg-fg-muted group-hover:text-white",
-  };
+  ];
 
   return (
     <div>
@@ -77,21 +65,7 @@ export default async function AdminDashboardPage() {
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (
-          <Link
-            key={s.label}
-            href={s.href}
-            className="group admin-glass flex items-center gap-4 rounded-[var(--radius-lg)] p-5 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.015] hover:border-accent/40 hover:shadow-xl hover:shadow-accent/10"
-          >
-            <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-colors ${TINTS[s.tint]}`}
-            >
-              <s.icon size={20} strokeWidth={1.75} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-display text-2xl font-extrabold tracking-tight text-fg">{s.value}</p>
-              <p className="mt-0.5 truncate text-[11px] font-bold uppercase tracking-wider text-fg-muted">{s.label}</p>
-            </div>
-          </Link>
+          <StatCard key={s.label} icon={s.icon} label={s.label} value={s.value} href={s.href} tint={s.tint} />
         ))}
       </div>
 

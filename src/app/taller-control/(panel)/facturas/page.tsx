@@ -5,6 +5,7 @@ import { monthKey } from "./month";
 import { InvoiceActions } from "./InvoiceActions";
 import { NewInvoiceButton } from "./NewInvoiceButton";
 import { MonthSelector } from "./MonthSelector";
+import { StatCard, type StatTint } from "../StatCard";
 
 function adjacentMonth(month: string, delta: number): string {
   const [year, monthNum] = month.split("-").map(Number);
@@ -35,11 +36,23 @@ export default async function AdminInvoicesPage({
   const boletas = invoices.filter((i) => i.tipo === "BOLETA").length;
   const facturas = invoices.filter((i) => i.tipo === "FACTURA").length;
 
-  const STAT_CARDS = [
-    { label: "Comprobantes emitidos", value: String(invoices.length), icon: FileStack, sub: `${boletas} boletas · ${facturas} facturas` },
-    { label: "Aceptados por SUNAT", value: String(aceptadas), icon: FileCheck2, sub: null },
-    { label: "Con error", value: String(conError), icon: FileX2, sub: null },
-    { label: "Total facturado", value: `S/. ${totalFacturado.toFixed(2)}`, icon: Wallet, sub: "Solo comprobantes aceptados" },
+  const STAT_CARDS: { label: string; value: string; icon: typeof FileStack; sub: string | null; tint: StatTint }[] = [
+    {
+      label: "Comprobantes emitidos",
+      value: String(invoices.length),
+      icon: FileStack,
+      sub: `${boletas} boletas · ${facturas} facturas`,
+      tint: "blue",
+    },
+    { label: "Aceptados por SUNAT", value: String(aceptadas), icon: FileCheck2, sub: null, tint: "emerald" },
+    { label: "Con error", value: String(conError), icon: FileX2, sub: null, tint: conError > 0 ? "red" : "slate" },
+    {
+      label: "Total facturado",
+      value: `S/. ${totalFacturado.toFixed(2)}`,
+      icon: Wallet,
+      sub: "Solo comprobantes aceptados",
+      tint: "cyan",
+    },
   ];
 
   return (
@@ -73,16 +86,9 @@ export default async function AdminInvoicesPage({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {STAT_CARDS.map(({ label, value, icon: Icon, sub }) => (
-          <div key={label} className="admin-glass rounded-[var(--radius-lg)] p-5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
-              <Icon size={16} />
-            </div>
-            <p className="mt-3 text-xl font-bold text-fg">{value}</p>
-            <p className="text-xs font-bold uppercase tracking-wider text-fg-muted">{label}</p>
-            {sub && <p className="mt-1 text-xs text-fg-muted">{sub}</p>}
-          </div>
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {STAT_CARDS.map(({ label, value, icon, sub, tint }) => (
+          <StatCard key={label} icon={icon} label={label} value={value} sub={sub} tint={tint} />
         ))}
       </div>
 
