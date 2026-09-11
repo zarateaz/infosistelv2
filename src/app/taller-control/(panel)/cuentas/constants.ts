@@ -1,4 +1,7 @@
-export const PAYMENT_METHODS = ["EFECTIVO", "YAPE", "PLIN", "TRANSFERENCIA", "DEPÓSITO"] as const;
+// Orden y set exactos del dropdown real usado en la hoja de cálculo del
+// negocio (Yape/Plin/Transferencia/Efectivo/Depósito/Otro) — específico de
+// Cuentas por Cobrar/Pagar, no toca los métodos de Caja (EFECTIVO/YAPE 1/YAPE 2).
+export const PAYMENT_METHODS = ["YAPE", "PLIN", "TRANSFERENCIA", "EFECTIVO", "DEPÓSITO", "OTRO"] as const;
 
 export const DOCUMENT_TYPES = ["FACTURA", "BOLETA", "SIN COMPROBANTE"] as const;
 

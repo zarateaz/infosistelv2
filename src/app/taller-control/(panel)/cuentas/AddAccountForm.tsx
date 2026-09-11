@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { createReceivable, createPayable, type AccountFormState } from "./actions";
-import { DOCUMENT_TYPES } from "./constants";
+import { DOCUMENT_TYPES, PAYMENT_METHODS } from "./constants";
 
 const initialState: AccountFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -83,6 +83,25 @@ export function AddAccountForm({ kind }: { kind: "cobrar" | "pagar" }) {
             Total (S/.)
           </label>
           <input id="total" name="total" type="number" min={0.01} step={0.01} required className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="settled">
+            {kind === "cobrar" ? "Cobrado" : "Pagado"} (S/.) — opcional
+          </label>
+          <input id="settled" name="settled" type="number" min={0} step={0.01} defaultValue={0} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="paymentMethod">
+            Medio de {kind === "cobrar" ? "cobro" : "pago"} — opcional
+          </label>
+          <select id="paymentMethod" name="paymentMethod" defaultValue="" className={inputClass}>
+            <option value="">Sin definir</option>
+            {PAYMENT_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className={labelClass} htmlFor="notes">
