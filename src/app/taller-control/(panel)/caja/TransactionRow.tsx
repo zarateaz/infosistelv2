@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
+import { toDateInputValue } from "./month";
 
 const cellInputClass =
   "w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm outline-none focus:border-accent focus:bg-bg";
@@ -12,6 +13,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
   const [description, setDescription] = useState(transaction.description);
   const [amount, setAmount] = useState(transaction.amount);
   const [method, setMethod] = useState(transaction.paymentMethod);
+  const [date, setDate] = useState(toDateInputValue(new Date(transaction.date)));
   const [isPending, startTransition] = useTransition();
 
   const saveField = (patch: Parameters<typeof updateTransaction>[1]) => {
@@ -28,7 +30,13 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
   return (
     <tr className="border-b border-border last:border-0">
       <td className="px-5 py-2.5 text-fg-muted">
-        {new Date(transaction.date).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          onBlur={() => date !== toDateInputValue(new Date(transaction.date)) && saveField({ date })}
+          className={cellInputClass}
+        />
       </td>
       <td className="px-5 py-2.5">
         <span

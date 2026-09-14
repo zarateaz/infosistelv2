@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { PAYMENT_METHODS } from "./constants";
-import { monthKey } from "./month";
+import { monthKey, parseDateInput } from "./month";
 
 export interface AdminTransaction {
   id: string;
@@ -88,11 +88,21 @@ export interface TransactionFormState {
   error?: string;
 }
 
+const dateField = z.string().transform((v, ctx) => {
+  const parsed = parseDateInput(v);
+  if (!parsed) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Fecha inválida." });
+    return z.NEVER;
+  }
+  return parsed;
+});
+
 const transactionSchema = z.object({
   description: z.string().trim().min(1, "La descripción es obligatoria").max(200),
   type: z.enum(["INCOME", "EXPENSE"]),
   amount: z.coerce.number().positive("El monto debe ser mayor a 0"),
   paymentMethod: z.enum(PAYMENT_METHODS),
+  date: dateField,
   notes: z
     .string()
     .trim()
@@ -110,6 +120,7 @@ export async function createTransaction(
     type: formData.get("type"),
     amount: formData.get("amount"),
     paymentMethod: formData.get("paymentMethod"),
+    date: formData.get("date"),
     notes: formData.get("notes"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
@@ -123,12 +134,21 @@ const updateSchema = z.object({
   description: z.string().trim().min(1).max(200).optional(),
   amount: z.coerce.number().positive().optional(),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
+  date: dateField.optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export async function updateTransaction(
   id: string,
-  patch: z.infer<typeof updateSchema>
+  // Input shape, not z.infer's output shape: callers pass a raw
+  // <input type="date"> string, which dateField below converts to a Date.
+  patch: {
+    description?: string;
+    amount?: number;
+    paymentMethod?: (typeof PAYMENT_METHODS)[number];
+    date?: string;
+    notes?: string | null;
+  }
 ): Promise<{ error?: string }> {
   const parsed = updateSchema.safeParse(patch);
   if (!parsed.success) return { error: "Valor inválido." };

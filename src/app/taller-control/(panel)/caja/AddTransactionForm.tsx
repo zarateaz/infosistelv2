@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { createTransaction, type TransactionFormState } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
+import { toDateInputValue } from "./month";
 
 const initialState: TransactionFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -12,21 +13,44 @@ const inputClass =
 export function AddTransactionForm() {
   const [state, formAction, isPending] = useActionState(createTransaction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  // Kept outside the form reset below so registering several movements in a
+  // row (e.g. backfilling all of September) doesn't snap the date back to
+  // today after every submit.
+  const [date, setDate] = useState(() => toDateInputValue());
 
   useEffect(() => {
-    if (!state.error && !isPending) formRef.current?.reset();
-  }, [state, isPending]);
+    if (!state.error && !isPending) {
+      formRef.current?.reset();
+      if (dateInputRef.current) dateInputRef.current.value = date;
+    }
+  }, [state, isPending, date]);
 
   return (
     <div className="admin-glass rounded-[var(--radius-lg)] p-6">
       <h2 className="font-display text-lg font-bold text-fg">Registrar movimiento</h2>
 
-      <form ref={formRef} action={formAction} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <form ref={formRef} action={formAction} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="sm:col-span-2 lg:col-span-1">
           <label className={labelClass} htmlFor="description">
             Descripción
           </label>
           <input id="description" name="description" type="text" required maxLength={200} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="date">
+            Fecha
+          </label>
+          <input
+            ref={dateInputRef}
+            id="date"
+            name="date"
+            type="date"
+            required
+            defaultValue={date}
+            onChange={(e) => setDate(e.target.value)}
+            className={inputClass}
+          />
         </div>
         <div>
           <label className={labelClass} htmlFor="type">
@@ -56,9 +80,9 @@ export function AddTransactionForm() {
           </select>
         </div>
 
-        {state.error && <p className="text-sm font-medium text-red-600 sm:col-span-2 lg:col-span-4">{state.error}</p>}
+        {state.error && <p className="text-sm font-medium text-red-600 sm:col-span-2 lg:col-span-5">{state.error}</p>}
 
-        <div className="sm:col-span-2 lg:col-span-4">
+        <div className="sm:col-span-2 lg:col-span-5">
           <button
             type="submit"
             disabled={isPending}
