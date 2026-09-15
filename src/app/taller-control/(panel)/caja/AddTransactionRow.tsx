@@ -92,7 +92,7 @@ export function AddTransactionRow() {
           <button
             type="button"
             onClick={startAdd}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border-strong px-3 py-1.5 text-xs font-bold text-fg-muted transition-colors hover:border-accent hover:text-accent"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-accent/50 bg-accent/5 px-3 py-1.5 text-xs font-bold text-accent transition-colors hover:border-accent hover:bg-accent/10"
           >
             <Plus size={14} /> Agregar movimiento
           </button>
