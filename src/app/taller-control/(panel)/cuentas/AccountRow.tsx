@@ -14,6 +14,7 @@ import {
 } from "./actions";
 import { PAYMENT_METHODS, DOCUMENT_TYPES, STATUS_STYLES } from "./constants";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { AutoGrowInput } from "../AutoGrowInput";
 
 // timeZone: "UTC" pins this to the calendar day the date represents,
 // regardless of which machine renders it — issueDate/dueDate come from
@@ -252,7 +253,7 @@ export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }
               </div>
               <div>
                 <label className={fieldLabel}>Concepto</label>
-                <input
+                <AutoGrowInput
                   value={draft.concept}
                   onChange={(e) => setDraft({ ...draft, concept: e.target.value })}
                   className={fieldClass}
@@ -315,7 +316,7 @@ export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }
               </div>
               <div className="sm:col-span-2 lg:col-span-3">
                 <label className={fieldLabel}>Observaciones</label>
-                <input
+                <AutoGrowInput
                   value={draft.notes ?? ""}
                   onChange={(e) => setDraft({ ...draft, notes: e.target.value || null })}
                   className={fieldClass}

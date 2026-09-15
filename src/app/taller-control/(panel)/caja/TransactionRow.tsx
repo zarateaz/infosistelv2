@@ -6,6 +6,7 @@ import { updateTransaction, deleteTransaction, type AdminTransaction } from "./a
 import { PAYMENT_METHODS } from "./constants";
 import { dateToInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { AutoGrowInput } from "../AutoGrowInput";
 
 const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
 const fieldLabel = "text-[10px] font-bold uppercase tracking-wider text-fg-muted";
@@ -125,7 +126,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
             </div>
             <div className="sm:col-span-2 lg:col-span-1">
               <label className={fieldLabel}>Descripción</label>
-              <input
+              <AutoGrowInput
                 value={draft.description}
                 onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 maxLength={200}
@@ -161,7 +162,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
             </div>
             <div className="sm:col-span-2 lg:col-span-5">
               <label className={fieldLabel}>Notas</label>
-              <input
+              <AutoGrowInput
                 value={draft.notes}
                 onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                 maxLength={500}

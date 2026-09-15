@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { createTransaction, type TransactionFormState } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
 import { todayInputValue } from "./month";
+import { AutoGrowInput } from "../AutoGrowInput";
 
 const initialState: TransactionFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -34,7 +35,7 @@ export function AddTransactionForm() {
           <label className={labelClass} htmlFor="description">
             Descripción
           </label>
-          <input id="description" name="description" type="text" required maxLength={200} className={inputClass} />
+          <AutoGrowInput id="description" name="description" required maxLength={200} className={inputClass} />
         </div>
         <div>
           <label className={labelClass} htmlFor="date">

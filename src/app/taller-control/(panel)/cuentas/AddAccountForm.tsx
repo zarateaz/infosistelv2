@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { createReceivable, createPayable, type AccountFormState } from "./actions";
 import { DOCUMENT_TYPES, PAYMENT_METHODS } from "./constants";
+import { AutoGrowInput } from "../AutoGrowInput";
 
 const initialState: AccountFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -56,7 +57,7 @@ export function AddAccountForm({ kind }: { kind: "cobrar" | "pagar" }) {
           <label className={labelClass} htmlFor="concept">
             Concepto
           </label>
-          <input id="concept" name="concept" type="text" required maxLength={200} className={inputClass} />
+          <AutoGrowInput id="concept" name="concept" required maxLength={200} className={inputClass} />
         </div>
         <div>
           <label className={labelClass} htmlFor="issueDate">
@@ -106,7 +107,7 @@ export function AddAccountForm({ kind }: { kind: "cobrar" | "pagar" }) {
           <label className={labelClass} htmlFor="notes">
             Observaciones
           </label>
-          <input id="notes" name="notes" type="text" maxLength={500} className={inputClass} />
+          <AutoGrowInput id="notes" name="notes" maxLength={500} className={inputClass} />
         </div>
 
         {state.error && <p className="text-sm font-medium text-red-600 sm:col-span-2 lg:col-span-4">{state.error}</p>}
