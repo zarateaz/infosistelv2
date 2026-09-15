@@ -95,7 +95,7 @@ export default async function AdminInvoicesPage({
       <div className="mt-8 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
-            <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">
+            <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
               <th className="px-5 py-3">Comprobante</th>
               <th className="px-5 py-3">Cliente</th>
               <th className="px-5 py-3">Origen</th>

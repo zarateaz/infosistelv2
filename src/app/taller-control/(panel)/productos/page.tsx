@@ -29,7 +29,7 @@ export default async function AdminProductsPage() {
           <div className="overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
-                <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">
+                <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
                   <th className="px-5 py-3">Producto</th>
                   <th className="px-5 py-3">Categoría</th>
                   <th className="px-5 py-3">Precio</th>

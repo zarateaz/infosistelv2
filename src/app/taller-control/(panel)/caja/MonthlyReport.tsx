@@ -102,7 +102,7 @@ export function MonthlyReport({
 
       <table className="w-full min-w-[900px] border-collapse text-left text-xs">
         <thead>
-          <tr className="border-b border-border text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+          <tr className="admin-thead text-[10px] font-bold uppercase tracking-wider text-fg-muted">
             <th className="px-2 py-2">Fecha</th>
             <th className="px-2 py-2">Concepto</th>
             <th className="px-2 py-2 text-right">Ing. total</th>

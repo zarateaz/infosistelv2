@@ -18,8 +18,7 @@ const fmtDate = (d: Date) => new Date(d).toLocaleDateString("es-PE", { day: "2-d
 const fmtMoney = (n: number) => `S/. ${n.toFixed(2)}`;
 const toInputDate = (d: Date) => new Date(d).toISOString().slice(0, 10);
 
-const fieldClass =
-  "mt-1 w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-fg outline-none focus:border-accent";
+const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
 const fieldLabel = "text-[10px] font-bold uppercase tracking-wider text-fg-muted";
 
 export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }) {

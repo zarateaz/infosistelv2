@@ -22,8 +22,7 @@ function parseImagesJson(value?: string | null): string[] | undefined {
   }
 }
 
-const inputClass =
-  "mt-2 w-full rounded-xl border border-border bg-bg px-4 py-2.5 text-sm text-fg outline-none transition-colors focus:border-accent";
+const inputClass = "admin-field mt-2 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
 
 export function ProductForm({

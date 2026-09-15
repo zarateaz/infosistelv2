@@ -7,8 +7,7 @@ import { PAYMENT_METHODS } from "./constants";
 import { toDateInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const fieldClass =
-  "mt-1 w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-fg outline-none focus:border-accent";
+const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
 const fieldLabel = "text-[10px] font-bold uppercase tracking-wider text-fg-muted";
 
 interface Draft {

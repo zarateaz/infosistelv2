@@ -6,8 +6,7 @@ import { createAdminUser, type AdminUserFormState } from "./actions";
 
 const initialState: AdminUserFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
-const inputClass =
-  "mt-1.5 w-full rounded-xl border border-border bg-bg px-4 py-2.5 text-sm text-fg outline-none focus:border-accent";
+const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
 
 export function AddAdminForm() {
   const [state, formAction, isPending] = useActionState(createAdminUser, initialState);

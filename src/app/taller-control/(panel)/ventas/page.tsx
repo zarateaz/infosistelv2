@@ -37,7 +37,7 @@ export default async function AdminSalesPage() {
       <div className="mt-8 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
-            <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">
+            <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
               <th className="px-5 py-3">Producto</th>
               <th className="px-5 py-3">Cantidad</th>
               <th className="px-5 py-3">Total</th>

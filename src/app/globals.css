@@ -150,6 +150,47 @@ body {
     0 0 0 1px rgba(10, 95, 219, 0.16);
 }
 
+/* Épico form field — every text/number/date/select input across the admin
+   panel used a flat `border-border` + flat `bg-bg`, which read as plain
+   HTML next to admin-glass cards and StatCard's glowing icon tiles on the
+   same page. This carries the same glass/glow language down into the
+   fields themselves: a soft inset top highlight at rest, and on focus a
+   colored ring (not just a border-color flip) that echoes StatCard's tint
+   shadows. Stays fully opaque — no blur — so typed text keeps full
+   contrast and dozens of fields on one page stay cheap to render. */
+.admin-field {
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-alt), var(--bg));
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.7) inset;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-field:hover {
+  border-color: var(--border-strong);
+}
+.admin-field:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.7) inset,
+    0 0 0 3px rgba(10, 95, 219, 0.16);
+}
+
+/* Épico table header — swaps the plain gray `border-b` under every admin
+   table's <thead> row for a faint accent-tinted wash and a glowing
+   gradient underline, so data tables (Caja, Cuentas, Productos,
+   Inventario, Ventas, Facturas) read as part of the same system as the
+   glass cards above them instead of a bare HTML table dropped in below. */
+.admin-thead {
+  position: relative;
+  background: linear-gradient(180deg, rgba(10, 95, 219, 0.07), transparent);
+  /* `border-bottom` is the guaranteed baseline — `box-shadow` support on a
+     <tr> (a table-row box, not a regular block box) is inconsistent across
+     browsers, so the glow layered on top is a pure enhancement: worst case
+     it's just a solid accent line instead of a soft one, never no line. */
+  border-bottom: 1px solid rgba(10, 95, 219, 0.35);
+  box-shadow: 0 1px 0 0 rgba(10, 95, 219, 0.15);
+}
+
 /* Admin sidebar — same frosted-glass family as .admin-glass, but tuned for
    a fixed edge-to-edge vertical panel instead of a floating card: the glow
    runs down the right edge (where the panel actually meets the page)

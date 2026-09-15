@@ -121,7 +121,7 @@ export default async function AdminCashboxPage({
       <div className="print:hidden mt-10 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
-            <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-fg-muted">
+            <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
               <th className="px-5 py-3">Fecha</th>
               <th className="px-5 py-3">Tipo</th>
               <th className="px-5 py-3">Descripción</th>

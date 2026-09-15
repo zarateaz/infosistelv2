@@ -4,8 +4,7 @@ import { useState } from "react";
 import { Plus, X } from "lucide-react";
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
-const inputClass =
-  "w-full rounded-xl border border-border bg-bg px-4 py-2.5 text-sm text-fg outline-none focus:border-accent";
+const inputClass = "admin-field w-full rounded-xl px-4 py-2.5 text-sm text-fg";
 
 /** Itemized, add/remove list of repair processes/tasks performed in one
  *  service visit. Same JSON-in-hidden-input convention as ServicePhotosField
