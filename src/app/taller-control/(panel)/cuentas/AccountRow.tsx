@@ -13,6 +13,7 @@ import {
   type AccountPatch,
 } from "./actions";
 import { PAYMENT_METHODS, DOCUMENT_TYPES, STATUS_STYLES } from "./constants";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 // timeZone: "UTC" pins this to the calendar day the date represents,
 // regardless of which machine renders it — issueDate/dueDate come from
@@ -35,6 +36,7 @@ export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }
   const [method, setMethod] = useState<string>(PAYMENT_METHODS[0]);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const [draft, setDraft] = useState<AccountPatch>({
     party: row.party,
@@ -89,8 +91,10 @@ export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }
   };
 
   const remove = () => {
-    if (!confirm(`¿Eliminar por completo la cuenta de "${row.party}"? Esta acción no se puede deshacer.`)) return;
-    startTransition(() => (kind === "cobrar" ? deleteReceivable(row.id) : deletePayable(row.id)));
+    startTransition(async () => {
+      await (kind === "cobrar" ? deleteReceivable(row.id) : deletePayable(row.id));
+      setConfirmingDelete(false);
+    });
   };
 
   return (
@@ -143,7 +147,7 @@ export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }
               {editing ? <X size={15} /> : <Pencil size={15} />}
             </button>
             <button
-              onClick={remove}
+              onClick={() => setConfirmingDelete(true)}
               disabled={isPending}
               aria-label={`Eliminar ${row.party}`}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
@@ -153,6 +157,17 @@ export function AccountRow({ row, kind }: { row: Row; kind: "cobrar" | "pagar" }
           </div>
         </td>
       </tr>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Eliminar cuenta"
+          message={`¿Eliminar por completo la cuenta de "${row.party}"? Esta acción no se puede deshacer.`}
+          danger
+          pending={isPending}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
 
       {open && (
         <tr className="border-b border-border bg-bg-raised/50">

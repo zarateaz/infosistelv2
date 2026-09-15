@@ -14,6 +14,7 @@ import {
 } from "./actions";
 import { ServicePhotosField } from "./ServicePhotosField";
 import { ProcessesField } from "./ProcessesField";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const initialState: ServiceFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -29,10 +30,13 @@ export function ServiceRow({ service, technicians }: { service: AdminService; te
   const [editing, setEditing] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const remove = () => {
-    if (!confirm(`¿Eliminar el servicio "${service.title}" de ${service.clientName}? Esta acción no se puede deshacer.`)) return;
-    startTransition(() => deleteService(service.id));
+    startTransition(async () => {
+      await deleteService(service.id);
+      setConfirmingDelete(false);
+    });
   };
 
   const payNow = (method: "Efectivo" | "Yape") => {
@@ -102,7 +106,7 @@ export function ServiceRow({ service, technicians }: { service: AdminService; te
             </button>
             <button
               type="button"
-              onClick={remove}
+              onClick={() => setConfirmingDelete(true)}
               disabled={isPending}
               aria-label={`Eliminar servicio ${service.title}`}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
@@ -111,6 +115,17 @@ export function ServiceRow({ service, technicians }: { service: AdminService; te
             </button>
           </div>
         </div>
+
+        {confirmingDelete && (
+          <ConfirmDialog
+            title="Eliminar servicio"
+            message={`¿Eliminar el servicio "${service.title}" de ${service.clientName}? Esta acción no se puede deshacer.`}
+            danger
+            pending={isPending}
+            onConfirm={remove}
+            onCancel={() => setConfirmingDelete(false)}
+          />
+        )}
       </div>
 
       {!paid && (

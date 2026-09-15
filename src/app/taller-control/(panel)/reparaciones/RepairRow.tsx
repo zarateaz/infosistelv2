@@ -4,10 +4,12 @@ import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { updateRepairProgress, deleteRepair } from "./actions";
 import type { AdminRepair } from "./actions";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 export function RepairRow({ repair }: { repair: AdminRepair }) {
   const [progress, setProgress] = useState(repair.progress);
   const [statusText, setStatusText] = useState(repair.statusText);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const save = () => {
@@ -15,8 +17,10 @@ export function RepairRow({ repair }: { repair: AdminRepair }) {
   };
 
   const remove = () => {
-    if (!confirm(`¿Eliminar la reparación ${repair.code}? Esta acción no se puede deshacer.`)) return;
-    startTransition(() => deleteRepair(repair.id));
+    startTransition(async () => {
+      await deleteRepair(repair.id);
+      setConfirmingDelete(false);
+    });
   };
 
   return (
@@ -29,13 +33,24 @@ export function RepairRow({ repair }: { repair: AdminRepair }) {
           <p className="mt-2 max-w-md text-sm text-fg-muted">{repair.problem}</p>
         </div>
         <button
-          onClick={remove}
+          onClick={() => setConfirmingDelete(true)}
           aria-label={`Eliminar ${repair.code}`}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 size={15} />
         </button>
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Eliminar reparación"
+          message={`¿Eliminar la reparación ${repair.code}? Esta acción no se puede deshacer.`}
+          danger
+          pending={isPending}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
         <input

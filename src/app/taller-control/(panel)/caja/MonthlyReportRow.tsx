@@ -5,7 +5,7 @@ import { Trash2, CircleCheck } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
 import { dateToInputValue, parseDateInput } from "./month";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 // UTC getters — see dateToInputValue's comment in month.ts for why: this
 // reads a STORED transaction date, and local getters here would show a
@@ -64,6 +64,7 @@ export function MonthlyReportRow({
   const [draft, setDraft] = useState<Draft>(() => draftFrom(transaction));
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const isIncome = transaction.type === "INCOME";
@@ -87,8 +88,10 @@ export function MonthlyReportRow({
   };
 
   const remove = () => {
-    if (!confirm(`¿Eliminar el movimiento "${transaction.description}"? Esta acción no se puede deshacer.`)) return;
-    startTransition(() => deleteTransaction(transaction.id));
+    startTransition(async () => {
+      await deleteTransaction(transaction.id);
+      setConfirmingDelete(false);
+    });
   };
 
   return (
@@ -161,7 +164,7 @@ export function MonthlyReportRow({
           </button>
           <button
             type="button"
-            onClick={remove}
+            onClick={() => setConfirmingDelete(true)}
             disabled={isPending}
             aria-label={`Eliminar ${transaction.description}`}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
@@ -170,6 +173,17 @@ export function MonthlyReportRow({
           </button>
         </div>
       </td>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Eliminar movimiento"
+          message={`¿Eliminar el movimiento "${transaction.description}"? Esta acción no se puede deshacer.`}
+          danger
+          pending={isPending}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
 
       {confirming && (
         <ConfirmDialog

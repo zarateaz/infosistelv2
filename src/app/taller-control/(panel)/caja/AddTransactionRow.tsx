@@ -5,7 +5,7 @@ import { Plus, ShieldCheck } from "lucide-react";
 import { createTransactionRecord } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
 import { todayInputValue, parseDateInput } from "./month";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
 const fieldLabel = "text-[10px] font-bold uppercase tracking-wider text-fg-muted";
