@@ -9,6 +9,7 @@ import {
 import { monthKey } from "./month";
 import { PAYMENT_METHODS } from "./constants";
 import { AddTransactionForm } from "./AddTransactionForm";
+import { AddTransactionRow } from "./AddTransactionRow";
 import { CajaChart } from "./CajaChart";
 import { TransactionRow } from "./TransactionRow";
 import { PeriodHeader } from "./PeriodHeader";
@@ -130,6 +131,7 @@ export default async function AdminCashboxPage({
             </tr>
           </thead>
           <tbody>
+            <AddTransactionRow />
             {[...transactions].reverse().map((t) => (
               <TransactionRow key={t.id} transaction={t} />
             ))}

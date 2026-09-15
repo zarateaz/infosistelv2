@@ -130,6 +130,26 @@ export async function createTransaction(
   return {};
 }
 
+// Same validation as createTransaction, but taking a plain object instead of
+// FormData — lets AddTransactionRow (inline "+" in the table) call it after
+// its own ConfirmDialog, the same object-in/patch-out shape updateTransaction
+// already uses, instead of going through useActionState + a real <form>.
+export async function createTransactionRecord(input: {
+  description: string;
+  type: "INCOME" | "EXPENSE";
+  amount: number;
+  paymentMethod: (typeof PAYMENT_METHODS)[number];
+  date: string;
+  notes?: string | null;
+}): Promise<{ error?: string }> {
+  const parsed = transactionSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+
+  await prisma.cashboxTransaction.create({ data: parsed.data });
+  revalidatePath("/taller-control/caja");
+  return {};
+}
+
 const updateSchema = z.object({
   description: z.string().trim().min(1, "La descripción es obligatoria").max(200).optional(),
   type: z.enum(["INCOME", "EXPENSE"]).optional(),
