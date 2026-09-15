@@ -254,7 +254,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
       {confirmingDelete && (
         <ConfirmDialog
           title="Eliminar movimiento"
-          message={`¿Eliminar el movimiento "${transaction.description}"? Esta acción no se puede deshacer.`}
+          message={`¿Eliminar el movimiento "${transaction.description}"? Se moverá a la Papelera — puedes restaurarlo después.`}
           danger
           pending={isPending}
           onConfirm={remove}

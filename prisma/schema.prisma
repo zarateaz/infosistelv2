@@ -217,15 +217,21 @@ model InvoiceCounter {
 }
 
 model CashboxTransaction {
-  id            String   @id @default(cuid())
-  date          DateTime @default(now())
+  id            String    @id @default(cuid())
+  date          DateTime  @default(now())
   description   String
   type          String // "INCOME" or "EXPENSE"
   amount        Float
   paymentMethod String // "EFECTIVO", "YAPE 1", "YAPE 2"
   notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  // Soft delete — same Papelera pattern as Sale.deletedAt. Null = active,
+  // visible in Caja; set = sits in the Papelera until restored or purged.
+  // Restoring only clears this field, never touches `date`.
+  deletedAt     DateTime?
+
+  @@index([deletedAt])
 }
 
 /**

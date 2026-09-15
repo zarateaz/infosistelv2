@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { PAYMENT_METHODS } from "./constants";
 import { monthKey, monthKeyUTC, parseDateInput } from "./month";
 
@@ -16,8 +17,24 @@ export interface AdminTransaction {
   notes: string | null;
 }
 
+// `date` alone is a calendar day with no time-of-day (see month.ts) — two
+// transactions entered on the same day are a genuine tie on it, and SQLite
+// doesn't promise a stable order for ties with no secondary key. That's
+// what made the list look like it "reorganized itself" as new same-day
+// rows got added (reported directly). `createdAt` (real insertion instant)
+// as a tiebreaker makes the order deterministic: same-day rows always
+// appear in the order they were actually entered, and a transaction you
+// just added always lands after that day's earlier ones — not randomly.
+const CHRONOLOGICAL_ORDER: Prisma.CashboxTransactionOrderByWithRelationInput[] = [
+  { date: "asc" },
+  { createdAt: "asc" },
+];
+
 export async function getCashboxTransactions(): Promise<AdminTransaction[]> {
-  const rows = await prisma.cashboxTransaction.findMany({ orderBy: { date: "asc" } });
+  const rows = await prisma.cashboxTransaction.findMany({
+    where: { deletedAt: null },
+    orderBy: CHRONOLOGICAL_ORDER,
+  });
   return rows as AdminTransaction[];
 }
 
@@ -35,8 +52,8 @@ function monthRange(month: string): { start: Date; end: Date } {
 export async function getCashboxTransactionsForMonth(month: string): Promise<AdminTransaction[]> {
   const { start, end } = monthRange(month);
   const rows = await prisma.cashboxTransaction.findMany({
-    where: { date: { gte: start, lt: end } },
-    orderBy: { date: "asc" },
+    where: { date: { gte: start, lt: end }, deletedAt: null },
+    orderBy: CHRONOLOGICAL_ORDER,
   });
   return rows as AdminTransaction[];
 }
@@ -56,7 +73,7 @@ export async function getCashboxPeriod(month: string): Promise<AdminCashboxPerio
  *  needing the admin to remember which months actually have data. */
 export async function listCashboxMonths(): Promise<string[]> {
   const [txDates, periods] = await Promise.all([
-    prisma.cashboxTransaction.findMany({ select: { date: true } }),
+    prisma.cashboxTransaction.findMany({ where: { deletedAt: null }, select: { date: true } }),
     prisma.cashboxPeriod.findMany({ select: { month: true } }),
   ]);
   const months = new Set<string>([
@@ -190,7 +207,37 @@ export async function updateTransaction(
   return {};
 }
 
+export interface DeletedTransaction extends AdminTransaction {
+  deletedAt: Date;
+}
+
+export async function getDeletedTransactions(): Promise<DeletedTransaction[]> {
+  const rows = await prisma.cashboxTransaction.findMany({
+    where: { deletedAt: { not: null } },
+    orderBy: { deletedAt: "desc" },
+  });
+  // The `where` above guarantees deletedAt is non-null; Prisma's generated
+  // type still widens it to Date | null for the column itself.
+  return rows.map((r) => ({ ...r, deletedAt: r.deletedAt as Date })) as DeletedTransaction[];
+}
+
+// Soft delete — same Papelera pattern as Ventas (see ventas/actions.ts's
+// deleteSale): moves the movement to the Papelera instead of destroying
+// it. `date` is never touched, so a restored movement reappears under its
+// real, original date, not today's.
 export async function deleteTransaction(id: string): Promise<void> {
-  await prisma.cashboxTransaction.delete({ where: { id } });
+  await prisma.cashboxTransaction.update({ where: { id }, data: { deletedAt: new Date() } });
   revalidatePath("/taller-control/caja");
+  revalidatePath("/taller-control/papelera");
+}
+
+export async function restoreTransaction(id: string): Promise<void> {
+  await prisma.cashboxTransaction.update({ where: { id }, data: { deletedAt: null } });
+  revalidatePath("/taller-control/caja");
+  revalidatePath("/taller-control/papelera");
+}
+
+export async function permanentlyDeleteTransaction(id: string): Promise<void> {
+  await prisma.cashboxTransaction.delete({ where: { id } });
+  revalidatePath("/taller-control/papelera");
 }
