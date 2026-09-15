@@ -28,9 +28,21 @@ export async function getSaleStats(): Promise<SaleStats> {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const [day, week, month] = await Promise.all([
-    prisma.sale.aggregate({ where: { date: { gte: startOfDay } }, _sum: { price: true, profit: true }, _count: true }),
-    prisma.sale.aggregate({ where: { date: { gte: startOfWeek } }, _sum: { price: true, profit: true }, _count: true }),
-    prisma.sale.aggregate({ where: { date: { gte: startOfMonth } }, _sum: { price: true, profit: true }, _count: true }),
+    prisma.sale.aggregate({
+      where: { date: { gte: startOfDay }, deletedAt: null },
+      _sum: { price: true, profit: true },
+      _count: true,
+    }),
+    prisma.sale.aggregate({
+      where: { date: { gte: startOfWeek }, deletedAt: null },
+      _sum: { price: true, profit: true },
+      _count: true,
+    }),
+    prisma.sale.aggregate({
+      where: { date: { gte: startOfMonth }, deletedAt: null },
+      _sum: { price: true, profit: true },
+      _count: true,
+    }),
   ]);
 
   return { day: bucket(day), week: bucket(week), month: bucket(month) };
@@ -49,6 +61,7 @@ export interface AdminSale {
 
 export async function getRecentSales(limit = 30): Promise<AdminSale[]> {
   const sales = await prisma.sale.findMany({
+    where: { deletedAt: null },
     orderBy: { date: "desc" },
     take: limit,
     select: {
@@ -66,9 +79,52 @@ export async function getRecentSales(limit = 30): Promise<AdminSale[]> {
   return sales.map(({ invoices, ...s }) => ({ ...s, invoice: invoices[0] ?? null }));
 }
 
+export interface DeletedSale {
+  id: string;
+  pName: string;
+  category: string | null;
+  quantity: number;
+  price: number;
+  profit: number;
+  date: Date;
+  deletedAt: Date;
+}
+
+export async function getDeletedSales(): Promise<DeletedSale[]> {
+  const sales = await prisma.sale.findMany({
+    where: { deletedAt: { not: null } },
+    orderBy: { deletedAt: "desc" },
+    select: { id: true, pName: true, category: true, quantity: true, price: true, profit: true, date: true, deletedAt: true },
+  });
+  // The `where` above guarantees deletedAt is non-null; Prisma's generated
+  // type still widens it to Date | null for the column itself.
+  return sales.map((s) => ({ ...s, deletedAt: s.deletedAt as Date }));
+}
+
+// Soft delete: "Eliminar" in Ventas moves a sale to the Papelera instead of
+// destroying it — a wrong click used to lose the price/date for good with
+// no way back (reported directly). `date` is never touched, so a restored
+// sale reappears under its real, original sale date, not today's.
 export async function deleteSale(id: string): Promise<void> {
-  await prisma.sale.delete({ where: { id } });
+  await prisma.sale.update({ where: { id }, data: { deletedAt: new Date() } });
   revalidatePath("/taller-control/ventas");
+  revalidatePath("/taller-control/papelera");
+}
+
+export async function restoreSale(id: string): Promise<void> {
+  await prisma.sale.update({ where: { id }, data: { deletedAt: null } });
+  revalidatePath("/taller-control/ventas");
+  revalidatePath("/taller-control/papelera");
+}
+
+// Actually destroys the row — only reachable from the Papelera itself, on
+// something already soft-deleted. Cascades to any linked Invoice's `saleId`
+// reference via the schema's `onDelete` (SetNull by default for an
+// optional relation), so this never fails because a SUNAT receipt still
+// points at the sale.
+export async function permanentlyDeleteSale(id: string): Promise<void> {
+  await prisma.sale.delete({ where: { id } });
+  revalidatePath("/taller-control/papelera");
 }
 
 export async function retrySaleInvoice(invoiceId: string): Promise<void> {

@@ -155,7 +155,16 @@ model Sale {
   profit    Float // (price - costPrice) * quantity, computed at creation time
   date      DateTime  @default(now())
   createdAt DateTime  @default(now())
+  // Soft delete — "Eliminar" in Ventas moves a sale to the Papelera instead
+  // of destroying it (an accidental delete used to lose the price/date for
+  // good, see docs history). Null = active/visible in Ventas; set = sits in
+  // the Papelera until restored (deletedAt back to null) or purged.
+  // `date` is never touched by delete/restore, so a restored sale reappears
+  // under its real, original sale date — not today's.
+  deletedAt DateTime?
   invoices  Invoice[]
+
+  @@index([deletedAt])
 }
 
 /**

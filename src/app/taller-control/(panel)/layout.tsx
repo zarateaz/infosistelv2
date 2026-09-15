@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { href: "/taller-control/servicios", label: "Servicios técnicos" },
   { href: "/taller-control/pedidos", label: "Pedidos" },
   { href: "/taller-control/ventas", label: "Ventas" },
+  { href: "/taller-control/papelera", label: "Papelera" },
   { href: "/taller-control/facturas", label: "Facturas" },
   { href: "/taller-control/cuentas", label: "Cuentas" },
   { href: "/taller-control/seguridad", label: "Seguridad" },

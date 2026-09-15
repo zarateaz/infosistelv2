@@ -22,7 +22,7 @@ export function DeleteSaleButton({ productName, action }: { productName: string;
       {confirming && (
         <ConfirmDialog
           title="Eliminar venta"
-          message={`¿Eliminar la venta de "${productName}"?`}
+          message={`¿Eliminar la venta de "${productName}"? Se moverá a la Papelera — puedes restaurarla después.`}
           danger
           pending={isPending}
           onConfirm={() => startTransition(async () => { await action(); setConfirming(false); })}
