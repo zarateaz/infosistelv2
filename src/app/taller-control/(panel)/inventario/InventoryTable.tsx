@@ -1,22 +1,89 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useDeferredValue, useMemo, useState } from "react";
 import Image from "next/image";
-import { Search, PackageX } from "lucide-react";
+import { Search, PackageX, List, LayoutGrid } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import { SellButton } from "./SellButton";
 import type { AdminProduct } from "../productos/actions";
 
 type StockFilter = "all" | "low" | "out";
+type ViewMode = "list" | "grid";
 
+// Each variant sets its own `bg-*` — never combine one of these with a
+// separate base `bg-bg-alt` on the element. Tailwind utilities of equal
+// specificity win by position in the generated stylesheet, not by where
+// they sit in the className string, so a base "bg-bg-alt" can silently
+// beat "bg-accent" here and leave white text on a white chip (exactly
+// what happened: the active "Todos" chip going invisible in production).
 const CHIP_TONE = {
-  default: "border-border-strong text-fg-muted hover:border-accent hover:text-accent",
+  default: "border-border-strong bg-bg-alt text-fg-muted hover:border-accent hover:text-accent",
   active: "border-accent bg-accent text-accent-fg shadow-md shadow-accent/30",
-  warn: "border-amber-500/40 text-amber-600 hover:border-amber-500 hover:bg-amber-50",
+  warn: "border-amber-500/40 bg-bg-alt text-amber-600 hover:border-amber-500 hover:bg-amber-50",
   warnActive: "border-amber-500 bg-amber-500 text-white shadow-md shadow-amber-500/30",
-  danger: "border-red-500/40 text-red-600 hover:border-red-500 hover:bg-red-50",
+  danger: "border-red-500/40 bg-bg-alt text-red-600 hover:border-red-500 hover:bg-red-50",
   dangerActive: "border-red-600 bg-red-600 text-white shadow-md shadow-red-600/30",
 };
+
+function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
+  const btnClass = (active: boolean) =>
+    `flex h-8 w-9 items-center justify-center rounded-lg transition-colors ${
+      active ? "bg-accent text-accent-fg shadow-sm" : "text-fg-muted hover:text-accent"
+    }`;
+  return (
+    <div className="inline-flex items-center gap-1 rounded-xl border-2 border-border-strong bg-bg-alt p-1">
+      <button type="button" onClick={() => onChange("list")} aria-label="Ver como lista" className={btnClass(mode === "list")}>
+        <List size={15} />
+      </button>
+      <button type="button" onClick={() => onChange("grid")} aria-label="Ver en cuadros" className={btnClass(mode === "grid")}>
+        <LayoutGrid size={15} />
+      </button>
+    </div>
+  );
+}
+
+function ProductGridCard({ p }: { p: AdminProduct }) {
+  const badge =
+    p.stock === 0 ? (
+      <span className="absolute left-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">Agotado</span>
+    ) : p.stock <= 3 ? (
+      <span className="absolute left-2 top-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+        Stock {p.stock}
+      </span>
+    ) : null;
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-bg-alt transition-shadow hover:shadow-lg hover:shadow-accent/10">
+      <div className="relative aspect-square w-full bg-bg">
+        {p.image ? (
+          <Image
+            src={p.image}
+            alt=""
+            fill
+            sizes="(min-width: 1280px) 18vw, (min-width: 1024px) 22vw, (min-width: 640px) 30vw, 45vw"
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <CategoryIcon category={p.category} size={32} strokeWidth={1.5} className="text-fg-muted opacity-40" />
+          </div>
+        )}
+        {badge}
+      </div>
+      <div className="flex flex-1 flex-col gap-1 p-3">
+        <p className="line-clamp-2 text-sm font-semibold text-fg">{p.name}</p>
+        <p className="truncate text-[11px] font-bold uppercase tracking-wide text-fg-muted">{p.category}</p>
+        <div className="mt-auto flex items-center justify-between pt-2">
+          <span className="font-bold text-fg">S/. {(p.onSale && p.salePrice ? p.salePrice : p.price).toFixed(2)}</span>
+          <span className={`text-xs font-bold ${p.stock <= 3 ? "text-red-600" : "text-fg-muted"}`}>{p.stock} u.</span>
+        </div>
+        <div className="mt-2">
+          <SellButton productId={p.id} productName={p.name} stock={p.stock} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function FilterChip({
   label,
@@ -47,7 +114,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full border-2 bg-bg-alt px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition-all ${toneClass}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition-all ${toneClass}`}
     >
       {label}
       <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/20" : "bg-fg/5"}`}>{count}</span>
@@ -57,13 +124,20 @@ function FilterChip({
 
 export function InventoryTable({ products }: { products: AdminProduct[] }) {
   const [query, setQuery] = useState("");
+  // The search box binds to `query` directly so keystrokes never feel
+  // delayed; the (heavier) filter + group + 247-row re-render runs off
+  // `deferredQuery` instead, which React is free to interrupt/skip ahead
+  // on if a newer keystroke arrives before it finishes — the fix for
+  // typing feeling laggy without touching what actually renders.
+  const deferredQuery = useDeferredValue(query);
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const lowStockCount = products.filter((p) => p.stock <= 3 && p.stock > 0).length;
   const outOfStockCount = products.filter((p) => p.stock === 0).length;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return products.filter((p) => {
       if (stockFilter === "low" && !(p.stock <= 3 && p.stock > 0)) return false;
       if (stockFilter === "out" && p.stock !== 0) return false;
@@ -74,17 +148,22 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
         (p.barcode ?? "").toLowerCase().includes(q)
       );
     });
-  }, [products, query, stockFilter]);
+  }, [products, deferredQuery, stockFilter]);
 
   // Grouped by category — products already arrives sorted category asc,
   // name asc (see productos/actions.ts's getAdminProducts), so this just
-  // labels the existing order instead of re-sorting.
-  const groups: { category: string; items: typeof filtered }[] = [];
-  for (const p of filtered) {
-    const current = groups[groups.length - 1];
-    if (current && current.category === p.category) current.items.push(p);
-    else groups.push({ category: p.category, items: [p] });
-  }
+  // labels the existing order instead of re-sorting. Memoized alongside
+  // `filtered` so it doesn't redo the grouping pass on renders the filter
+  // itself didn't change.
+  const groups = useMemo(() => {
+    const result: { category: string; items: typeof filtered }[] = [];
+    for (const p of filtered) {
+      const current = result[result.length - 1];
+      if (current && current.category === p.category) current.items.push(p);
+      else result.push({ category: p.category, items: [p] });
+    }
+    return result;
+  }, [filtered]);
 
   return (
     <>
@@ -99,7 +178,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
             className="admin-field w-full rounded-xl py-2.5 pl-10 pr-4 text-sm text-fg"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <FilterChip label="Todos" count={products.length} active={stockFilter === "all"} onClick={() => setStockFilter("all")} />
           <FilterChip
             label="Stock bajo"
@@ -115,6 +194,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
             tone="danger"
             onClick={() => setStockFilter("out")}
           />
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
         </div>
       </div>
 
@@ -122,6 +202,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
         {filtered.length} de {products.length} productos
       </p>
 
+      {viewMode === "list" ? (
       <div className="mt-3 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
@@ -187,6 +268,31 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
           </tbody>
         </table>
       </div>
+      ) : (
+      <div className="mt-3">
+        {groups.map((group) => (
+          <div key={group.category} className="mb-6">
+            <div className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-accent">
+              <CategoryIcon category={group.category} size={14} strokeWidth={2} />
+              {group.category}
+              <span className="font-semibold text-accent/70">· {group.items.length}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {group.items.map((p) => (
+                <ProductGridCard key={p.id} p={p} />
+              ))}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="admin-glass flex flex-col items-center gap-2 rounded-[var(--radius-lg)] py-14 text-center text-fg-muted">
+            <PackageX size={28} className="text-fg-muted/50" />
+            <p className="font-semibold">Sin resultados para “{query}”.</p>
+            <p className="text-xs">Prueba con otro nombre, categoría o código de barras.</p>
+          </div>
+        )}
+      </div>
+      )}
     </>
   );
 }
