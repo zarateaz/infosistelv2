@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Trash2, Pencil, ShieldCheck } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
-import { toDateInputValue, parseDateInput } from "./month";
+import { dateToInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
@@ -25,7 +25,7 @@ function draftFrom(t: AdminTransaction): Draft {
     type: t.type,
     amount: t.amount,
     paymentMethod: t.paymentMethod,
-    date: toDateInputValue(new Date(t.date)),
+    date: dateToInputValue(new Date(t.date)),
     notes: t.notes ?? "",
   };
 }
@@ -211,7 +211,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
 
   return (
     <tr className="border-b border-border last:border-0">
-      <td className="px-5 py-2.5 text-fg-muted">{toDateInputValue(new Date(transaction.date))}</td>
+      <td className="px-5 py-2.5 text-fg-muted">{dateToInputValue(new Date(transaction.date))}</td>
       <td className="px-5 py-2.5">
         <span
           className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${

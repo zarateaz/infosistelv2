@@ -14,7 +14,14 @@ import {
 } from "./actions";
 import { PAYMENT_METHODS, DOCUMENT_TYPES, STATUS_STYLES } from "./constants";
 
-const fmtDate = (d: Date) => new Date(d).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "2-digit" });
+// timeZone: "UTC" pins this to the calendar day the date represents,
+// regardless of which machine renders it — issueDate/dueDate come from
+// z.coerce.date() on a plain "YYYY-MM-DD" (UTC midnight per spec), and this
+// app's dev box (Lima) isn't the same time zone as the VPS it deploys to.
+// Reading with the browser/server's local time zone here would show the
+// wrong day exactly like the Caja date bug this mirrors.
+const fmtDate = (d: Date) =>
+  new Date(d).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC" });
 const fmtMoney = (n: number) => `S/. ${n.toFixed(2)}`;
 const toInputDate = (d: Date) => new Date(d).toISOString().slice(0, 10);
 

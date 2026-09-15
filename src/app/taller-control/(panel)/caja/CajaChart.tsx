@@ -9,7 +9,14 @@ export function CajaChart({ transactions }: { transactions: AdminTransaction[] }
     return transactions.reduce<{ date: string; balance: number }[]>((acc, t) => {
       const previousBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0;
       const balance = previousBalance + (t.type === "INCOME" ? t.amount : -t.amount);
-      acc.push({ date: new Date(t.date).toLocaleDateString("es-PE", { day: "2-digit", month: "short" }), balance });
+      // timeZone: "UTC" — t.date is stored as UTC midnight (month.ts's
+      // parseDateInput); reading it with the browser's local time zone can
+      // land the label on the wrong calendar day (see dateToInputValue's
+      // comment in month.ts).
+      acc.push({
+        date: new Date(t.date).toLocaleDateString("es-PE", { day: "2-digit", month: "short", timeZone: "UTC" }),
+        balance,
+      });
       return acc;
     }, []);
   }, [transactions]);

@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createTransaction, type TransactionFormState } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
-import { toDateInputValue } from "./month";
+import { todayInputValue } from "./month";
 
 const initialState: TransactionFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -16,7 +16,7 @@ export function AddTransactionForm() {
   // Kept outside the form reset below so registering several movements in a
   // row (e.g. backfilling all of September) doesn't snap the date back to
   // today after every submit.
-  const [date, setDate] = useState(() => toDateInputValue());
+  const [date, setDate] = useState(() => todayInputValue());
 
   useEffect(() => {
     if (!state.error && !isPending) {

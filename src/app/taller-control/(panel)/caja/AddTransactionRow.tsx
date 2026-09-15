@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Plus, ShieldCheck } from "lucide-react";
 import { createTransactionRecord } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
-import { toDateInputValue, parseDateInput } from "./month";
+import { todayInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
@@ -25,7 +25,7 @@ function emptyDraft(): Draft {
     type: "INCOME",
     amount: 0,
     paymentMethod: PAYMENT_METHODS[0],
-    date: toDateInputValue(),
+    date: todayInputValue(),
     notes: "",
   };
 }

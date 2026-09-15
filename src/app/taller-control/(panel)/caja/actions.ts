@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { PAYMENT_METHODS } from "./constants";
-import { monthKey, parseDateInput } from "./month";
+import { monthKey, monthKeyUTC, parseDateInput } from "./month";
 
 export interface AdminTransaction {
   id: string;
@@ -21,10 +21,14 @@ export async function getCashboxTransactions(): Promise<AdminTransaction[]> {
   return rows as AdminTransaction[];
 }
 
+// UTC-anchored, matching how transaction dates are stored (see month.ts's
+// parseDateInput) — a local-time boundary here would exclude/include rows
+// near the 1st incorrectly whenever this runs somewhere other than UTC
+// (e.g. this app's dev box, in Lima).
 function monthRange(month: string): { start: Date; end: Date } {
   const [year, monthNum] = month.split("-").map(Number);
-  const start = new Date(year, monthNum - 1, 1);
-  const end = new Date(year, monthNum, 1); // first day of the NEXT month, exclusive upper bound
+  const start = new Date(Date.UTC(year, monthNum - 1, 1));
+  const end = new Date(Date.UTC(year, monthNum, 1)); // first day of the NEXT month, exclusive upper bound
   return { start, end };
 }
 
@@ -56,7 +60,7 @@ export async function listCashboxMonths(): Promise<string[]> {
     prisma.cashboxPeriod.findMany({ select: { month: true } }),
   ]);
   const months = new Set<string>([
-    ...txDates.map((t) => monthKey(t.date)),
+    ...txDates.map((t) => monthKeyUTC(t.date)),
     ...periods.map((p) => p.month),
     monthKey(), // always include the current month, even with zero data yet
   ]);

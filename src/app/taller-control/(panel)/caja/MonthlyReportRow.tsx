@@ -4,12 +4,15 @@ import { useState, useTransition } from "react";
 import { Trash2, CircleCheck } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
-import { toDateInputValue, parseDateInput } from "./month";
+import { dateToInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "./ConfirmDialog";
 
+// UTC getters — see dateToInputValue's comment in month.ts for why: this
+// reads a STORED transaction date, and local getters here would show a
+// different day depending on which machine (dev box vs. VPS) renders it.
 function formatDate(date: Date): string {
   const d = new Date(date);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
 }
 
 function money(n: number): string {
@@ -31,7 +34,7 @@ function draftFrom(t: AdminTransaction): Draft {
     description: t.description,
     amount: t.amount,
     paymentMethod: t.paymentMethod,
-    date: toDateInputValue(new Date(t.date)),
+    date: dateToInputValue(new Date(t.date)),
   };
 }
 
@@ -40,7 +43,7 @@ function isDirty(draft: Draft, t: AdminTransaction): boolean {
     draft.description !== t.description ||
     draft.amount !== t.amount ||
     draft.paymentMethod !== t.paymentMethod ||
-    draft.date !== toDateInputValue(new Date(t.date))
+    draft.date !== dateToInputValue(new Date(t.date))
   );
 }
 
