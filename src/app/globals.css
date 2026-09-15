@@ -91,6 +91,7 @@ body {
    everywhere — used sparingly it signals hierarchy, used everywhere it's
    just noise. */
 .glass-panel {
+  contain: layout paint style;
   background: linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.6);
@@ -109,8 +110,18 @@ body {
    those stay fully opaque so typed text keeps full contrast. */
 .admin-glass {
   position: relative;
+  /* contain: scopes this element's paint/layout to its own box — the
+     browser can composite its blur without re-checking ancestors or
+     siblings for effects on it, instead of the default "might affect
+     anything" assumption. Doesn't change how it looks; only how much
+     recompute a repaint costs. This class is now on ~36+ elements across
+     the admin panel (reported directly: it gets more sluggish as more
+     sections get added) — backdrop-filter is one of the more expensive
+     CSS properties to composite, and containment is the lever that scales
+     with count without touching the look. */
+  contain: layout paint style;
   background: linear-gradient(155deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.54));
-  backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow:
     0 1px 0 0 rgba(255, 255, 255, 0.85) inset,
@@ -206,13 +217,19 @@ body {
      happened once and pushed all page content down by the sidebar's full
      height. Both `fixed` and `absolute` are already valid positioning
      contexts for ::after below, so this class doesn't need to set one. */
+  /* This element is `fixed`, with page content scrolling behind it —
+     the single most expensive place for a backdrop-filter blur to live,
+     since without containment the browser has to consider re-blurring it
+     on every scroll frame as new content passes underneath. `contain`
+     scopes that cost to just this box. */
+  contain: layout paint style;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.95),
     rgba(255, 255, 255, 0.88) 55%,
     rgba(234, 241, 255, 0.86)
   );
-  backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(13px) saturate(140%);
   box-shadow: 18px 0 44px -30px rgba(10, 30, 80, 0.28);
 }
 
