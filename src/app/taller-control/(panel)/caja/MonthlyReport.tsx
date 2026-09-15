@@ -70,6 +70,14 @@ export function MonthlyReport({
   );
   const finalBalance = rows.length > 0 ? rows[rows.length - 1].running : 0;
 
+  // Newest movement first on screen (reported directly: it should show up
+  // without scrolling past everything older) — but `rows` itself must stay
+  // in real chronological order above, since `running`/`totals`/
+  // `finalBalance` are all computed as a running sum over it. This is a
+  // display-only reversal: each row still carries the correct cumulative
+  // balance up to and including it in real time, just rendered newest-first.
+  const displayRows = [...rows].reverse();
+
   return (
     <div className="cashbox-report admin-glass overflow-x-auto rounded-[var(--radius-lg)] p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -119,7 +127,7 @@ export function MonthlyReport({
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ t, running: rowBalance }) => (
+          {displayRows.map(({ t, running: rowBalance }) => (
             <MonthlyReportRow key={t.id} transaction={t} running={rowBalance} />
           ))}
           {rows.length === 0 && (
