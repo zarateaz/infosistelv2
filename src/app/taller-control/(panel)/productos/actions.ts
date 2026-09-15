@@ -24,8 +24,12 @@ export interface AdminProduct {
   salePrice: number | null;
 }
 
+// Grouped by category then name — newest-first buried products alphabetically
+// close to nothing else in their own category, so with 247+ products the
+// list read as arbitrary. The admin page groups on this same order to turn
+// it into a real catalog instead of a flat dump.
 export async function getAdminProducts(): Promise<AdminProduct[]> {
-  return prisma.product.findMany({ orderBy: { createdAt: "desc" } });
+  return prisma.product.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] });
 }
 
 export async function getAdminProduct(id: string): Promise<AdminProduct | null> {
