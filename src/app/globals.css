@@ -150,29 +150,30 @@ body {
     0 0 0 1px rgba(10, 95, 219, 0.16);
 }
 
-/* Épico form field — every text/number/date/select input across the admin
-   panel used a flat `border-border` + flat `bg-bg`, which read as plain
-   HTML next to admin-glass cards and StatCard's glowing icon tiles on the
-   same page. This carries the same glass/glow language down into the
-   fields themselves: a soft inset top highlight at rest, and on focus a
-   colored ring (not just a border-color flip) that echoes StatCard's tint
-   shadows. Stays fully opaque — no blur — so typed text keeps full
-   contrast and dozens of fields on one page stay cheap to render. */
+/* Admin form field. First pass used var(--border) (8% black) for the
+   outline — technically WCAG-compliant against the field's own fill, but
+   genuinely hard to see for a low-vision user (reported directly: "mi
+   contadora es medio ciega"), especially on a laptop screen at an angle.
+   This version prioritizes a border you can actually see over a subtle
+   "glass" look: 2px, ~45% black (double var(--border-strong)), solid
+   white fill so it reads as a clear box against the page's off-white
+   background instead of blending into it. */
 .admin-field {
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, var(--bg-alt), var(--bg));
-  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.7) inset;
+  border: 2px solid rgba(11, 18, 48, 0.32);
+  background: var(--bg-alt);
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .admin-field:hover {
-  border-color: var(--border-strong);
+  border-color: rgba(11, 18, 48, 0.5);
 }
 .admin-field:focus {
   border-color: var(--accent);
-  box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.7) inset,
-    0 0 0 3px rgba(10, 95, 219, 0.16);
+  box-shadow: 0 0 0 3px rgba(10, 95, 219, 0.22);
+}
+.admin-field::placeholder {
+  color: var(--fg-muted);
+  opacity: 0.85;
 }
 
 /* Épico table header — swaps the plain gray `border-b` under every admin
