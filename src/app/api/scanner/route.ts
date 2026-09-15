@@ -102,7 +102,7 @@ async function lookupBarcodeSpider(
 const searchDuckDuckGoImages = searchProductImages;
 
 export async function POST(request: NextRequest) {
-  // Admin-only tool (used by FastProductScanner inside /taller-control/productos).
+  // Admin-only tool (used by the scanner panel inside /taller-control/productos).
   // `proxy.ts`'s matcher deliberately excludes `/api/*`, so this route must
   // verify the session itself — without this it was reachable by anyone on
   // the internet, unauthenticated, to burn paid-API quota (upcitemdb,

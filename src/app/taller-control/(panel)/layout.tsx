@@ -8,7 +8,6 @@ const NAV_LINKS = [
   { href: "/taller-control/caja", label: "Caja" },
   { href: "/taller-control/inventario", label: "Inventario" },
   { href: "/taller-control/productos", label: "Productos" },
-  { href: "/taller-control/alta-rapida", label: "Alta Rápida" },
   { href: "/taller-control/categorias", label: "Categorías" },
   { href: "/taller-control/reparaciones", label: "Reparaciones" },
   { href: "/taller-control/servicios", label: "Servicios técnicos" },
