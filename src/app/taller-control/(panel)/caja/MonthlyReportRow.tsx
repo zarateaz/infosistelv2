@@ -5,6 +5,7 @@ import { Trash2, CircleCheck } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
 import { toDateInputValue, parseDateInput } from "./month";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 function formatDate(date: Date): string {
   const d = new Date(date);
@@ -59,6 +60,7 @@ export function MonthlyReportRow({
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(transaction));
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const isIncome = transaction.type === "INCOME";
@@ -68,16 +70,7 @@ export function MonthlyReportRow({
   const amountValid = Number.isFinite(draft.amount) && draft.amount > 0;
   const isValid = dateValid && descValid && amountValid;
 
-  const confirmSave = () => {
-    if (!dirty || !isValid) return;
-    const summary =
-      `¿Confirmar los cambios de este movimiento?\n\n` +
-      `Fecha: ${draft.date}\n` +
-      `Descripción: ${draft.description.trim()}\n` +
-      `Método: ${draft.paymentMethod}\n` +
-      `Monto: S/. ${draft.amount.toFixed(2)}`;
-    if (!confirm(summary)) return;
-
+  const applyEdit = () => {
     startTransition(async () => {
       const result = await updateTransaction(transaction.id, {
         description: draft.description.trim(),
@@ -85,11 +78,8 @@ export function MonthlyReportRow({
         paymentMethod: draft.paymentMethod as (typeof PAYMENT_METHODS)[number],
         date: draft.date,
       });
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setError(null);
+      setConfirming(false);
+      setError(result.error ?? null);
     });
   };
 
@@ -154,7 +144,7 @@ export function MonthlyReportRow({
           />
           <button
             type="button"
-            onClick={confirmSave}
+            onClick={() => setConfirming(true)}
             disabled={isPending || !dirty || !isValid}
             aria-label="Confirmar cambios"
             title={dirty ? "Confirmar cambios" : "Sin cambios"}
@@ -177,6 +167,21 @@ export function MonthlyReportRow({
           </button>
         </div>
       </td>
+
+      {confirming && (
+        <ConfirmDialog
+          title="Confirmar cambios del movimiento"
+          pending={isPending}
+          onConfirm={applyEdit}
+          onCancel={() => setConfirming(false)}
+          fields={[
+            { label: "Fecha", value: draft.date },
+            { label: "Descripción", value: draft.description.trim() },
+            { label: "Método", value: draft.paymentMethod },
+            { label: "Monto", value: `S/. ${draft.amount.toFixed(2)}` },
+          ]}
+        />
+      )}
     </tr>
     {error && (
       <tr className="border-b border-border/50">

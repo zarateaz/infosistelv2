@@ -5,6 +5,7 @@ import { Trash2, Pencil, ShieldCheck } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
 import { toDateInputValue, parseDateInput } from "./month";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const fieldClass =
   "mt-1 w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-fg outline-none focus:border-accent";
@@ -47,6 +48,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(transaction));
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const errors = useMemo(() => validate(draft), [draft]);
@@ -63,18 +65,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
     setError(null);
   };
 
-  const confirmSave = () => {
-    if (!isValid) return;
-    const summary =
-      `¿Confirmar los cambios de este movimiento?\n\n` +
-      `Fecha: ${draft.date}\n` +
-      `Tipo: ${draft.type === "INCOME" ? "Ingreso" : "Gasto"}\n` +
-      `Descripción: ${draft.description.trim()}\n` +
-      `Método: ${draft.paymentMethod}\n` +
-      `Monto: S/. ${draft.amount.toFixed(2)}` +
-      (draft.notes.trim() ? `\nNotas: ${draft.notes.trim()}` : "");
-    if (!confirm(summary)) return;
-
+  const applyEdit = () => {
     startTransition(async () => {
       const result = await updateTransaction(transaction.id, {
         description: draft.description.trim(),
@@ -85,9 +76,11 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
         notes: draft.notes.trim() || null,
       });
       if (result.error) {
+        setConfirming(false);
         setError(result.error);
         return;
       }
+      setConfirming(false);
       setEditing(false);
     });
   };
@@ -180,7 +173,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
 
           <div className="mt-4 flex items-center gap-3">
             <button
-              onClick={confirmSave}
+              onClick={() => setConfirming(true)}
               disabled={isPending || !isValid}
               className="group relative flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-accent to-accent-hover px-5 py-2 text-xs font-bold text-accent-fg shadow-lg shadow-accent/30 transition-all hover:scale-[1.02] hover:shadow-accent/50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none"
             >
@@ -196,6 +189,23 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
             </button>
           </div>
         </td>
+
+        {confirming && (
+          <ConfirmDialog
+            title="Confirmar cambios del movimiento"
+            pending={isPending}
+            onConfirm={applyEdit}
+            onCancel={() => setConfirming(false)}
+            fields={[
+              { label: "Fecha", value: draft.date },
+              { label: "Tipo", value: draft.type === "INCOME" ? "Ingreso" : "Gasto" },
+              { label: "Descripción", value: draft.description.trim() },
+              { label: "Método", value: draft.paymentMethod },
+              { label: "Monto", value: `S/. ${draft.amount.toFixed(2)}` },
+              ...(draft.notes.trim() ? [{ label: "Notas", value: draft.notes.trim() }] : []),
+            ]}
+          />
+        )}
       </tr>
     );
   }
