@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, CircleCheck } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
 import { PAYMENT_METHODS } from "./constants";
+import { toDateInputValue, parseDateInput } from "./month";
 
 function formatDate(date: Date): string {
   const d = new Date(date);
@@ -17,13 +18,38 @@ function money(n: number): string {
 const cellInputClass =
   "w-full rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-xs outline-none focus:border-accent focus:bg-bg";
 
-/** Same edit-on-blur / delete pattern as TransactionRow.tsx (the all-time
- *  table below), adapted to the report's wider per-method columns —
- *  description and amount are editable, the payment method is a select
- *  (like TransactionRow), and type (Ingreso/Gasto) is fixed once created,
- *  same restriction TransactionRow already has: converting an income into
- *  an expense in place is unusual enough that delete-and-recreate is
- *  clearer than a confusing "which of the 8 columns did I just edit" UI. */
+interface Draft {
+  description: string;
+  amount: number;
+  paymentMethod: string;
+  date: string;
+}
+
+function draftFrom(t: AdminTransaction): Draft {
+  return {
+    description: t.description,
+    amount: t.amount,
+    paymentMethod: t.paymentMethod,
+    date: toDateInputValue(new Date(t.date)),
+  };
+}
+
+function isDirty(draft: Draft, t: AdminTransaction): boolean {
+  return (
+    draft.description !== t.description ||
+    draft.amount !== t.amount ||
+    draft.paymentMethod !== t.paymentMethod ||
+    draft.date !== toDateInputValue(new Date(t.date))
+  );
+}
+
+/** Same fields editable as TransactionRow.tsx (the all-time table above),
+ *  adapted to the report's wider per-method columns — type (Ingreso/Gasto)
+ *  stays fixed once created: converting an income into an expense in place
+ *  is unusual enough, and would jump the amount across the ING./EGR.
+ *  column groups, that delete-and-recreate is clearer here. Every other
+ *  field — fecha, descripción, método, monto — is editable, and nothing
+ *  saves until "Confirmar cambios" is clicked, same guard as TransactionRow. */
 export function MonthlyReportRow({
   transaction,
   running,
@@ -31,54 +57,84 @@ export function MonthlyReportRow({
   transaction: AdminTransaction;
   running: number;
 }) {
-  const [description, setDescription] = useState(transaction.description);
-  const [amount, setAmount] = useState(transaction.amount);
-  const [method, setMethod] = useState(transaction.paymentMethod);
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(transaction));
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const isIncome = transaction.type === "INCOME";
+  const dirty = isDirty(draft, transaction);
+  const dateValid = parseDateInput(draft.date) !== null;
+  const descValid = draft.description.trim().length > 0 && draft.description.trim().length <= 200;
+  const amountValid = Number.isFinite(draft.amount) && draft.amount > 0;
+  const isValid = dateValid && descValid && amountValid;
 
-  const saveField = (patch: Parameters<typeof updateTransaction>[1]) => {
-    startTransition(() => {
-      updateTransaction(transaction.id, patch);
+  const confirmSave = () => {
+    if (!dirty || !isValid) return;
+    const summary =
+      `¿Confirmar los cambios de este movimiento?\n\n` +
+      `Fecha: ${draft.date}\n` +
+      `Descripción: ${draft.description.trim()}\n` +
+      `Método: ${draft.paymentMethod}\n` +
+      `Monto: S/. ${draft.amount.toFixed(2)}`;
+    if (!confirm(summary)) return;
+
+    startTransition(async () => {
+      const result = await updateTransaction(transaction.id, {
+        description: draft.description.trim(),
+        amount: draft.amount,
+        paymentMethod: draft.paymentMethod as (typeof PAYMENT_METHODS)[number],
+        date: draft.date,
+      });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setError(null);
     });
   };
 
   const remove = () => {
-    if (!confirm(`¿Eliminar el movimiento "${transaction.description}"?`)) return;
+    if (!confirm(`¿Eliminar el movimiento "${transaction.description}"? Esta acción no se puede deshacer.`)) return;
     startTransition(() => deleteTransaction(transaction.id));
   };
 
   return (
-    <tr className="border-b border-border/50">
-      <td className="whitespace-nowrap px-2 py-1.5">{formatDate(transaction.date)}</td>
-      <td className="px-2 py-1.5">
+    <>
+    <tr className={`border-b border-border/50 ${dirty ? "bg-accent/5" : ""}`}>
+      <td className="whitespace-nowrap px-2 py-1.5">
         <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={() => description !== transaction.description && saveField({ description })}
+          type="date"
+          value={draft.date}
+          onChange={(e) => setDraft({ ...draft, date: e.target.value })}
           disabled={isPending}
-          className={`${cellInputClass} min-w-[140px] font-medium text-fg`}
+          className={`${cellInputClass} ${dateValid ? "" : "border-red-400"}`}
+          title={dateValid ? formatDate(transaction.date) : "Fecha inválida"}
         />
       </td>
-      <td className="px-2 py-1.5 text-right font-semibold text-accent">{isIncome ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right">{isIncome && method === "YAPE 1" ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right">{isIncome && method === "YAPE 2" ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right">{isIncome && method === "EFECTIVO" ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right font-semibold text-red-600">{!isIncome ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right">{!isIncome && method === "YAPE 1" ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right">{!isIncome && method === "YAPE 2" ? money(amount) : ""}</td>
-      <td className="px-2 py-1.5 text-right">{!isIncome && method === "EFECTIVO" ? money(amount) : ""}</td>
+      <td className="px-2 py-1.5">
+        <input
+          value={draft.description}
+          onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+          disabled={isPending}
+          maxLength={200}
+          className={`${cellInputClass} min-w-[140px] font-medium text-fg ${descValid ? "" : "border-red-400"}`}
+        />
+      </td>
+      <td className="px-2 py-1.5 text-right font-semibold text-accent">{isIncome ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right">{isIncome && draft.paymentMethod === "YAPE 1" ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right">{isIncome && draft.paymentMethod === "YAPE 2" ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right">{isIncome && draft.paymentMethod === "EFECTIVO" ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right font-semibold text-red-600">{!isIncome ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right">{!isIncome && draft.paymentMethod === "YAPE 1" ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right">{!isIncome && draft.paymentMethod === "YAPE 2" ? money(draft.amount) : ""}</td>
+      <td className="px-2 py-1.5 text-right">{!isIncome && draft.paymentMethod === "EFECTIVO" ? money(draft.amount) : ""}</td>
       <td className="px-2 py-1.5 text-right font-bold text-fg">{money(running)}</td>
       <td className="px-2 py-1.5 text-fg-muted">{transaction.notes ?? ""}</td>
       <td className="print:hidden px-2 py-1.5">
         <div className="flex items-center gap-1.5">
           <select
-            value={method}
-            onChange={(e) => {
-              setMethod(e.target.value);
-              saveField({ paymentMethod: e.target.value as (typeof PAYMENT_METHODS)[number] });
-            }}
+            value={draft.paymentMethod}
+            onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
             disabled={isPending}
             className={`${cellInputClass} w-[92px] border-border`}
           >
@@ -91,12 +147,25 @@ export function MonthlyReportRow({
           <input
             type="number"
             step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-            onBlur={() => amount !== transaction.amount && saveField({ amount })}
+            value={draft.amount}
+            onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })}
             disabled={isPending}
-            className={`${cellInputClass} w-16 border-border text-right`}
+            className={`${cellInputClass} w-16 border-border text-right ${amountValid ? "" : "border-red-400"}`}
           />
+          <button
+            type="button"
+            onClick={confirmSave}
+            disabled={isPending || !dirty || !isValid}
+            aria-label="Confirmar cambios"
+            title={dirty ? "Confirmar cambios" : "Sin cambios"}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${
+              dirty && isValid
+                ? "animate-pulse bg-accent text-accent-fg hover:animate-none hover:bg-accent-hover"
+                : "text-fg-muted"
+            }`}
+          >
+            <CircleCheck size={14} />
+          </button>
           <button
             type="button"
             onClick={remove}
@@ -109,5 +178,13 @@ export function MonthlyReportRow({
         </div>
       </td>
     </tr>
+    {error && (
+      <tr className="border-b border-border/50">
+        <td colSpan={13} className="px-2 pb-1.5 pt-0 text-[11px] font-semibold text-red-600">
+          {error}
+        </td>
+      </tr>
+    )}
+    </>
   );
 }

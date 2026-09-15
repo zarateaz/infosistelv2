@@ -131,11 +131,18 @@ export async function createTransaction(
 }
 
 const updateSchema = z.object({
-  description: z.string().trim().min(1).max(200).optional(),
-  amount: z.coerce.number().positive().optional(),
+  description: z.string().trim().min(1, "La descripción es obligatoria").max(200).optional(),
+  type: z.enum(["INCOME", "EXPENSE"]).optional(),
+  amount: z.coerce.number().positive("El monto debe ser mayor a 0").optional(),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
   date: dateField.optional(),
-  notes: z.string().trim().max(500).nullable().optional(),
+  notes: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null)),
 });
 
 export async function updateTransaction(
@@ -144,6 +151,7 @@ export async function updateTransaction(
   // <input type="date"> string, which dateField below converts to a Date.
   patch: {
     description?: string;
+    type?: "INCOME" | "EXPENSE";
     amount?: number;
     paymentMethod?: (typeof PAYMENT_METHODS)[number];
     date?: string;
@@ -151,7 +159,7 @@ export async function updateTransaction(
   }
 ): Promise<{ error?: string }> {
   const parsed = updateSchema.safeParse(patch);
-  if (!parsed.success) return { error: "Valor inválido." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Valor inválido." };
 
   await prisma.cashboxTransaction.update({ where: { id }, data: parsed.data });
   revalidatePath("/taller-control/caja");
