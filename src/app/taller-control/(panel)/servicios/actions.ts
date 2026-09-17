@@ -447,7 +447,10 @@ const baseServiceSchema = z.object({
     .refine((v) => /^\d{9}$/.test(v), "El teléfono debe tener exactamente 9 dígitos numéricos."),
   title: z.string().trim().min(1, "El trabajo realizado es obligatorio.").max(150),
   description: z.string().trim().max(2000).optional(),
-  equipmentTypeId: z.string().trim().min(1, "Selecciona el tipo de equipo."),
+  // Either an existing type's id, or a brand-new name typed on the spot
+  // (see resolveEquipmentTypeId) — the form sends exactly one of the two.
+  equipmentTypeId: z.string().trim().optional(),
+  equipmentTypeCustomName: z.string().trim().max(60).optional(),
   serviceDate: z
     .string()
     .trim()
@@ -504,7 +507,8 @@ function readServiceForm(formData: FormData) {
     clientPhone: formData.get("clientPhone"),
     title: formData.get("title"),
     description: formData.get("description") || undefined,
-    equipmentTypeId: formData.get("equipmentTypeId"),
+    equipmentTypeId: formData.get("equipmentTypeId") || undefined,
+    equipmentTypeCustomName: formData.get("equipmentTypeCustomName") || undefined,
     serviceDate: formData.get("serviceDate"),
     amount: formData.get("amount"),
     technicianId: formData.get("technicianId"),
@@ -515,6 +519,33 @@ function readServiceForm(formData: FormData) {
   });
 }
 
+/** Reported directly: the "Tipo de equipo" dropdown only offers whatever
+ *  someone already configured — no way to just type a new one on the spot
+ *  while registering a service, unlike every other free-text field in this
+ *  form. Mirrors productos/actions.ts's upsertCategory: the name is the
+ *  identity (EquipmentType.name is @unique as of this migration), so
+ *  typing a name that already exists quietly reuses that type instead of
+ *  creating a duplicate — same behavior an admin would expect from
+ *  Configuración's own "Agregar tipo". Returns an error only when NEITHER
+ *  an existing selection nor a typed name was submitted. */
+async function resolveEquipmentTypeId(data: {
+  equipmentTypeId?: string;
+  equipmentTypeCustomName?: string;
+}): Promise<{ id: string } | { error: string }> {
+  if (data.equipmentTypeCustomName) {
+    const name = sanitizeName(data.equipmentTypeCustomName, 60);
+    if (!name) return { error: "Escribe un nombre válido para el tipo de equipo." };
+    const type = await prisma.equipmentType.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+    return { id: type.id };
+  }
+  if (data.equipmentTypeId) return { id: data.equipmentTypeId };
+  return { error: "Selecciona o escribe el tipo de equipo." };
+}
+
 export async function createService(_prevState: ServiceFormState, formData: FormData): Promise<ServiceFormState> {
   const parsed = readServiceForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
@@ -522,12 +553,12 @@ export async function createService(_prevState: ServiceFormState, formData: Form
   const partialError = validatePartialPayment(parsed.data);
   if (partialError) return { error: partialError };
 
-  const [technician, equipmentType] = await Promise.all([
+  const [technician, equipmentTypeResult] = await Promise.all([
     prisma.technician.findUnique({ where: { id: parsed.data.technicianId } }),
-    prisma.equipmentType.findUnique({ where: { id: parsed.data.equipmentTypeId } }),
+    resolveEquipmentTypeId(parsed.data),
   ]);
   if (!technician) return { error: "El técnico seleccionado no existe." };
-  if (!equipmentType) return { error: "El tipo de equipo seleccionado no existe." };
+  if ("error" in equipmentTypeResult) return { error: equipmentTypeResult.error };
 
   const isPartial = parsed.data.paymentMethod === "PARCIAL";
 
@@ -537,7 +568,7 @@ export async function createService(_prevState: ServiceFormState, formData: Form
       clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
-      equipmentTypeId: parsed.data.equipmentTypeId,
+      equipmentTypeId: equipmentTypeResult.id,
       serviceDate: parsed.data.serviceDate,
       equipmentStage: "RECIBIDO",
       amount: Math.round(parsed.data.amount * 100) / 100,
@@ -570,12 +601,12 @@ export async function updateService(
   const partialError = validatePartialPayment(parsed.data);
   if (partialError) return { error: partialError };
 
-  const [technician, equipmentType] = await Promise.all([
+  const [technician, equipmentTypeResult] = await Promise.all([
     prisma.technician.findUnique({ where: { id: parsed.data.technicianId } }),
-    prisma.equipmentType.findUnique({ where: { id: parsed.data.equipmentTypeId } }),
+    resolveEquipmentTypeId(parsed.data),
   ]);
   if (!technician) return { error: "El técnico seleccionado no existe." };
-  if (!equipmentType) return { error: "El tipo de equipo seleccionado no existe." };
+  if ("error" in equipmentTypeResult) return { error: equipmentTypeResult.error };
 
   const isPartial = parsed.data.paymentMethod === "PARCIAL";
 
@@ -586,7 +617,7 @@ export async function updateService(
       clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
-      equipmentTypeId: parsed.data.equipmentTypeId,
+      equipmentTypeId: equipmentTypeResult.id,
       serviceDate: parsed.data.serviceDate,
       amount: Math.round(parsed.data.amount * 100) / 100,
       paymentMethod: parsed.data.paymentMethod,

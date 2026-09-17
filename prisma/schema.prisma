@@ -101,7 +101,7 @@ model Technician {
 
 model EquipmentType {
   id        String    @id @default(cuid())
-  name      String
+  name      String    @unique
   icon      String    @default("🔧") // un emoji, ej. "💻"
   isActive  Boolean   @default(true)
   services  Service[]

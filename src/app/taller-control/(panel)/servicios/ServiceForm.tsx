@@ -42,6 +42,14 @@ export function ServiceForm({
   const [amount, setAmount] = useState(service?.amount ?? 0);
   const [advanceAmount, setAdvanceAmount] = useState(service?.advanceAmount ?? 0);
   const [existingPhotos, setExistingPhotos] = useState(service?.photos ?? []);
+  // Reported directly: the dropdown only offers whatever's already configured
+  // in Configuración, with no way to just type a new one while registering a
+  // servicio — unlike every other free-text field on this form. A sentinel
+  // option switches the field into a plain text input; only one of
+  // equipmentTypeId/equipmentTypeCustomName ever gets submitted (see
+  // resolveEquipmentTypeId in actions.ts), so this select is intentionally
+  // `name`-less while the text input is shown.
+  const [customEquipmentType, setCustomEquipmentType] = useState(false);
 
   // `state !== initialState` is the part that was missing: useActionState's
   // `state` IS `initialState` (same object reference) on first render,
@@ -103,16 +111,45 @@ export function ServiceForm({
         </div>
         <div>
           <label className={labelClass}>Tipo de equipo</label>
-          <select name="equipmentTypeId" defaultValue={service?.equipmentTypeId ?? ""} required className={inputClass}>
-            <option value="" disabled>
-              Selecciona un tipo
-            </option>
-            {equipmentTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.icon} {t.name}
+          {customEquipmentType ? (
+            <div className="mt-1.5 flex gap-2">
+              <input
+                name="equipmentTypeCustomName"
+                autoFocus
+                required
+                maxLength={60}
+                placeholder="Ej. Consola de videojuegos"
+                className={`${inputClass} mt-0 flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => setCustomEquipmentType(false)}
+                className="mt-1.5 shrink-0 rounded-xl border-2 border-border-strong px-3 text-xs font-bold text-fg-muted hover:border-accent/50"
+              >
+                Elegir de la lista
+              </button>
+            </div>
+          ) : (
+            <select
+              name="equipmentTypeId"
+              defaultValue={service?.equipmentTypeId ?? ""}
+              required
+              className={inputClass}
+              onChange={(e) => {
+                if (e.target.value === "__custom__") setCustomEquipmentType(true);
+              }}
+            >
+              <option value="" disabled>
+                Selecciona un tipo
               </option>
-            ))}
-          </select>
+              {equipmentTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.icon} {t.name}
+                </option>
+              ))}
+              <option value="__custom__">✏️ Escribir otro tipo...</option>
+            </select>
+          )}
         </div>
 
         <div className="sm:col-span-2">
