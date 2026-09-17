@@ -43,8 +43,18 @@ export function ServiceForm({
   const [advanceAmount, setAdvanceAmount] = useState(service?.advanceAmount ?? 0);
   const [existingPhotos, setExistingPhotos] = useState(service?.photos ?? []);
 
+  // `state !== initialState` is the part that was missing: useActionState's
+  // `state` IS `initialState` (same object reference) on first render,
+  // before any submission — and at that point isPending is also already
+  // false. Without this check, the effect's condition was true from the
+  // very first render, closing the form (onDone) the instant it opened,
+  // with no submission involved — reported directly: the form "flashed
+  // for a few seconds" (however long the initial render/hydration took)
+  // and then vanished on its own. A real submission always produces a
+  // *new* object (either `{}` or `{error}`), never the original reference,
+  // so this only fires after something actually happened.
   useEffect(() => {
-    if (!state.error && !isPending) onDone();
+    if (state !== initialState && !state.error && !isPending) onDone();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, isPending]);
 
