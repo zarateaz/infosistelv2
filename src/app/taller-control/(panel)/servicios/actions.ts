@@ -3,15 +3,33 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { sanitizeName, sanitizePhone } from "@/lib/sanitize";
+import type { Prisma } from "@/generated/prisma/client";
+import { sanitizeName, digitsOnly } from "@/lib/sanitize";
 import { deleteServicePhotoFileIfManaged } from "./upload-actions";
+import {
+  pendingBalance,
+  PAYMENT_METHODS,
+  PAY_NOW_METHODS,
+  type PaymentMethod,
+  type PayNowMethod,
+  type EquipmentStage,
+  type PaymentStatus,
+} from "./utils";
+import { parseDateInput } from "../caja/month";
+
+// Re-exported as types only — erased at compile time, so this doesn't
+// trip the "use server" file's "every export must be an async function"
+// rule the way re-exporting the arrays themselves would. Callers that need
+// PAYMENT_METHODS/PAY_NOW_METHODS/EQUIPMENT_STAGES as values import them
+// from "./utils" directly.
+export type { PaymentMethod, PayNowMethod, EquipmentStage, PaymentStatus };
 
 const PATH = "/taller-control/servicios";
-const PAYMENT_METHODS = ["Efectivo", "Yape", "Pendiente de pago"] as const;
-const PAY_NOW_METHODS = ["Efectivo", "Yape"] as const;
 
-function statusFor(paymentMethod: string): "PAGADO" | "PENDIENTE" {
-  return paymentMethod === "Pendiente de pago" ? "PENDIENTE" : "PAGADO";
+function statusFor(paymentMethod: PaymentMethod): PaymentStatus {
+  if (paymentMethod === "PARCIAL") return "PARCIAL";
+  if (paymentMethod === "PENDIENTE") return "PENDIENTE";
+  return "PAGADO";
 }
 
 // ----------------------------- Técnicos ----------------------------- //
@@ -65,7 +83,7 @@ export async function createTechnician(
   await prisma.technician.create({
     data: {
       name: sanitizeName(parsed.data.name, 100),
-      phone: parsed.data.phone ? sanitizePhone(parsed.data.phone) : null,
+      phone: parsed.data.phone ? sanitizeName(parsed.data.phone, 20) : null,
       specialty: parsed.data.specialty ? sanitizeName(parsed.data.specialty, 100) : null,
     },
   });
@@ -84,7 +102,7 @@ export async function updateTechnician(
     where: { id },
     data: {
       name,
-      phone: data.phone ? sanitizePhone(data.phone) : null,
+      phone: data.phone ? sanitizeName(data.phone, 20) : null,
       specialty: data.specialty ? sanitizeName(data.specialty, 100) : null,
     },
   });
@@ -98,23 +116,160 @@ export async function toggleTechnicianStatus(id: string): Promise<void> {
   revalidatePath(PATH);
 }
 
-// ----------------------------- Estadísticas ----------------------------- //
-
-export type StatsPeriod = "hoy" | "semana" | "mes" | "todo";
-
-export interface ServiceStats {
-  totalServices: number;
-  activeTechnicians: number;
-  paidCount: number;
-  paidAmount: number;
-  pendingCount: number;
-  pendingAmount: number;
-  periodCount: number;
-  periodPaidAmount: number;
-  periodPendingAmount: number;
+// Only reachable once a technician has zero services attached — matches the
+// original tool's rule exactly (delete button only shows then); enforced
+// here too, not just hidden in the UI, since the FK is onDelete: Restrict
+// and would otherwise fail loudly instead of with a clear message.
+export async function deleteTechnician(id: string): Promise<{ error?: string }> {
+  const count = await prisma.service.count({ where: { technicianId: id } });
+  if (count > 0) return { error: "No se puede eliminar: este técnico tiene servicios registrados." };
+  await prisma.technician.delete({ where: { id } });
+  revalidatePath(PATH);
+  return {};
 }
 
-function periodStart(period: StatsPeriod): Date | null {
+// ----------------------------- Tipos de equipo ----------------------------- //
+
+export interface AdminEquipmentType {
+  id: string;
+  name: string;
+  icon: string;
+  isActive: boolean;
+  serviceCount: number;
+}
+
+export async function getEquipmentTypes(activeOnly = false): Promise<AdminEquipmentType[]> {
+  const types = await prisma.equipmentType.findMany({
+    where: activeOnly ? { isActive: true } : undefined,
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    include: { _count: { select: { services: true } } },
+  });
+  return types.map((t) => ({
+    id: t.id,
+    name: t.name,
+    icon: t.icon,
+    isActive: t.isActive,
+    serviceCount: t._count.services,
+  }));
+}
+
+const equipmentTypeSchema = z.object({
+  name: z.string().trim().min(1, "El nombre del tipo de equipo es obligatorio.").max(60),
+  icon: z.string().trim().max(4).optional(),
+});
+
+export interface EquipmentTypeFormState {
+  error?: string;
+}
+
+export async function createEquipmentType(
+  _prevState: EquipmentTypeFormState,
+  formData: FormData
+): Promise<EquipmentTypeFormState> {
+  const parsed = equipmentTypeSchema.safeParse({
+    name: formData.get("name"),
+    icon: formData.get("icon") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+
+  await prisma.equipmentType.create({
+    data: { name: sanitizeName(parsed.data.name, 60), icon: parsed.data.icon?.trim() || "🔧" },
+  });
+  revalidatePath(PATH);
+  return {};
+}
+
+export async function updateEquipmentType(id: string, data: { name: string; icon: string }): Promise<void> {
+  const name = sanitizeName(data.name, 60);
+  if (!name) return;
+  await prisma.equipmentType.update({
+    where: { id },
+    data: { name, icon: data.icon.trim() || "🔧" },
+  });
+  revalidatePath(PATH);
+}
+
+export async function toggleEquipmentTypeStatus(id: string): Promise<void> {
+  const type = await prisma.equipmentType.findUnique({ where: { id }, select: { isActive: true } });
+  if (!type) return;
+  await prisma.equipmentType.update({ where: { id }, data: { isActive: !type.isActive } });
+  revalidatePath(PATH);
+}
+
+// ----------------------------- Servicios: lectura ----------------------------- //
+
+export interface AdminServicePhoto {
+  id: string;
+  path: string;
+  originalName: string;
+}
+
+export interface AdminService {
+  id: string;
+  clientName: string;
+  clientPhone: string;
+  title: string;
+  description: string;
+  equipmentTypeId: string;
+  equipmentTypeName: string;
+  equipmentTypeIcon: string;
+  serviceDate: Date;
+  deliveryDate: Date | null;
+  equipmentStage: EquipmentStage;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  advanceAmount: number | null;
+  advancePaymentMethod: PayNowMethod | null;
+  balancePaymentMethod: PayNowMethod | null;
+  technicianId: string;
+  technicianName: string;
+  photos: AdminServicePhoto[];
+  createdAt: Date;
+}
+
+function toAdminService(s: Prisma.ServiceGetPayload<{ include: typeof serviceInclude }>): AdminService {
+  return {
+    id: s.id,
+    clientName: s.clientName,
+    clientPhone: s.clientPhone,
+    title: s.title,
+    description: s.description,
+    equipmentTypeId: s.equipmentTypeId,
+    equipmentTypeName: s.equipmentType.name,
+    equipmentTypeIcon: s.equipmentType.icon,
+    serviceDate: s.serviceDate,
+    deliveryDate: s.deliveryDate,
+    equipmentStage: s.equipmentStage as EquipmentStage,
+    amount: s.amount,
+    paymentMethod: s.paymentMethod as PaymentMethod,
+    paymentStatus: s.paymentStatus as PaymentStatus,
+    advanceAmount: s.advanceAmount,
+    advancePaymentMethod: s.advancePaymentMethod as PayNowMethod | null,
+    balancePaymentMethod: s.balancePaymentMethod as PayNowMethod | null,
+    technicianId: s.technicianId,
+    technicianName: s.technician.name,
+    photos: s.photos.map((p) => ({ id: p.id, path: p.path, originalName: p.originalName })),
+    createdAt: s.createdAt,
+  };
+}
+
+const serviceInclude = {
+  technician: true,
+  equipmentType: true,
+  photos: { orderBy: { uploadedAt: "asc" as const } },
+};
+
+export interface ServiceFilters {
+  q?: string;
+  technicianId?: string;
+  equipmentTypeId?: string;
+  paymentStatus?: PaymentStatus;
+  equipmentStage?: EquipmentStage;
+  period?: "hoy" | "semana" | "mes" | "todo";
+}
+
+function periodStart(period: ServiceFilters["period"]): Date | null {
   const now = new Date();
   if (period === "hoy") {
     now.setHours(0, 0, 0, 0);
@@ -126,144 +281,184 @@ function periodStart(period: StatsPeriod): Date | null {
     now.setHours(0, 0, 0, 0);
     return now;
   }
-  if (period === "mes") {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  }
+  if (period === "mes") return new Date(now.getFullYear(), now.getMonth(), 1);
   return null;
 }
 
-export async function getServiceStats(period: StatsPeriod = "todo"): Promise<ServiceStats> {
-  const from = periodStart(period);
-  const periodWhere = from ? { serviceDate: { gte: from } } : {};
-
-  const [totalServices, activeTechnicians, paidAgg, pendingAgg, periodCount, periodPaidAgg, periodPendingAgg] =
-    await Promise.all([
-      prisma.service.count(),
-      prisma.technician.count({ where: { isActive: true } }),
-      prisma.service.aggregate({ where: { paymentStatus: "PAGADO" }, _count: true, _sum: { amount: true } }),
-      prisma.service.aggregate({ where: { paymentStatus: "PENDIENTE" }, _count: true, _sum: { amount: true } }),
-      prisma.service.count({ where: periodWhere }),
-      prisma.service.aggregate({
-        where: { ...periodWhere, paymentStatus: "PAGADO" },
-        _sum: { amount: true },
-      }),
-      prisma.service.aggregate({
-        where: { ...periodWhere, paymentStatus: "PENDIENTE" },
-        _sum: { amount: true },
-      }),
-    ]);
-
-  return {
-    totalServices,
-    activeTechnicians,
-    paidCount: paidAgg._count,
-    paidAmount: paidAgg._sum.amount ?? 0,
-    pendingCount: pendingAgg._count,
-    pendingAmount: pendingAgg._sum.amount ?? 0,
-    periodCount,
-    periodPaidAmount: periodPaidAgg._sum.amount ?? 0,
-    periodPendingAmount: periodPendingAgg._sum.amount ?? 0,
-  };
-}
-
-// ----------------------------- Servicios ----------------------------- //
-
-export interface AdminServicePhoto {
-  id: string;
-  path: string;
-  originalName: string;
-}
-
-export interface AdminService {
-  id: string;
-  clientName: string;
-  title: string;
-  description: string;
-  processes: string[];
-  serviceDate: Date;
-  amount: number;
-  paymentMethod: string;
-  paymentStatus: "PAGADO" | "PENDIENTE";
-  technicianId: string;
-  technicianName: string;
-  photos: AdminServicePhoto[];
-  createdAt: Date;
-}
-
-export interface ServiceFilters {
-  q?: string;
-  technicianId?: string;
-  paymentStatus?: "PAGADO" | "PENDIENTE";
-  period?: StatsPeriod;
-}
-
+/** Orden "más reciente primero" por fecha de recepción — igual que el
+ *  listado principal del diseño original. Pendientes de cobro usa su
+ *  propio orden ascendente (ver getPendingServices). */
 export async function getAdminServices(filters: ServiceFilters = {}): Promise<AdminService[]> {
-  const { q, technicianId, paymentStatus, period = "todo" } = filters;
+  const { q, technicianId, equipmentTypeId, paymentStatus, equipmentStage, period } = filters;
   const from = periodStart(period);
 
   const services = await prisma.service.findMany({
     where: {
       ...(from ? { serviceDate: { gte: from } } : {}),
       ...(technicianId ? { technicianId } : {}),
+      ...(equipmentTypeId ? { equipmentTypeId } : {}),
       ...(paymentStatus ? { paymentStatus } : {}),
+      ...(equipmentStage ? { equipmentStage } : {}),
       ...(q?.trim()
         ? {
             OR: [
               { clientName: { contains: q.trim() } },
               { title: { contains: q.trim() } },
-              { description: { contains: q.trim() } },
               { technician: { name: { contains: q.trim() } } },
-              { processes: { some: { description: { contains: q.trim() } } } },
             ],
           }
         : {}),
     },
-    include: {
-      technician: true,
-      photos: { orderBy: { uploadedAt: "asc" } },
-      processes: { orderBy: { order: "asc" } },
-    },
+    include: serviceInclude,
     orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }],
   });
 
-  return services.map((s) => ({
-    id: s.id,
-    clientName: s.clientName,
-    title: s.title,
-    description: s.description,
-    processes: s.processes.map((p) => p.description),
-    serviceDate: s.serviceDate,
-    amount: s.amount,
-    paymentMethod: s.paymentMethod,
-    paymentStatus: s.paymentStatus as "PAGADO" | "PENDIENTE",
-    technicianId: s.technicianId,
-    technicianName: s.technician.name,
-    photos: s.photos.map((p) => ({ id: p.id, path: p.path, originalName: p.originalName })),
-    createdAt: s.createdAt,
-  }));
+  return services.map(toAdminService);
 }
+
+export async function getServiceById(id: string): Promise<AdminService | null> {
+  const s = await prisma.service.findUnique({ where: { id }, include: serviceInclude });
+  return s ? toAdminService(s) : null;
+}
+
+export interface ServiceDashboard {
+  total: number;
+  paidCount: number;
+  pendingCount: number; // PARCIAL + PENDIENTE
+  totalCollected: number; // pagados.amount + parciales.advanceAmount
+  totalPending: number; // pendientes.amount + parciales.saldo
+  activeTechnicians: number;
+  recent: AdminService[];
+}
+
+export async function getServiceDashboard(): Promise<ServiceDashboard> {
+  const [all, activeTechnicians] = await Promise.all([
+    prisma.service.findMany({ include: serviceInclude, orderBy: { createdAt: "desc" } }),
+    prisma.technician.count({ where: { isActive: true } }),
+  ]);
+
+  const services = all.map(toAdminService);
+  const paid = services.filter((s) => s.paymentStatus === "PAGADO");
+  const partial = services.filter((s) => s.paymentStatus === "PARCIAL");
+  const pending = services.filter((s) => s.paymentStatus === "PENDIENTE");
+
+  const totalCollected =
+    paid.reduce((sum, s) => sum + s.amount, 0) + partial.reduce((sum, s) => sum + (s.advanceAmount ?? 0), 0);
+  const totalPending = pending.reduce((sum, s) => sum + s.amount, 0) + partial.reduce((sum, s) => sum + pendingBalance(s), 0);
+
+  return {
+    total: services.length,
+    paidCount: paid.length,
+    pendingCount: partial.length + pending.length,
+    totalCollected,
+    totalPending,
+    activeTechnicians,
+    recent: services.slice(0, 6),
+  };
+}
+
+/** Ascendente por fecha de recepción — lo más antiguo (y por lo tanto más
+ *  urgente de cobrar) primero, igual que el diseño original. */
+export async function getPendingServices(): Promise<AdminService[]> {
+  const services = await prisma.service.findMany({
+    where: { paymentStatus: { in: ["PARCIAL", "PENDIENTE"] } },
+    include: serviceInclude,
+    orderBy: { serviceDate: "asc" },
+  });
+  return services.map(toAdminService);
+}
+
+export async function getGalleryServices(): Promise<AdminService[]> {
+  const services = await prisma.service.findMany({
+    where: { photos: { some: {} } },
+    include: serviceInclude,
+    orderBy: { serviceDate: "desc" },
+  });
+  return services.map(toAdminService);
+}
+
+export interface ClientSummary {
+  clientName: string;
+  services: AdminService[];
+  totalPaid: number; // solo servicios con estado PAGADO (no incluye adelantos de parciales)
+  totalPending: number; // solo servicios con estado PENDIENTE (no incluye saldo de parciales)
+  pendingCount: number; // solo PENDIENTE, para el badge de la lista
+  lastServiceDate: Date;
+}
+
+export async function getClientSummaries(): Promise<ClientSummary[]> {
+  const services = await getAdminServices();
+  const byClient = new Map<string, AdminService[]>();
+  for (const s of services) {
+    const list = byClient.get(s.clientName) ?? [];
+    list.push(s);
+    byClient.set(s.clientName, list);
+  }
+
+  return [...byClient.entries()]
+    .map(([clientName, list]) => ({
+      clientName,
+      services: [...list].sort((a, b) => b.serviceDate.getTime() - a.serviceDate.getTime()),
+      totalPaid: list.filter((s) => s.paymentStatus === "PAGADO").reduce((sum, s) => sum + s.amount, 0),
+      totalPending: list.filter((s) => s.paymentStatus === "PENDIENTE").reduce((sum, s) => sum + s.amount, 0),
+      pendingCount: list.filter((s) => s.paymentStatus === "PENDIENTE").length,
+      lastServiceDate: list.reduce((max, s) => (s.serviceDate > max ? s.serviceDate : max), list[0].serviceDate),
+    }))
+    .sort((a, b) => b.services.length - a.services.length);
+}
+
+// ----------------------------- Servicios: escritura ----------------------------- //
 
 export interface ServiceFormState {
   error?: string;
 }
 
 const photoSchema = z.object({ path: z.string().min(1), originalName: z.string().max(255) });
-const processSchema = z.string().trim().min(1).max(300);
 
-const serviceSchema = z.object({
+const baseServiceSchema = z.object({
   clientName: z.string().trim().min(1, "El nombre del cliente es obligatorio.").max(150),
+  clientPhone: z
+    .string()
+    .transform((v) => digitsOnly(v))
+    .refine((v) => /^\d{9}$/.test(v), "El teléfono debe tener exactamente 9 dígitos numéricos."),
   title: z.string().trim().min(1, "El trabajo realizado es obligatorio.").max(150),
   description: z.string().trim().max(2000).optional(),
-  processes: z
-    .array(processSchema)
-    .min(1, "Registra al menos un proceso realizado.")
-    .max(30, "Demasiados procesos — máximo 30 por servicio."),
-  serviceDate: z.string().trim().min(1, "La fecha del servicio es obligatoria."),
+  equipmentTypeId: z.string().trim().min(1, "Selecciona el tipo de equipo."),
+  serviceDate: z
+    .string()
+    .trim()
+    .transform((v, ctx) => {
+      const parsed = parseDateInput(v);
+      if (!parsed) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Fecha de recepción inválida." });
+        return z.NEVER;
+      }
+      return parsed;
+    }),
   amount: z.coerce.number().min(0, "El monto no puede ser negativo."),
-  paymentMethod: z.enum(PAYMENT_METHODS, { message: "Forma de pago inválida." }),
   technicianId: z.string().trim().min(1, "Selecciona un técnico."),
+  paymentMethod: z.enum(PAYMENT_METHODS, { message: "Forma de pago inválida." }),
+  advanceAmount: z.coerce.number().optional(),
+  advancePaymentMethod: z.enum(PAY_NOW_METHODS).optional(),
   photos: z.array(photoSchema).max(12).optional(),
 });
+
+/** El pago parcial exige adelanto > 0, menor al total, y su propia forma de
+ *  pago — mismas reglas que el formulario y el modal de pago parcial del
+ *  diseño original, aplicadas aquí también para que nunca dependan solo de
+ *  la validación del cliente. */
+function validatePartialPayment(data: {
+  paymentMethod: PaymentMethod;
+  amount: number;
+  advanceAmount?: number;
+  advancePaymentMethod?: PayNowMethod;
+}): string | null {
+  if (data.paymentMethod !== "PARCIAL") return null;
+  if (!data.advanceAmount || data.advanceAmount <= 0) return "Ingresa un monto de adelanto válido.";
+  if (data.advanceAmount >= data.amount) return "El adelanto no puede ser igual o mayor al monto total.";
+  if (!data.advancePaymentMethod) return "Selecciona la forma de pago del adelanto.";
+  return null;
+}
 
 function parsePhotosField(raw: FormDataEntryValue | null): { path: string; originalName: string }[] {
   if (typeof raw !== "string" || !raw) return [];
@@ -279,57 +474,54 @@ function parsePhotosField(raw: FormDataEntryValue | null): { path: string; origi
   }
 }
 
-/** Same JSON-in-hidden-input convention as parsePhotosField — the client
- *  (ProcessesField) keeps a dynamic list of rows and serializes it on every
- *  change, since a plain <form> can't submit a variable-length list of
- *  same-named text inputs through a server action any other way. */
-function parseProcessesField(raw: FormDataEntryValue | null): string[] {
-  if (typeof raw !== "string" || !raw) return [];
-  try {
-    const decoded = JSON.parse(raw);
-    if (!Array.isArray(decoded)) return [];
-    return decoded.filter((v): v is string => typeof v === "string");
-  } catch {
-    return [];
-  }
-}
-
-export async function createService(
-  _prevState: ServiceFormState,
-  formData: FormData
-): Promise<ServiceFormState> {
-  const parsed = serviceSchema.safeParse({
+function readServiceForm(formData: FormData) {
+  return baseServiceSchema.safeParse({
     clientName: formData.get("clientName"),
+    clientPhone: formData.get("clientPhone"),
     title: formData.get("title"),
-    description: formData.get("description"),
-    processes: parseProcessesField(formData.get("processes")),
+    description: formData.get("description") || undefined,
+    equipmentTypeId: formData.get("equipmentTypeId"),
     serviceDate: formData.get("serviceDate"),
     amount: formData.get("amount"),
-    paymentMethod: formData.get("paymentMethod"),
     technicianId: formData.get("technicianId"),
+    paymentMethod: formData.get("paymentMethod"),
+    advanceAmount: formData.get("advanceAmount") || undefined,
+    advancePaymentMethod: formData.get("advancePaymentMethod") || undefined,
     photos: parsePhotosField(formData.get("photos")),
   });
+}
+
+export async function createService(_prevState: ServiceFormState, formData: FormData): Promise<ServiceFormState> {
+  const parsed = readServiceForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
 
-  const technician = await prisma.technician.findUnique({ where: { id: parsed.data.technicianId } });
+  const partialError = validatePartialPayment(parsed.data);
+  if (partialError) return { error: partialError };
+
+  const [technician, equipmentType] = await Promise.all([
+    prisma.technician.findUnique({ where: { id: parsed.data.technicianId } }),
+    prisma.equipmentType.findUnique({ where: { id: parsed.data.equipmentTypeId } }),
+  ]);
   if (!technician) return { error: "El técnico seleccionado no existe." };
+  if (!equipmentType) return { error: "El tipo de equipo seleccionado no existe." };
+
+  const isPartial = parsed.data.paymentMethod === "PARCIAL";
 
   await prisma.service.create({
     data: {
       clientName: sanitizeName(parsed.data.clientName, 150),
+      clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
-      serviceDate: new Date(parsed.data.serviceDate),
+      equipmentTypeId: parsed.data.equipmentTypeId,
+      serviceDate: parsed.data.serviceDate,
+      equipmentStage: "RECIBIDO",
       amount: Math.round(parsed.data.amount * 100) / 100,
       paymentMethod: parsed.data.paymentMethod,
       paymentStatus: statusFor(parsed.data.paymentMethod),
+      advanceAmount: isPartial ? Math.round((parsed.data.advanceAmount ?? 0) * 100) / 100 : null,
+      advancePaymentMethod: isPartial ? (parsed.data.advancePaymentMethod ?? null) : null,
       technicianId: parsed.data.technicianId,
-      processes: {
-        create: parsed.data.processes.map((description, order) => ({
-          description: sanitizeName(description, 300),
-          order,
-        })),
-      },
       photos: {
         create: (parsed.data.photos ?? []).map((p) => ({
           path: p.path,
@@ -348,47 +540,40 @@ export async function updateService(
   _prevState: ServiceFormState,
   formData: FormData
 ): Promise<ServiceFormState> {
-  const parsed = serviceSchema.safeParse({
-    clientName: formData.get("clientName"),
-    title: formData.get("title"),
-    description: formData.get("description"),
-    processes: parseProcessesField(formData.get("processes")),
-    serviceDate: formData.get("serviceDate"),
-    amount: formData.get("amount"),
-    paymentMethod: formData.get("paymentMethod"),
-    technicianId: formData.get("technicianId"),
-    photos: parsePhotosField(formData.get("photos")),
-  });
+  const parsed = readServiceForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
 
-  const technician = await prisma.technician.findUnique({ where: { id: parsed.data.technicianId } });
+  const partialError = validatePartialPayment(parsed.data);
+  if (partialError) return { error: partialError };
+
+  const [technician, equipmentType] = await Promise.all([
+    prisma.technician.findUnique({ where: { id: parsed.data.technicianId } }),
+    prisma.equipmentType.findUnique({ where: { id: parsed.data.equipmentTypeId } }),
+  ]);
   if (!technician) return { error: "El técnico seleccionado no existe." };
+  if (!equipmentType) return { error: "El tipo de equipo seleccionado no existe." };
+
+  const isPartial = parsed.data.paymentMethod === "PARCIAL";
 
   await prisma.service.update({
     where: { id },
     data: {
       clientName: sanitizeName(parsed.data.clientName, 150),
+      clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
-      serviceDate: new Date(parsed.data.serviceDate),
+      equipmentTypeId: parsed.data.equipmentTypeId,
+      serviceDate: parsed.data.serviceDate,
       amount: Math.round(parsed.data.amount * 100) / 100,
       paymentMethod: parsed.data.paymentMethod,
       paymentStatus: statusFor(parsed.data.paymentMethod),
+      advanceAmount: isPartial ? Math.round((parsed.data.advanceAmount ?? 0) * 100) / 100 : null,
+      advancePaymentMethod: isPartial ? (parsed.data.advancePaymentMethod ?? null) : null,
+      balancePaymentMethod: isPartial ? undefined : null,
       technicianId: parsed.data.technicianId,
-      // The itemized process list is the edit's source of truth each time
-      // (delete-and-recreate) — unlike photos, there's no separate
-      // "remove one process" action, so the submitted list must fully
-      // replace the previous one or a removed row would never disappear.
-      processes: {
-        deleteMany: {},
-        create: parsed.data.processes.map((description, order) => ({
-          description: sanitizeName(description, 300),
-          order,
-        })),
-      },
-      // Edits only ever ADD photos (matches the original tool's behavior) —
-      // removing one is its own action (deleteServicePhoto) so a half-typed
-      // edit can never silently drop evidence already on file.
+      // Los edits solo AGREGAN fotos (igual que el original) — quitar una es
+      // su propia acción (deleteServicePhoto) para que un edit a medio
+      // llenar nunca borre evidencia ya guardada en silencio.
       photos: {
         create: (parsed.data.photos ?? []).map((p) => ({
           path: p.path,
@@ -400,15 +585,6 @@ export async function updateService(
 
   revalidatePath(PATH);
   return {};
-}
-
-export async function markServiceAsPaid(id: string, method: (typeof PAY_NOW_METHODS)[number]): Promise<void> {
-  if (!PAY_NOW_METHODS.includes(method)) return;
-  await prisma.service.update({
-    where: { id },
-    data: { paymentMethod: method, paymentStatus: "PAGADO" },
-  });
-  revalidatePath(PATH);
 }
 
 export async function deleteService(id: string): Promise<void> {
@@ -424,4 +600,103 @@ export async function deleteServicePhoto(photoId: string): Promise<void> {
   await prisma.servicePhoto.delete({ where: { id: photoId } });
   await deleteServicePhotoFileIfManaged(photo.path);
   revalidatePath(PATH);
+}
+
+// ----------------------------- Pago: cambios rápidos ----------------------------- //
+
+/** Selector rápido de forma de pago (en la tabla o el detalle). EFECTIVO/
+ *  YAPE marcan pagado de inmediato y limpian cualquier adelanto previo;
+ *  PENDIENTE resetea todo. PARCIAL no se acepta aquí — igual que el
+ *  original, ese caso abre un modal aparte (ver registerPartialPayment)
+ *  porque necesita el monto del adelanto. */
+export async function changePaymentMethod(
+  id: string,
+  method: "EFECTIVO" | "YAPE" | "PENDIENTE"
+): Promise<{ error?: string }> {
+  await prisma.service.update({
+    where: { id },
+    data: {
+      paymentMethod: method,
+      paymentStatus: statusFor(method),
+      advanceAmount: null,
+      advancePaymentMethod: null,
+      balancePaymentMethod: null,
+    },
+  });
+  revalidatePath(PATH);
+  return {};
+}
+
+export async function registerPartialPayment(
+  id: string,
+  data: { advanceAmount: number; advancePaymentMethod: PayNowMethod }
+): Promise<{ error?: string }> {
+  const service = await prisma.service.findUnique({ where: { id }, select: { amount: true } });
+  if (!service) return { error: "El servicio ya no existe." };
+
+  const error = validatePartialPayment({
+    paymentMethod: "PARCIAL",
+    amount: service.amount,
+    advanceAmount: data.advanceAmount,
+    advancePaymentMethod: data.advancePaymentMethod,
+  });
+  if (error) return { error };
+
+  await prisma.service.update({
+    where: { id },
+    data: {
+      paymentMethod: "PARCIAL",
+      paymentStatus: "PARCIAL",
+      advanceAmount: Math.round(data.advanceAmount * 100) / 100,
+      advancePaymentMethod: data.advancePaymentMethod,
+      balancePaymentMethod: null,
+    },
+  });
+  revalidatePath(PATH);
+  return {};
+}
+
+/** Cubre los dos casos del modal "Marcar como pagado" del original: un
+ *  servicio PENDIENTE pasa a PAGADO con la forma elegida; un PARCIAL cobra
+ *  su saldo y pasa a PAGADO, pero paymentMethod se queda en "PARCIAL" como
+ *  registro histórico de que empezó como un adelanto. */
+export async function collectPayment(id: string, method: PayNowMethod): Promise<{ error?: string }> {
+  const service = await prisma.service.findUnique({ where: { id }, select: { paymentStatus: true } });
+  if (!service) return { error: "El servicio ya no existe." };
+
+  await prisma.service.update({
+    where: { id },
+    data:
+      service.paymentStatus === "PARCIAL"
+        ? { balancePaymentMethod: method, paymentStatus: "PAGADO" }
+        : { paymentMethod: method, paymentStatus: "PAGADO" },
+  });
+  revalidatePath(PATH);
+  return {};
+}
+
+// ----------------------------- Etapa del equipo ----------------------------- //
+
+/** Cambia la etapa a cualquier valor MENOS "ENTREGADO" — ese caso pide la
+ *  fecha de entrega, así que pasa por markAsDelivered en su lugar (mismo
+ *  comportamiento que el selector del original, que reabre un modal en vez
+ *  de aplicar el cambio directo cuando se elige "Entregado"). Igual que el
+ *  original, retroceder de "Entregado" a cualquier otra etapa limpia la
+ *  fecha de entrega. */
+export async function changeEquipmentStage(
+  id: string,
+  stage: Exclude<EquipmentStage, "ENTREGADO">
+): Promise<void> {
+  await prisma.service.update({ where: { id }, data: { equipmentStage: stage, deliveryDate: null } });
+  revalidatePath(PATH);
+}
+
+export async function markAsDelivered(id: string, deliveryDate: string): Promise<{ error?: string }> {
+  if (!deliveryDate) return { error: "Selecciona la fecha de entrega." };
+  await prisma.service.update({
+    where: { id },
+    data: { equipmentStage: "ENTREGADO", deliveryDate: new Date(deliveryDate) },
+  });
+  revalidatePath(PATH);
+  return {};
 }

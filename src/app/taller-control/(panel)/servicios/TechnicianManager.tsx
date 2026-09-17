@@ -1,20 +1,25 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Pencil, Plus, Users, X } from "lucide-react";
+import { Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import {
   createTechnician,
+  deleteTechnician,
   toggleTechnicianStatus,
   updateTechnician,
   type AdminTechnician,
   type TechnicianFormState,
 } from "./actions";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const initialState: TechnicianFormState = {};
 const inputClass = "admin-field w-full rounded-lg px-3 py-2 text-sm text-fg";
 
 export function TechnicianManager({ technicians }: { technicians: AdminTechnician[] }) {
-  const [open, setOpen] = useState(false);
+  // Defaults open: this now lives on its own "Configuración" tab (not a
+  // collapsible sidebar widget next to the service form anymore), so
+  // there's no space to save by starting collapsed.
+  const [open, setOpen] = useState(true);
 
   return (
     <div className="admin-glass rounded-[var(--radius-lg)] p-6">
@@ -81,6 +86,8 @@ function TechnicianRow({ technician }: { technician: AdminTechnician }) {
   const [name, setName] = useState(technician.name);
   const [phone, setPhone] = useState(technician.phone ?? "");
   const [specialty, setSpecialty] = useState(technician.specialty ?? "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const save = () => {
@@ -89,6 +96,14 @@ function TechnicianRow({ technician }: { technician: AdminTechnician }) {
   };
 
   const toggle = () => startTransition(() => toggleTechnicianStatus(technician.id));
+
+  const remove = () => {
+    startTransition(async () => {
+      const result = await deleteTechnician(technician.id);
+      setConfirmingDelete(false);
+      if (result.error) setDeleteError(result.error);
+    });
+  };
 
   if (editing) {
     return (
@@ -151,7 +166,30 @@ function TechnicianRow({ technician }: { technician: AdminTechnician }) {
         >
           {technician.isActive ? <span className="inline-flex items-center gap-1"><X size={12} /> Desactivar</span> : "Activar"}
         </button>
+        {technician.serviceCount === 0 && (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            disabled={isPending}
+            aria-label={`Eliminar ${technician.name}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
+      {deleteError && <p className="mt-1 w-full text-xs font-medium text-red-600">{deleteError}</p>}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Eliminar técnico"
+          message={`¿Eliminar a "${technician.name}" de la lista de técnicos? Esta acción no se puede deshacer.`}
+          danger
+          pending={isPending}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   );
 }

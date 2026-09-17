@@ -77,9 +77,15 @@ model Repair {
 
 /**
  * Registro de servicios técnicos realizados (distinto de Repair: Repair es
- * el tracker público de progreso por DNI; Technician/Service/ServicePhoto
- * es el libro interno de trabajos ya ejecutados — cliente, técnico
- * asignado, monto, forma de pago y evidencia fotográfica).
+ * el tracker público de progreso por DNI; Technician/EquipmentType/Service/
+ * ServicePhoto es el libro interno de trabajos ya ejecutados — cliente,
+ * técnico asignado, tipo de equipo, etapa de reparación, monto, forma de
+ * pago —incluido pago parcial con saldo— y evidencia fotográfica).
+ *
+ * Reemplaza en v2 al módulo original (Service tenía `processes`, sin
+ * teléfono/tipo de equipo/etapa/pago parcial) por el diseño final que trajo
+ * una compañera del equipo — mismo modelo de datos y reglas de negocio,
+ * adaptado a Prisma/Next.js/Tailwind en vez de HTML+CSS+IndexedDB.
  */
 model Technician {
   id        String    @id @default(cuid())
@@ -93,44 +99,64 @@ model Technician {
   @@index([isActive])
 }
 
+model EquipmentType {
+  id        String    @id @default(cuid())
+  name      String
+  icon      String    @default("🔧") // un emoji, ej. "💻"
+  isActive  Boolean   @default(true)
+  services  Service[]
+  createdAt DateTime  @default(now())
+
+  @@index([isActive])
+}
+
 model Service {
   id          String   @id @default(cuid())
   clientName  String
+  clientPhone String // 9 dígitos numéricos
   title       String
-  description String // notas generales opcionales — el detalle de "qué se hizo" vive en `processes`
-  serviceDate DateTime // día del trabajo (fecha, sin hora) — distinto de createdAt/updatedAt
+  description String // detalle del trabajo — opcional
+
+  serviceDate  DateTime // fecha de recepción del equipo
+  deliveryDate DateTime? // se completa recién al marcar la etapa como ENTREGADO
+
+  // "RECIBIDO" | "REPARANDO" | "LISTO" | "ENTREGADO" — ciclo de vida del
+  // equipo, independiente del estado de pago.
+  equipmentStage String @default("RECIBIDO")
 
   amount Float
 
-  // "Efectivo" | "Yape" | "Pendiente de pago" — paymentStatus se deriva de
-  // este campo al guardar (Pendiente de pago -> PENDIENTE, cualquier otro
-  // -> PAGADO); marcar como pagado más tarde reemplaza paymentMethod por
-  // "Efectivo" o "Yape" y pasa paymentStatus a PAGADO.
+  // "EFECTIVO" | "YAPE" | "PARCIAL" | "PENDIENTE" — elegido al registrar o
+  // al cambiar la forma de pago después. paymentStatus se deriva de este
+  // campo: EFECTIVO/YAPE -> PAGADO, PARCIAL -> PARCIAL, PENDIENTE ->
+  // PENDIENTE. PARCIAL es el único que además guarda un adelanto.
   paymentMethod String
-  paymentStatus String // "PAGADO" | "PENDIENTE"
+  paymentStatus String // "PAGADO" | "PARCIAL" | "PENDIENTE"
+
+  // Solo tienen valor cuando paymentMethod/-Status es PARCIAL.
+  advanceAmount        Float? // adelanto recibido al momento de registrar el parcial
+  advancePaymentMethod String? // "EFECTIVO" | "YAPE" — forma de pago del adelanto
+  // Se completa recién al cobrar el saldo restante (paymentStatus pasa a
+  // PAGADO en ese momento, pero paymentMethod se queda en "PARCIAL" como
+  // registro histórico de que empezó como un adelanto).
+  balancePaymentMethod String? // "EFECTIVO" | "YAPE"
 
   technicianId String
-  technician   Technician       @relation(fields: [technicianId], references: [id], onDelete: Restrict)
-  photos       ServicePhoto[]
-  processes    ServiceProcess[] // lista itemizada de trabajos/procesos realizados en esta visita
+  technician   Technician @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+
+  equipmentTypeId String
+  equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id], onDelete: Restrict)
+
+  photos ServicePhoto[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([serviceDate])
   @@index([technicianId])
+  @@index([equipmentTypeId])
   @@index([paymentStatus])
-}
-
-model ServiceProcess {
-  id          String   @id @default(cuid())
-  serviceId   String
-  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  description String // un paso/proceso realizado, ej. "Cambio de pasta térmica"
-  order       Int      @default(0) // orden de entrada, para mostrarlos en la secuencia en que se registraron
-  createdAt   DateTime @default(now())
-
-  @@index([serviceId])
+  @@index([equipmentStage])
 }
 
 model ServicePhoto {
