@@ -6,7 +6,7 @@ import { Camera, Loader2, X } from "lucide-react";
 import { uploadServicePhoto } from "./upload-actions";
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
-const MAX_PHOTOS = 12;
+const MAX_PHOTOS = 4;
 
 export interface PendingPhoto {
   path: string;
@@ -109,7 +109,7 @@ export function ServicePhotosField({
       {error ? (
         <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>
       ) : (
-        <p className="mt-1.5 text-xs text-fg-muted">Fotos del antes/después o del trabajo realizado (opcional).</p>
+        <p className="mt-1.5 text-xs text-fg-muted">Fotos del antes/después o del trabajo realizado (opcional, máximo 4).</p>
       )}
     </div>
   );

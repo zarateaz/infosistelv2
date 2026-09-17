@@ -467,7 +467,7 @@ const baseServiceSchema = z.object({
   paymentMethod: z.enum(PAYMENT_METHODS, { message: "Forma de pago inválida." }),
   advanceAmount: z.coerce.number().optional(),
   advancePaymentMethod: z.enum(PAY_NOW_METHODS).optional(),
-  photos: z.array(photoSchema).max(12).optional(),
+  photos: z.array(photoSchema).max(4, "Puedes subir un máximo de 4 fotos.").optional(),
 });
 
 /** El pago parcial exige adelanto > 0, menor al total, y su propia forma de

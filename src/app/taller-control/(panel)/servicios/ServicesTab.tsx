@@ -256,7 +256,7 @@ function ServicesTable({
   onEdit: (s: AdminService) => void;
 }) {
   return (
-    <div className="mt-3 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
+    <div className="no-scrollbar mt-3 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
       <table className="w-full min-w-[960px] text-left text-sm">
         <thead>
           <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
