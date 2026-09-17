@@ -270,7 +270,7 @@ function ServicesTable({
             <th className="px-4 py-3">Pago</th>
             <th className="px-4 py-3">Estado</th>
             <th className="px-4 py-3">Etapa del equipo</th>
-            <th className="px-4 py-3" />
+            <th className="sticky right-0 z-10 bg-bg-alt px-4 py-3 shadow-[-8px_0_10px_-8px_rgba(15,23,42,0.35)]" />
           </tr>
         </thead>
         <tbody>
@@ -294,7 +294,7 @@ function ServicesTable({
                 </span>
               </td>
               <td className="px-4 py-3"><StageCell service={s} /></td>
-              <td className="px-4 py-3">
+              <td className="sticky right-0 z-10 bg-bg-alt px-4 py-3 shadow-[-8px_0_10px_-8px_rgba(15,23,42,0.35)]">
                 <div className="flex items-center justify-end gap-1">
                   <button type="button" onClick={() => onView(s)} aria-label="Ver detalle" className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-bg hover:text-accent">
                     <Eye size={14} />
