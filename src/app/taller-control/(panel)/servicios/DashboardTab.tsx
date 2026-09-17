@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ClipboardList, DollarSign, Clock, UserCheck } from "lucide-react";
+import { ClipboardList, DollarSign, Clock, Plus, UserCheck } from "lucide-react";
 import type { AdminService, ServiceDashboard } from "./actions";
 import { PAYMENT_STATUS_LABELS, formatSoles, formatFecha } from "./utils";
 import { StatCard } from "../StatCard";
@@ -14,13 +14,32 @@ function statusBadgeClass(status: string): string {
   return "bg-red-50 text-red-600";
 }
 
-export function DashboardTab({ dashboard, onEdit }: { dashboard: ServiceDashboard; onEdit: (s: AdminService) => void }) {
+export function DashboardTab({
+  dashboard,
+  onEdit,
+  onNewService,
+}: {
+  dashboard: ServiceDashboard;
+  onEdit: (s: AdminService) => void;
+  onNewService: () => void;
+}) {
   const [detailService, setDetailService] = useState<AdminService | null>(null);
 
   return (
     <div>
-      <h2 className="font-display text-lg font-bold text-fg">Resumen</h2>
-      <p className="mt-1 text-sm text-fg-muted">Resumen general de los servicios técnicos</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-lg font-bold text-fg">Resumen</h2>
+          <p className="mt-1 text-sm text-fg-muted">Resumen general de los servicios técnicos</p>
+        </div>
+        <button
+          type="button"
+          onClick={onNewService}
+          className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-bold text-accent-fg shadow-md shadow-accent/30 transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/40"
+        >
+          <Plus size={16} strokeWidth={2.5} /> Nuevo servicio
+        </button>
+      </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard icon={ClipboardList} label="Total de servicios" value={dashboard.total} sub="registrados en el sistema" tint="blue" />

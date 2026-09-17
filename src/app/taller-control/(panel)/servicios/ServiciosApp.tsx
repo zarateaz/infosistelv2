@@ -46,6 +46,11 @@ export function ServiciosApp({
     setTab("servicios");
   };
 
+  const newServiceFromElsewhere = () => {
+    setEditTarget("new");
+    setTab("servicios");
+  };
+
   const pendingCount = dashboard.pendingCount;
 
   return (
@@ -77,7 +82,7 @@ export function ServiciosApp({
       </div>
 
       <div className="mt-6">
-        {tab === "dashboard" && <DashboardTab dashboard={dashboard} onEdit={editFromElsewhere} />}
+        {tab === "dashboard" && <DashboardTab dashboard={dashboard} onEdit={editFromElsewhere} onNewService={newServiceFromElsewhere} />}
         {tab === "servicios" && (
           <ServicesTab
             services={services}
