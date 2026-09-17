@@ -138,7 +138,31 @@ export interface AdminEquipmentType {
   serviceCount: number;
 }
 
+const DEFAULT_EQUIPMENT_TYPES = [
+  { name: "Laptop", icon: "💻" },
+  { name: "PC de escritorio", icon: "🖥️" },
+  { name: "Impresora", icon: "🖨️" },
+  { name: "Otro", icon: "🔧" },
+];
+
+/** A fresh install (or a database where every equipment type has since
+ *  been deleted) leaves "Tipo de equipo" in the Nuevo servicio form
+ *  completely empty — a required field with nothing to select, so the
+ *  form can never actually be submitted. Reported directly: the button to
+ *  add a service was there, but the form underneath it couldn't be
+ *  completed. The original tool guards against exactly this with a
+ *  permanent check on every load ("instalaciones previas... no tienen
+ *  esta tabla poblada"): if the table is empty, seed these 4 defaults.
+ *  Never reseeds once anything exists, so it never fights an admin who's
+ *  renamed, added, or deactivated types since. */
+async function ensureDefaultEquipmentTypes(): Promise<void> {
+  const count = await prisma.equipmentType.count();
+  if (count > 0) return;
+  await prisma.equipmentType.createMany({ data: DEFAULT_EQUIPMENT_TYPES });
+}
+
 export async function getEquipmentTypes(activeOnly = false): Promise<AdminEquipmentType[]> {
+  await ensureDefaultEquipmentTypes();
   const types = await prisma.equipmentType.findMany({
     where: activeOnly ? { isActive: true } : undefined,
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
