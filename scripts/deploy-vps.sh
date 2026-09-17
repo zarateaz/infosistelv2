@@ -38,7 +38,7 @@ if [[ "$DATABASE_URL" != file:/* ]]; then
 fi
 
 echo "=== Preparando directorio de datos persistentes ==="
-mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products"
+mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios"
 DB_PATH="${DATABASE_URL#file:}"
 if [ -f "$DB_PATH" ]; then
   STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -74,6 +74,16 @@ echo "=== Enlazando fotos de producto persistentes ==="
 # (.gitignore'd locally too), the real content lives in DATA_DIR.
 rm -rf .next/standalone/public/img/products
 ln -s "$DATA_DIR/uploads/products" .next/standalone/public/img/products
+
+echo "=== Enlazando fotos de servicio técnico persistentes ==="
+# Mismo problema, mismo arreglo: sin este symlink, las fotos subidas desde
+# "Nuevo servicio" se escriben en $APP_DIR/public/img/servicios (por
+# SERVICE_PHOTOS_DIR sin definir en .env), pero el standalone server sirve
+# estáticos desde .next/standalone/public/img/servicios — una copia
+# congelada del build anterior. El resultado es que la foto nunca carga
+# (404) y además se pierde en el siguiente redeploy. Reportado directamente.
+rm -rf .next/standalone/public/img/servicios
+ln -s "$DATA_DIR/uploads/servicios" .next/standalone/public/img/servicios
 
 echo "=== PM2 ==="
 npx pm2 delete infosistel-v2 2>/dev/null || true
