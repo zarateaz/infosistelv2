@@ -269,7 +269,7 @@ function ServicesTable({
             <th className="px-4 py-3">Monto</th>
             <th className="px-4 py-3">Pago</th>
             <th className="px-4 py-3">Estado</th>
-            <th className="px-4 py-3">Etapa del equipo</th>
+            <th className="whitespace-nowrap px-4 py-3">Etapa</th>
             <th className="sticky right-0 z-10 bg-bg-alt px-4 py-3 shadow-[-8px_0_10px_-8px_rgba(15,23,42,0.35)]" />
           </tr>
         </thead>
