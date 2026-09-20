@@ -126,8 +126,8 @@ export function Hero() {
             </div>
           </div>
 
-          <div ref={imageWrapRef} className="relative mx-auto w-full max-w-md opacity-0">
-            <div ref={imageRef} className="relative aspect-square w-full">
+          <div ref={imageWrapRef} className="relative mx-auto w-full max-w-xl opacity-0">
+            <div ref={imageRef} className="relative aspect-[4/3] w-full">
               <HeroVisual />
             </div>
           </div>
