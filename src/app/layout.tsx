@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Inter, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { SiteChrome } from "@/components/SiteChrome";
@@ -44,6 +44,20 @@ export const metadata: Metadata = {
     title: "INFOSISTEL — Reparación y venta de tecnología en Huancayo",
     description: SITE_DESCRIPTION,
   },
+};
+
+// viewportFit: "cover" lets fixed elements (ChatBot/WhatsApp launchers) use
+// env(safe-area-inset-bottom) to clear a phone's home-indicator/gesture
+// bar instead of guessing a fixed offset — without it, env() always
+// resolves to 0. themeColor tints the mobile browser's address bar/status
+// bar to match the brand instead of showing default black/white, which is
+// the first thing a phone visitor sees before the page even finishes
+// loading.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0a5fdb",
 };
 
 export default async function RootLayout({

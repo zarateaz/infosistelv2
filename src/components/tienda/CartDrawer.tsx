@@ -92,7 +92,10 @@ export function CartDrawer({
   const showError = (field: keyof typeof fieldErrors) => (touched[field] || attempted) && fieldErrors[field];
   const markTouched = (field: keyof typeof touched) => setTouched((t) => ({ ...t, [field]: true }));
   const fieldClass = (field: keyof typeof fieldErrors) =>
-    `w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted ring-1 ${
+    // text-base (16px), not text-sm — below 16px, iOS Safari auto-zooms the
+    // whole page on focus, which on checkout (where the phone number goes)
+    // is the worst possible place for that to happen.
+    `w-full rounded-xl bg-bg px-4 py-3 text-base text-fg outline-none placeholder:text-fg-muted ring-1 ${
       showError(field) ? "ring-red-400" : "ring-transparent"
     }`;
 

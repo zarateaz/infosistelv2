@@ -76,7 +76,9 @@ export default function TiendaPage() {
                 placeholder="Buscar producto..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full rounded-xl bg-bg-alt py-2.5 pl-10 pr-4 text-sm text-fg outline-none placeholder:text-fg-muted"
+                // text-base (16px), not text-sm — evita el zoom automático
+                // de iOS Safari al enfocar un input de menos de 16px.
+                className="w-full rounded-xl bg-bg-alt py-2.5 pl-10 pr-4 text-base text-fg outline-none placeholder:text-fg-muted"
               />
               {query && (
                 <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2">

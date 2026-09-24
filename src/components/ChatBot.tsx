@@ -76,6 +76,11 @@ function ProductResults({ productos }: { productos: ProductoResultado[] }) {
   );
 }
 
+// Mirrors MAX_MESSAGE_CHARS in src/app/api/chat/route.ts — keeps the
+// paste-a-huge-block-of-text case from ever leaving the browser instead of
+// round-tripping to get rejected server-side.
+const MAX_MESSAGE_CHARS = 500;
+
 export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -99,14 +104,26 @@ export function ChatBot() {
     <>
       <button
         onClick={() => setIsOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg shadow-accent/30 transition-transform hover:scale-105 active:scale-95"
+        style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
+        className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg shadow-accent/30 transition-transform hover:scale-105 active:scale-95"
         aria-label="Abrir asistente"
       >
         {isOpen ? <X size={22} /> : <MessageCircle size={22} />}
       </button>
 
       {isOpen && (
-        <div className="fixed inset-x-4 bottom-24 z-50 flex h-[70vh] max-h-[560px] flex-col overflow-hidden rounded-3xl border border-border bg-bg-alt shadow-2xl sm:inset-x-auto sm:right-6 sm:w-96">
+        // Mobile: near-fullscreen sheet (inset-x-3 + top-3 instead of a
+        // small floating card) — a fixed 70vh card leaves too little room
+        // once the on-screen keyboard opens on a phone, which is where
+        // most Infosistel customers are. dvh (not vh) so the panel doesn't
+        // get stuck sized against the address-bar-hidden viewport and then
+        // clipped when the bar reappears — Android Chrome. From sm: up
+        // (real desktop pointer, no keyboard-over-viewport problem) it
+        // goes back to the small floating-card layout.
+        <div
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-border bg-bg-alt shadow-2xl sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
+        >
           <div className="flex shrink-0 items-center gap-3 bg-accent px-5 py-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/10">
               <MessageCircle size={16} className="text-accent-fg" />
@@ -123,7 +140,7 @@ export function ChatBot() {
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4">
             {messages.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                 <MessageCircle size={28} className="text-fg-muted opacity-40" />
@@ -202,13 +219,19 @@ export function ChatBot() {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Escribe tu pregunta..."
               disabled={isBusy}
-              className="flex-1 rounded-full bg-bg px-4 py-2.5 text-sm text-fg outline-none placeholder:text-fg-muted disabled:opacity-60"
+              maxLength={MAX_MESSAGE_CHARS}
+              // 16px (text-base), not text-sm (14px) — below 16px, iOS
+              // Safari auto-zooms the whole page on focus, which on a
+              // small phone screen shoves the input out from under the
+              // keyboard. Purely a mobile-correctness fix, invisible on
+              // desktop.
+              className="flex-1 rounded-full bg-bg px-4 py-2.5 text-base text-fg outline-none placeholder:text-fg-muted disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={isBusy || !input.trim()}
               aria-label="Enviar"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowUp size={18} />
             </button>
