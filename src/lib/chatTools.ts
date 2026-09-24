@@ -92,3 +92,24 @@ export const buscarProductos = tool({
     };
   },
 });
+
+// No entrega nada al modelo ni cambia su respuesta — es puramente una señal
+// para medir cuánto del tráfico del chat es gente pidiendo algo fuera del
+// negocio (código, tareas, ensayos...) antes de gastar tokens en ello. El
+// system prompt le pide al modelo llamarla justo antes de rechazar un
+// pedido así. Deliberadamente no recibe el texto del cliente — solo una
+// categoría corta — para no dejar nada personal en los logs de `pm2 logs`.
+export const marcarFueraDeTema = tool({
+  description:
+    "Regístrala SIEMPRE justo antes de responder a un pedido fuera del alcance de INFOSISTEL " +
+    "(código, tareas escolares, ensayos, traducciones, opinión personal, etc.) — no le muestra nada al cliente.",
+  inputSchema: z.object({
+    categoria: z
+      .enum(["codigo", "tarea_escolar", "escritura", "traduccion", "opinion_personal", "otro"])
+      .describe("Categoría del pedido fuera de tema, sin citar el mensaje del cliente."),
+  }),
+  execute: async ({ categoria }) => {
+    console.log(`[chat] fuera-de-tema categoria=${categoria}`);
+    return { registrado: true };
+  },
+});
