@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import { X, ShoppingCart, MessageCircle, Loader2 } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import { createOrder } from "@/app/tienda/actions";
+import { digitsOnly } from "@/lib/sanitize";
 import type { Product } from "@/types";
 
 export interface CartLine {
@@ -13,6 +14,43 @@ export interface CartLine {
 }
 
 const WHATSAPP_NUMBER = "51964648202";
+
+/** Simple pero letal: cada regla atrapa el error real de un formulario
+ *  público (número con letras, celular de 4 dígitos, correo sin arroba)
+ *  en vez de dejar que llegue al servidor o, peor, a NubeFacT/SUNAT. */
+function normalizePeruPhone(v: string): string {
+  const digits = digitsOnly(v);
+  return digits.length === 11 && digits.startsWith("51") ? digits.slice(2) : digits;
+}
+
+function validateName(v: string): string | null {
+  const t = v.trim();
+  if (!t) return "Ingresa tu nombre completo.";
+  if (t.length < 3) return "Nombre muy corto.";
+  if (!/^[a-zA-ZÀ-ÿ\s'.-]+$/.test(t)) return "Solo letras y espacios.";
+  return null;
+}
+
+function validatePhone(v: string): string | null {
+  const digits = normalizePeruPhone(v);
+  if (!digits) return "Ingresa tu número de celular.";
+  if (digits.length !== 9 || !digits.startsWith("9")) return "Celular inválido (9 dígitos, ej. 987654321).";
+  return null;
+}
+
+function validateEmail(v: string): string | null {
+  const t = v.trim();
+  if (!t) return null; // opcional
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return "Correo inválido.";
+  return null;
+}
+
+function validateDoc(v: string): string | null {
+  const digits = digitsOnly(v);
+  if (!digits) return null; // opcional
+  if (digits.length !== 8 && digits.length !== 11) return "DNI (8 dígitos) o RUC (11 dígitos).";
+  return null;
+}
 
 export function CartDrawer({
   isOpen,
@@ -31,9 +69,32 @@ export function CartDrawer({
   const [phone, setPhone] = useState("");
   const [docNumber, setDocNumber] = useState("");
   const [email, setEmail] = useState("");
+  const [touched, setTouched] = useState<Record<"name" | "phone" | "email" | "docNumber", boolean>>({
+    name: false,
+    phone: false,
+    email: false,
+    docNumber: false,
+  });
+  const [attempted, setAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invoiceNotice, setInvoiceNotice] = useState<string | null>(null);
+
+  const fieldErrors = useMemo(
+    () => ({
+      name: validateName(name),
+      phone: validatePhone(phone),
+      email: validateEmail(email),
+      docNumber: validateDoc(docNumber),
+    }),
+    [name, phone, email, docNumber]
+  );
+  const showError = (field: keyof typeof fieldErrors) => (touched[field] || attempted) && fieldErrors[field];
+  const markTouched = (field: keyof typeof touched) => setTouched((t) => ({ ...t, [field]: true }));
+  const fieldClass = (field: keyof typeof fieldErrors) =>
+    `w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted ring-1 ${
+      showError(field) ? "ring-red-400" : "ring-transparent"
+    }`;
 
   const total = cart.reduce((sum, line) => {
     const unit = line.product.onSale && line.product.salePrice ? line.product.salePrice : line.product.price;
@@ -43,18 +104,19 @@ export function CartDrawer({
 
   if (!isOpen) return null;
 
+  const hasFieldErrors = !!(fieldErrors.name || fieldErrors.phone || fieldErrors.email || fieldErrors.docNumber);
+
   const handleCheckout = async () => {
     setError(null);
-    if (!name.trim() || phone.trim().length < 7) {
-      setError("Completa tu nombre y un número de celular válido.");
-      return;
-    }
+    setAttempted(true);
+    if (hasFieldErrors) return;
 
+    const normalizedPhone = normalizePeruPhone(phone);
     setIsSubmitting(true);
     try {
       const order = await createOrder({
-        customerName: name,
-        customerPhone: phone,
+        customerName: name.trim(),
+        customerPhone: normalizedPhone,
         docNumber: docNumber.trim() || undefined,
         customerEmail: email.trim() || undefined,
         items: cart.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
@@ -72,7 +134,7 @@ export function CartDrawer({
           return `- ${line.product.name} (x${line.quantity}) - S/. ${(unit * line.quantity).toFixed(2)}`;
         })
         .join("\n");
-      const message = `Hola INFOSISTEL! Quisiera hacer un pedido:\n\n*Cliente:* ${name}\n*Celular:* ${phone}\n\n*Productos:*\n${lines}\n\n*Total:* S/. ${total.toFixed(2)}\n\n¿Tienen disponibilidad?`;
+      const message = `Hola INFOSISTEL! Quisiera hacer un pedido:\n\n*Cliente:* ${name.trim()}\n*Celular:* ${normalizedPhone}\n\n*Productos:*\n${lines}\n\n*Total:* S/. ${total.toFixed(2)}\n\n¿Tienen disponibilidad?`;
       window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, "_blank");
       onOrderPlaced();
       // Si hay algo que contarle sobre el comprobante, no cerramos el
@@ -165,42 +227,63 @@ export function CartDrawer({
               <span className="text-2xl font-black tracking-tight text-accent">S/. {total.toFixed(2)}</span>
             </div>
             <div className="space-y-2.5">
-              <input
-                type="text"
-                placeholder="Tu nombre completo"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
-              />
-              <input
-                type="tel"
-                placeholder="Número de celular"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
-              />
-              <input
-                type="email"
-                placeholder="Correo (opcional, para tu boleta)"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
-              />
-              <input
-                type="text"
-                placeholder="DNI o RUC (opcional)"
-                value={docNumber}
-                onChange={(e) => setDocNumber(e.target.value)}
-                className="w-full rounded-xl bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
-              />
+              <div>
+                <input
+                  type="text"
+                  placeholder="Tu nombre completo"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={() => markTouched("name")}
+                  className={fieldClass("name")}
+                />
+                {showError("name") && <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.name}</p>}
+              </div>
+              <div>
+                <input
+                  type="tel"
+                  placeholder="Número de celular"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onBlur={() => markTouched("phone")}
+                  className={fieldClass("phone")}
+                />
+                {showError("phone") && <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.phone}</p>}
+              </div>
+              <div>
+                <input
+                  type="email"
+                  placeholder="Correo (opcional, para tu boleta)"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => markTouched("email")}
+                  className={fieldClass("email")}
+                />
+                {showError("email") && <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.email}</p>}
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="DNI o RUC (opcional)"
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  onBlur={() => markTouched("docNumber")}
+                  className={fieldClass("docNumber")}
+                />
+                {showError("docNumber") && (
+                  <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.docNumber}</p>
+                )}
+              </div>
               <p className="text-[11px] text-fg-muted">
                 Con tu correo te enviamos la boleta/factura electrónica directo, sin papel.
               </p>
             </div>
+            {attempted && hasFieldErrors && (
+              <p className="text-xs font-bold text-red-400">Revisa los campos marcados en rojo.</p>
+            )}
             {error && <p className="text-xs font-bold text-red-400">{error}</p>}
             <button
               onClick={handleCheckout}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (attempted && hasFieldErrors)}
               className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-accent py-4 text-sm font-black text-accent-fg transition-transform active:scale-95 disabled:opacity-60"
             >
               {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <MessageCircle size={20} />}

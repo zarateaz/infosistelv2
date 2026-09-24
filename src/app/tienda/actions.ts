@@ -53,10 +53,27 @@ export async function createOrder(input: unknown) {
 
   const data = input as Partial<CreateOrderInput>;
   const customerName = sanitizeName(data.customerName, 80) || "Cliente Web";
-  const customerPhone = sanitizePhone(data.customerPhone);
-  if (!customerPhone || customerPhone.length < 7) {
-    throw new Error("Teléfono requerido (mínimo 7 dígitos)");
+
+  // Mismo criterio que el CartDrawer (defensa en profundidad: el cliente
+  // nunca es el único que valida esto): celular peruano de 9 dígitos
+  // empezando en 9, tolerando el prefijo internacional "51".
+  const rawPhoneDigits = digitsOnly(sanitizePhone(data.customerPhone));
+  const customerPhone =
+    rawPhoneDigits.length === 11 && rawPhoneDigits.startsWith("51") ? rawPhoneDigits.slice(2) : rawPhoneDigits;
+  if (customerPhone.length !== 9 || !customerPhone.startsWith("9")) {
+    throw new Error("Celular inválido (9 dígitos, ej. 987654321)");
   }
+
+  const rawEmail = typeof data.customerEmail === "string" ? data.customerEmail.trim() : "";
+  if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+    throw new Error("Correo inválido");
+  }
+
+  const docDigits = digitsOnly(typeof data.docNumber === "string" ? data.docNumber : "");
+  if (docDigits && docDigits.length !== 8 && docDigits.length !== 11) {
+    throw new Error("DNI (8 dígitos) o RUC (11 dígitos) inválido");
+  }
+
   if (!Array.isArray(data.items) || data.items.length === 0) {
     throw new Error("El carrito está vacío");
   }
@@ -103,9 +120,9 @@ export async function createOrder(input: unknown) {
   // impedir que el pedido quede registrado.
   const invoice = await emitInvoice({
     orderId: order.id,
-    docNumber: typeof data.docNumber === "string" ? data.docNumber : undefined,
+    docNumber: docDigits || undefined,
     nombre: customerName,
-    email: typeof data.customerEmail === "string" ? data.customerEmail : undefined,
+    email: rawEmail || undefined,
     total: order.total,
     items: orderItems.map((item) => ({
       descripcion: item.name,
