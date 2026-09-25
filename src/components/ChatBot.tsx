@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { MessageCircle, X, ArrowUp } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 
@@ -81,10 +82,96 @@ function ProductResults({ productos }: { productos: ProductoResultado[] }) {
 // round-tripping to get rejected server-side.
 const MAX_MESSAGE_CHARS = 500;
 
+// No hay login de cliente en la tienda, así que "cliente frecuente" se
+// resuelve por navegador, no por cuenta — este par de claves en
+// localStorage es toda la "memoria" del chatbot sobre un visitante.
+const LS_RETURNING_KEY = "infosistel_chat_returning";
+const LS_CATEGORIES_KEY = "infosistel_chat_categories";
+const MAX_REMEMBERED_CATEGORIES = 5;
+
+interface VisitorMemory {
+  returning: boolean;
+  recentCategories: string[];
+}
+
+function readRecentCategories(): string[] {
+  try {
+    const raw = localStorage.getItem(LS_CATEGORIES_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((c): c is string => typeof c === "string") : [];
+  } catch {
+    // Modo privado u otro bloqueo de localStorage — se pierde la
+    // personalización, nunca la función del chat.
+    return [];
+  }
+}
+
+function loadVisitorMemory(): VisitorMemory {
+  try {
+    return { returning: localStorage.getItem(LS_RETURNING_KEY) === "1", recentCategories: readRecentCategories() };
+  } catch {
+    return { returning: false, recentCategories: [] };
+  }
+}
+
+// Mezcla las categorías vistas en esta conversación con las de visitas
+// pasadas — más recientes primero, sin duplicados, capado a un puñado para
+// no acumular para siempre.
+function rememberCategories(seen: string[]) {
+  if (seen.length === 0) return;
+  try {
+    const merged = [...seen, ...readRecentCategories()]
+      .filter((c, i, arr) => arr.indexOf(c) === i)
+      .slice(0, MAX_REMEMBERED_CATEGORIES);
+    localStorage.setItem(LS_CATEGORIES_KEY, JSON.stringify(merged));
+  } catch {
+    // ídem — no crítico.
+  }
+}
+
+// Mensaje sembrado en el cliente, sin llamar a DeepSeek: el chatbot debe
+// saludar y presentarse apenas alguien entra a la web, no recién cuando
+// escribe algo. Cambia de tono si ya reconoce al visitante.
+function buildGreeting(visitor: VisitorMemory): UIMessage {
+  const lastCategory = visitor.recentCategories[0];
+  const text = visitor.returning
+    ? lastCategory
+      ? `¡Qué bueno tenerte de vuelta! ¿Sigues buscando algo de ${lastCategory.toLowerCase()}, o te ayudo con otra cosa?`
+      : "¡Qué bueno tenerte de vuelta! ¿En qué te ayudo hoy — catálogo, reparación o algo puntual?"
+    : "¡Hola! Soy el asistente de INFOSISTEL. Vendemos y reparamos laptops, PCs, impresoras, redes y accesorios en Huancayo. Elige una opción o cuéntame qué buscas.";
+  return { id: "infosistel-welcome", role: "assistant", parts: [{ type: "text", text }] };
+}
+
+const QUICK_REPLIES = [
+  { label: "Laptops y PCs", text: "Quiero ver laptops y PCs" },
+  { label: "Impresoras", text: "Quiero ver impresoras" },
+  { label: "Redes y Wi-Fi", text: "Necesito algo de redes o Wi-Fi" },
+  { label: "Reparar un equipo", text: "Tengo un equipo para reparar" },
+];
+
 export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status, error } = useChat();
+  // Se lee una sola vez al montar — el "returning" y las categorías que ve
+  // ESTE saludo son el estado de ANTES de esta visita (se marca como visto
+  // justo después, en el useEffect de abajo, para que la próxima vez ya
+  // cuente como recurrente). Nunca se reasigna — no es el canal por el que
+  // esta misma sesión aprende, ver `transport` más abajo para eso.
+  const [visitor] = useState<VisitorMemory>(() => loadVisitorMemory());
+  const [showPulse, setShowPulse] = useState(() => visitor.returning);
+  const [initialMessages] = useState<UIMessage[]>(() => [buildGreeting(visitor)]);
+
+  // Objeto nuevo cada render (barato) — `recentCategories` se relee de
+  // localStorage en cada render en vez de guardarse en un estado propio,
+  // así el body de la próxima llamada ya refleja lo que esta misma
+  // conversación acaba de aprender (ver el useEffect de aprendizaje más
+  // abajo) sin duplicar esa fuente de verdad en otro state.
+  const transport = new DefaultChatTransport({
+    api: "/api/chat",
+    body: { visitorContext: { returning: visitor.returning, recentCategories: readRecentCategories() } },
+  });
+
+  const { messages, sendMessage, status, error } = useChat({ messages: initialMessages, transport });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isBusy = status === "submitted" || status === "streaming";
@@ -93,11 +180,61 @@ export function ChatBot() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isBusy, error]);
 
+  // Primera vez en el sitio: el panel se abre solo a los pocos segundos para
+  // que el saludo se vea sin que el cliente tenga que buscar el botón —
+  // "que al entrar a la web el chatbot te salude". Marca el flag de una vez
+  // para que esto no se repita en cada recarga. Visitas siguientes: no se
+  // fuerza el panel (no ser invasivo), solo un pulso breve en el botón.
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_RETURNING_KEY, "1");
+    } catch {
+      // no crítico — en el peor caso, la próxima visita se trata como si
+      // fuera la primera.
+    }
+    if (visitor.returning) {
+      const t = setTimeout(() => setShowPulse(false), 6000);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setIsOpen(true), 3500);
+    return () => clearTimeout(t);
+    // Solo al montar: `visitor.returning` leído aquí es a propósito el
+    // valor de ANTES de esta visita (ver useState de `visitor` arriba), no
+    // algo a lo que este efecto deba reaccionar si cambiara después.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // "Aprende" qué categorías le interesan a este visitante a partir de lo
+  // que buscarProductos/productosPopulares ya le mostró en esta conversación
+  // — se guarda en localStorage y queda disponible para el saludo de la
+  // próxima visita, y para `transport` (arriba) en el resto de esta misma,
+  // que relee `readRecentCategories()` en cada render.
+  useEffect(() => {
+    const seen = new Set<string>();
+    for (const message of messages) {
+      for (const part of message.parts) {
+        if (
+          (part.type === "tool-buscarProductos" || part.type === "tool-productosPopulares") &&
+          part.state === "output-available"
+        ) {
+          const productos = (part.output as { productos?: ProductoResultado[] } | undefined)?.productos;
+          productos?.forEach((p) => seen.add(p.categoria));
+        }
+      }
+    }
+    if (seen.size > 0) rememberCategories(Array.from(seen));
+  }, [messages]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isBusy) return;
     sendMessage({ text: input });
     setInput("");
+  };
+
+  const handleQuickReply = (text: string) => {
+    if (isBusy) return;
+    sendMessage({ text });
   };
 
   return (
@@ -108,6 +245,9 @@ export function ChatBot() {
         className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg shadow-accent/30 transition-transform hover:scale-105 active:scale-95"
         aria-label="Abrir asistente"
       >
+        {showPulse && !isOpen && (
+          <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-accent/60" />
+        )}
         {isOpen ? <X size={22} /> : <MessageCircle size={22} />}
       </button>
 
@@ -141,15 +281,6 @@ export function ChatBot() {
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4">
-            {messages.length === 0 && (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                <MessageCircle size={28} className="text-fg-muted opacity-40" />
-                <p className="text-sm font-medium text-fg-muted">
-                  Pregúntame por servicios, horarios o cómo llegar.
-                </p>
-              </div>
-            )}
-
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
@@ -167,7 +298,10 @@ export function ChatBot() {
                         </span>
                       );
                     }
-                    if (part.type === "tool-buscarProductos" && part.state === "output-available") {
+                    if (
+                      (part.type === "tool-buscarProductos" || part.type === "tool-productosPopulares") &&
+                      part.state === "output-available"
+                    ) {
                       const productos = (part.output as { productos?: ProductoResultado[] } | undefined)
                         ?.productos;
                       return productos ? <ProductResults key={i} productos={productos} /> : null;
@@ -177,6 +311,24 @@ export function ChatBot() {
                 </div>
               </div>
             ))}
+
+            {/* Chips de respuesta rápida bajo el saludo inicial — llevan a
+                que el cliente navegue el catálogo con un toque, en vez de
+                tener que escribir. Desaparecen apenas empieza la
+                conversación real. */}
+            {messages.length === 1 && !isBusy && (
+              <div className="flex flex-wrap gap-2 pl-1">
+                {QUICK_REPLIES.map((qr) => (
+                  <button
+                    key={qr.label}
+                    onClick={() => handleQuickReply(qr.text)}
+                    className="rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-bold text-fg transition-colors hover:bg-accent/10 hover:text-accent"
+                  >
+                    {qr.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {isBusy && (
               <div className="flex justify-start">

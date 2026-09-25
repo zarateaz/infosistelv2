@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { X, ShoppingCart, MessageCircle, Loader2 } from "lucide-react";
+import { X, ShoppingCart, MessageCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import { createOrder } from "@/app/tienda/actions";
 import { digitsOnly } from "@/lib/sanitize";
@@ -69,6 +69,11 @@ export function CartDrawer({
   const [phone, setPhone] = useState("");
   const [docNumber, setDocNumber] = useState("");
   const [email, setEmail] = useState("");
+  // Colapsado por defecto — para pedir por WhatsApp solo hacen falta nombre
+  // y celular; correo/DNI-RUC son solo para quien además quiere su
+  // boleta/factura por correo, así que no deben competir por atención con
+  // los dos campos que sí bloquean el pedido.
+  const [showInvoiceFields, setShowInvoiceFields] = useState(false);
   const [touched, setTouched] = useState<Record<"name" | "phone" | "email" | "docNumber", boolean>>({
     name: false,
     phone: false,
@@ -252,33 +257,45 @@ export function CartDrawer({
                 />
                 {showError("phone") && <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.phone}</p>}
               </div>
-              <div>
-                <input
-                  type="email"
-                  placeholder="Correo (opcional, para tu boleta)"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => markTouched("email")}
-                  className={fieldClass("email")}
-                />
-                {showError("email") && <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.email}</p>}
-              </div>
-              <div>
-                <input
-                  type="text"
-                  placeholder="DNI o RUC (opcional)"
-                  value={docNumber}
-                  onChange={(e) => setDocNumber(e.target.value)}
-                  onBlur={() => markTouched("docNumber")}
-                  className={fieldClass("docNumber")}
-                />
-                {showError("docNumber") && (
-                  <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.docNumber}</p>
-                )}
-              </div>
-              <p className="text-[11px] text-fg-muted">
-                Con tu correo te enviamos la boleta/factura electrónica directo, sin papel.
-              </p>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceFields((v) => !v)}
+                className="flex w-full items-center justify-between rounded-xl px-1 py-1 text-xs font-bold text-accent"
+              >
+                ¿Quieres tu boleta o factura por correo? (opcional)
+                {showInvoiceFields ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {showInvoiceFields && (
+                <>
+                  <div>
+                    <input
+                      type="email"
+                      placeholder="Correo (opcional, para tu boleta)"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onBlur={() => markTouched("email")}
+                      className={fieldClass("email")}
+                    />
+                    {showError("email") && <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.email}</p>}
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="DNI o RUC (opcional)"
+                      value={docNumber}
+                      onChange={(e) => setDocNumber(e.target.value)}
+                      onBlur={() => markTouched("docNumber")}
+                      className={fieldClass("docNumber")}
+                    />
+                    {showError("docNumber") && (
+                      <p className="mt-1 pl-1 text-[11px] font-bold text-red-400">{fieldErrors.docNumber}</p>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-fg-muted">
+                    Con tu correo te enviamos la boleta/factura electrónica directo, sin papel.
+                  </p>
+                </>
+              )}
             </div>
             {attempted && hasFieldErrors && (
               <p className="text-xs font-bold text-red-400">Revisa los campos marcados en rojo.</p>

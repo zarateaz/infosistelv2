@@ -23,6 +23,42 @@ function toSentenceCase(s: string): string {
   return lower.charAt(0).toLocaleUpperCase("es-PE") + lower.slice(1);
 }
 
+// Shape shared by buscarProductos and productosPopulares — ProductResults en
+// ChatBot.tsx renderiza las fotos de cualquiera de las dos sin distinguir
+// cuál las trajo.
+function serializeProduct(p: {
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  stock: number;
+  onSale: boolean;
+  salePrice: number | null;
+  image: string | null;
+}) {
+  return {
+    nombre: p.name,
+    categoria: p.category,
+    especificaciones: p.description.slice(0, 200),
+    precio: `S/. ${(p.onSale && p.salePrice ? p.salePrice : p.price).toFixed(2)}`,
+    precioRegular: p.onSale && p.salePrice ? `S/. ${p.price.toFixed(2)}` : null,
+    disponible: p.stock > 0,
+    stock: p.stock,
+    imagen: p.image ?? null,
+  };
+}
+
+const productSelect = {
+  name: true,
+  category: true,
+  description: true,
+  price: true,
+  stock: true,
+  onSale: true,
+  salePrice: true,
+  image: true,
+} as const;
+
 // Lets the chatbot answer price/stock questions against the real catalog
 // instead of guessing or blanket-deferring to WhatsApp. Read-only, public
 // data only — same field allowlist as the /tienda queries (no costPrice).
@@ -53,16 +89,7 @@ export const buscarProductos = tool({
         })),
       },
       // costPrice is admin-only — never select it into a response the model can relay.
-      select: {
-        name: true,
-        category: true,
-        description: true,
-        price: true,
-        stock: true,
-        onSale: true,
-        salePrice: true,
-        image: true,
-      },
+      select: { id: true, ...productSelect },
       orderBy: { createdAt: "desc" },
       take: 8,
     });
@@ -71,24 +98,47 @@ export const buscarProductos = tool({
       return { encontrados: 0, productos: [] };
     }
 
+    // Alimenta productosPopulares — cuenta cuántas veces cada producto salió
+    // en una búsqueda del chat, no cuántas veces se vendió (eso ya lo mide
+    // Sale). No bloquea la respuesta al cliente por un fallo aquí.
+    prisma.product
+      .updateMany({
+        where: { id: { in: products.map((p) => p.id) } },
+        data: { searchHits: { increment: 1 } },
+      })
+      .catch((err) => console.error("[chat] no se pudo incrementar searchHits:", err));
+
     return {
       encontrados: products.length,
-      productos: products.map((p) => ({
-        nombre: p.name,
-        categoria: p.category,
-        // Short spec hint for the model to use when comparing products —
-        // the chat UI never shows this raw, only the model reads it.
-        especificaciones: p.description.slice(0, 200),
-        precio: `S/. ${(p.onSale && p.salePrice ? p.salePrice : p.price).toFixed(2)}`,
-        precioRegular: p.onSale && p.salePrice ? `S/. ${p.price.toFixed(2)}` : null,
-        disponible: p.stock > 0,
-        stock: p.stock,
-        // Real product photo path (same one shown on /tienda) — the chat
-        // widget renders this as a photo card next to the message, `null`
-        // when the admin hasn't uploaded one yet (shows a category icon
-        // placeholder instead, same as the storefront).
-        imagen: p.image ?? null,
-      })),
+      productos: products.map(serializeProduct),
+    };
+  },
+});
+
+// Para cuando el cliente pregunta algo vago ("qué me recomiendas", "qué
+// tienen en oferta", "qué es lo más vendido") en vez de un producto
+// puntual — responde con datos reales de qué se busca/destaca más en el
+// catálogo, en vez de que el modelo invente una recomendación.
+export const productosPopulares = tool({
+  description:
+    "Devuelve los productos más buscados/destacados del catálogo real, sin necesitar un término de búsqueda. " +
+    "Úsala cuando el cliente pida una recomendación general, pregunte qué hay en oferta o qué es lo más vendido.",
+  inputSchema: z.object({}),
+  execute: async () => {
+    const products = await prisma.product.findMany({
+      where: { stock: { gt: 0 } },
+      select: productSelect,
+      orderBy: [{ searchHits: "desc" }, { isFeatured: "desc" }, { createdAt: "desc" }],
+      take: 6,
+    });
+
+    if (products.length === 0) {
+      return { encontrados: 0, productos: [] };
+    }
+
+    return {
+      encontrados: products.length,
+      productos: products.map(serializeProduct),
     };
   },
 });

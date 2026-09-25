@@ -30,6 +30,7 @@ model Product {
   isFeatured  Boolean  @default(false)
   onSale      Boolean  @default(false)
   salePrice   Float?
+  searchHits  Int      @default(0) // veces que este producto apareció en una búsqueda del chatbot — ver chatTools.ts buscarProductos/productosPopulares
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
