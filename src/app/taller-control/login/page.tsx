@@ -36,9 +36,8 @@ export default function AdminLoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#04070f] px-6 py-12">
       <GalaxyBackground />
-      {/* Faint vignette so the galaxy stays legible-dark at the edges even
-          on very bright monitors, without flattening the card's contrast. */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_35%,transparent_0%,transparent_45%,rgba(4,7,15,0.6)_100%)]" />
+      {/* Vignette: subtle dark wash behind the card for legibility while keeping the outer cosmos vibrant */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(3,6,17,0.45)_0%,transparent_65%,rgba(3,6,17,0.6)_100%)]" />
 
       <div className="relative z-10 w-full max-w-4xl">
         <Link
