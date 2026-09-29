@@ -20,6 +20,7 @@ export function CuriousEyes({ closed }: { closed: boolean }) {
   const rightEyeRef = useRef<HTMLDivElement>(null);
   const [leftPupil, setLeftPupil] = useState({ x: 0, y: 0 });
   const [rightPupil, setRightPupil] = useState({ x: 0, y: 0 });
+  const [blinking, setBlinking] = useState(false);
 
   useEffect(() => {
     function pupilOffsetFor(eyeEl: HTMLDivElement | null, clientX: number, clientY: number) {
@@ -43,10 +44,38 @@ export function CuriousEyes({ closed }: { closed: boolean }) {
     return () => window.removeEventListener("mousemove", handleMove);
   }, []);
 
+  // Subtle natural blink every few seconds
+  useEffect(() => {
+    let blinkTimer: ReturnType<typeof setTimeout>;
+    let resetTimer: ReturnType<typeof setTimeout>;
+
+    function scheduleBlink() {
+      const delay = Math.random() * 3500 + 2500;
+      blinkTimer = setTimeout(() => {
+        setBlinking(true);
+        resetTimer = setTimeout(() => {
+          setBlinking(false);
+          scheduleBlink();
+        }, 130);
+      }, delay);
+    }
+
+    scheduleBlink();
+    return () => {
+      clearTimeout(blinkTimer);
+      clearTimeout(resetTimer);
+    };
+  }, []);
+
+  const isClosed = closed || blinking;
+
   return (
-    <div aria-hidden className="flex items-center justify-center gap-6 rounded-full bg-bg/80 px-6 py-4 shadow-[0_10px_30px_-10px_rgba(11,18,48,0.25)]">
-      <Eye eyeRef={leftEyeRef} pupil={leftPupil} closed={closed} />
-      <Eye eyeRef={rightEyeRef} pupil={rightPupil} closed={closed} />
+    <div
+      aria-hidden
+      className="relative mx-auto flex w-fit items-center justify-center gap-4 rounded-full border border-cyan-400/20 bg-[#050b18]/80 px-5 py-2.5 shadow-[0_0_30px_rgba(46,163,255,0.2),inset_0_1px_1px_rgba(255,255,255,0.12)] backdrop-blur-xl ring-1 ring-white/10"
+    >
+      <Eye eyeRef={leftEyeRef} pupil={leftPupil} closed={isClosed} />
+      <Eye eyeRef={rightEyeRef} pupil={rightPupil} closed={isClosed} />
     </div>
   );
 }
@@ -63,25 +92,30 @@ function Eye({
   return (
     <div
       ref={eyeRef}
-      className="relative overflow-hidden rounded-full bg-white shadow-[0_2px_8px_rgba(11,18,48,0.2)]"
-      style={{ width: EYE_RADIUS * 2, height: EYE_RADIUS * 2, border: "3px solid var(--fg)" }}
+      className="relative overflow-hidden rounded-full shadow-[0_0_16px_rgba(56,189,248,0.45),inset_0_0_10px_rgba(14,165,233,0.3)]"
+      style={{
+        width: EYE_RADIUS * 2,
+        height: EYE_RADIUS * 2,
+        border: "2.5px solid #38bdf8",
+        background: "radial-gradient(circle at 35% 35%, #ffffff 0%, #e0f2fe 45%, #bae6fd 75%, #7dd3fc 100%)",
+      }}
     >
       <div
-        className="absolute rounded-full bg-fg transition-transform duration-75 ease-out"
+        className="absolute rounded-full bg-[#030712] transition-transform duration-75 ease-out shadow-[0_0_8px_rgba(3,7,18,0.9)]"
         style={{
-          width: 16,
-          height: 16,
+          width: 17,
+          height: 17,
           left: "50%",
           top: "50%",
           transform: `translate(calc(-50% + ${pupil.x}px), calc(-50% + ${pupil.y}px))`,
         }}
       >
-        <div className="absolute left-1 top-1 h-1.5 w-1.5 rounded-full bg-white/80" />
+        <div className="absolute left-1 top-1 h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_3px_#fff]" />
+        <div className="absolute right-1 bottom-1 h-1 w-1 rounded-full bg-cyan-200/80" />
       </div>
-      {/* Eyelid — slides down from the top on password focus, closing over
-          the pupil, instead of an abrupt visibility toggle. */}
+      {/* Eyelid — slides down from the top on password focus, with a glowing cyan rim */}
       <div
-        className="absolute inset-x-0 top-0 origin-top bg-[var(--fg)] transition-transform duration-200 ease-in-out"
+        className="absolute inset-x-0 top-0 origin-top bg-gradient-to-b from-[#030712] via-[#060e22] to-[#0c1e40] border-b-2 border-cyan-400 shadow-[0_2px_10px_rgba(56,189,248,0.7)] transition-transform duration-200 ease-in-out"
         style={{ height: "100%", transform: closed ? "scaleY(1)" : "scaleY(0)" }}
       />
     </div>

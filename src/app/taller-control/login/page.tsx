@@ -43,67 +43,70 @@ export default function AdminLoginPage() {
       <div className="relative z-10 w-full max-w-4xl">
         <Link
           href="/"
-          className="mb-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/60 transition-colors hover:text-white"
+          className="group mb-5 inline-flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors hover:text-white"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft size={14} className="transition-transform group-hover:-translate-x-1" />
           Volver al inicio
         </Link>
 
-        <div className="grid overflow-hidden rounded-[var(--radius-lg)] shadow-[0_30px_90px_-20px_rgba(46,163,255,0.45)] md:grid-cols-2">
-          {/* Decorative brand panel — fully transparent so the WebGL galaxy
-              behind the whole page shows through unobstructed here instead
-              of being boxed in; only a soft dark pool right behind the logo
-              keeps it legible against a bright pass of the accretion disk. */}
-          <div className="relative hidden flex-col items-center justify-center overflow-hidden px-10 py-16 md:flex">
-            <div className="pointer-events-none absolute h-80 w-80 rounded-full bg-[radial-gradient(ellipse,rgba(4,7,15,0.6)_0%,transparent_70%)]" />
+        <div className="relative grid overflow-hidden rounded-3xl border border-cyan-500/20 bg-[#060c1c]/75 shadow-[0_0_80px_-15px_rgba(46,163,255,0.3),0_30px_90px_rgba(0,0,0,0.85)] backdrop-blur-2xl ring-1 ring-white/10 md:grid-cols-2">
+          {/* Decorative brand panel */}
+          <div className="relative hidden flex-col items-center justify-center overflow-hidden border-r border-cyan-500/10 bg-gradient-to-br from-cyan-950/20 via-transparent to-blue-950/25 px-10 py-16 md:flex">
+            <div className="pointer-events-none absolute h-80 w-80 rounded-full bg-[radial-gradient(ellipse,rgba(46,163,255,0.18)_0%,transparent_70%)] blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-10 -left-10 h-60 w-60 rounded-full bg-[radial-gradient(ellipse,rgba(6,182,212,0.15)_0%,transparent_70%)] blur-3xl" />
 
-            <div className="relative w-full max-w-[260px]">
+            <div className="relative w-full max-w-[260px] transition-transform duration-500 hover:scale-[1.02]">
               <Image
                 src="/brand/infosistel-logo-v3.png"
                 alt="Infosistel"
                 width={1366}
                 height={166}
-                className="h-auto w-full object-contain drop-shadow-[0_0_45px_rgba(46,163,255,0.6)]"
+                className="h-auto w-full object-contain drop-shadow-[0_0_40px_rgba(46,163,255,0.7)]"
                 priority
               />
             </div>
-            <p className="relative mt-6 text-xs font-bold uppercase tracking-[0.3em] text-white/70">
-              Panel administrativo
-            </p>
+            
+            <div className="relative mt-6 flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-950/30 px-4 py-1.5 backdrop-blur-md">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#38bdf8] animate-pulse" />
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                Panel administrativo
+              </p>
+            </div>
           </div>
 
-          {/* Form panel — keeps the light frosted glass-panel treatment on
-              its own (rather than inherited from a shared parent) so it
-              stays fully legible over the dark galaxy on mobile too, where
-              the decorative left panel is hidden and this is the whole card. */}
-          <div className="glass-panel flex flex-col justify-center px-8 py-12 sm:px-12">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent md:hidden">
+          {/* Form panel */}
+          <div className="relative flex flex-col justify-center overflow-hidden bg-gradient-to-b from-[#091226]/85 via-[#060c1d]/90 to-[#040814]/95 px-8 py-12 sm:px-12 backdrop-blur-3xl">
+            {/* Ambient cosmic glows */}
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-blue-600/10 blur-3xl" />
+
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-950/50 text-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.25)] md:hidden">
               <Lock size={20} strokeWidth={1.75} />
             </div>
 
-            <div className="mb-2">
-              <CuriousEyes closed={passwordFocused} />
+            <div className="mb-5">
+              <CuriousEyes closed={passwordFocused && !showPassword} />
             </div>
 
-            <h1 className="mt-5 font-display text-2xl font-bold tracking-tight text-fg md:mt-0">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
               {step === "mfa" ? "Verificación en dos pasos" : "Bienvenido de nuevo"}
             </h1>
-            <p className="mt-1.5 text-sm text-fg-muted">
+            <p className="mt-1.5 text-sm text-slate-400">
               {step === "mfa"
-                ? "Ingresa el código de 6 dígitos de tu app de autenticación, o un código de recuperación."
-                : "Ingresa tus credenciales para continuar. Acceso restringido a personal autorizado."}
+                ? "Ingresa el código de 6 dígitos de tu aplicación de autenticación."
+                : "Ingresa tus credenciales para acceder a la consola."}
             </p>
 
             {step === "mfa" ? (
-              <form action={formAction} className="mt-8 space-y-4">
+              <form action={formAction} className="mt-7 space-y-4">
                 <div>
-                  <label htmlFor="code" className="text-xs font-bold uppercase tracking-wider text-fg-muted">
-                    Código
+                  <label htmlFor="code" className="block text-xs font-medium text-slate-300">
+                    Código de seguridad
                   </label>
                   <div className="relative mt-2">
                     <ShieldCheck
-                      size={16}
-                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-muted"
+                      size={18}
+                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400"
                     />
                     <input
                       id="code"
@@ -114,51 +117,65 @@ export default function AdminLoginPage() {
                       autoFocus
                       required
                       placeholder="123456"
-                      className="w-full rounded-xl border border-border bg-bg px-4 py-2.5 pl-11 text-sm tracking-widest text-fg outline-none transition-colors focus:border-accent"
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 pl-11 text-sm tracking-widest text-white placeholder-slate-500 outline-none transition-all duration-200 focus:border-cyan-400/70 focus:bg-cyan-950/20 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] focus:ring-1 focus:ring-cyan-400/40"
                     />
                   </div>
                 </div>
 
                 {state.error && (
-                  <p role="alert" className="text-sm font-medium text-red-600">
-                    {state.error}
-                  </p>
+                  <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-2.5 text-xs font-medium text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)]">
+                    <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+                    <p>{state.error}</p>
+                  </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="w-full rounded-full bg-accent py-3 text-sm font-bold text-accent-fg transition-opacity disabled:opacity-60"
+                  className="group relative mt-2 w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 py-3 text-sm font-semibold text-white shadow-[0_0_30px_rgba(6,182,212,0.35)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(6,182,212,0.55)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
                 >
-                  {isPending ? "Verificando..." : "Confirmar"}
+                  <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full" />
+                  <span className="relative flex items-center justify-center gap-2">
+                    {isPending ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        <span>Verificando...</span>
+                      </>
+                    ) : (
+                      <span>Confirmar acceso</span>
+                    )}
+                  </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStep("password")}
-                  className="w-full text-center text-xs font-bold uppercase tracking-widest text-fg-muted transition-colors hover:text-fg"
+                  className="w-full text-center text-xs font-semibold uppercase tracking-wider text-slate-400 transition-colors hover:text-white"
                 >
-                  Volver
+                  ← Volver al login
                 </button>
               </form>
             ) : (
-              <form action={formAction} className="mt-8 space-y-4">
+              <form action={formAction} className="mt-7 space-y-4">
                 <div>
-                  <label htmlFor="username" className="text-xs font-bold uppercase tracking-wider text-fg-muted">
+                  <label htmlFor="username" className="block text-xs font-medium text-slate-300">
                     Usuario
                   </label>
-                  <input
-                    id="username"
-                    name="username"
-                    type="text"
-                    autoComplete="username"
-                    required
-                    className="mt-2 w-full rounded-xl border border-border bg-bg px-4 py-2.5 text-sm text-fg outline-none transition-colors focus:border-accent"
-                  />
+                  <div className="relative mt-2">
+                    <input
+                      id="username"
+                      name="username"
+                      type="text"
+                      autoComplete="username"
+                      required
+                      placeholder="Ingresa tu usuario"
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-all duration-200 focus:border-cyan-400/70 focus:bg-cyan-950/20 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] focus:ring-1 focus:ring-cyan-400/40"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-fg-muted">
+                  <label htmlFor="password" className="block text-xs font-medium text-slate-300">
                     Contraseña
                   </label>
                   <div className="relative mt-2">
@@ -168,33 +185,45 @@ export default function AdminLoginPage() {
                       type={showPassword ? "text" : "password"}
                       autoComplete="current-password"
                       required
+                      placeholder="••••••••••••"
                       onFocus={() => setPasswordFocused(true)}
                       onBlur={() => setPasswordFocused(false)}
-                      className="w-full rounded-xl border border-border bg-bg px-4 py-2.5 pr-11 text-sm text-fg outline-none transition-colors focus:border-accent"
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 pr-11 text-sm text-white placeholder-slate-500 outline-none transition-all duration-200 focus:border-cyan-400/70 focus:bg-cyan-950/20 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] focus:ring-1 focus:ring-cyan-400/40"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
                       aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-fg-muted transition-colors hover:text-fg"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-cyan-300"
                     >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
 
                 {state.error && (
-                  <p role="alert" className="text-sm font-medium text-red-600">
-                    {state.error}
-                  </p>
+                  <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-2.5 text-xs font-medium text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)]">
+                    <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+                    <p>{state.error}</p>
+                  </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="w-full rounded-full bg-accent py-3 text-sm font-bold text-accent-fg transition-opacity disabled:opacity-60"
+                  className="group relative mt-2 w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(6,182,212,0.35)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(6,182,212,0.55)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
                 >
-                  {isPending ? "Verificando..." : "Ingresar"}
+                  <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full" />
+                  <span className="relative flex items-center justify-center gap-2">
+                    {isPending ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        <span>Verificando credenciales...</span>
+                      </>
+                    ) : (
+                      <span>Ingresar a la consola</span>
+                    )}
+                  </span>
                 </button>
               </form>
             )}

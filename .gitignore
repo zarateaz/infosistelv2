@@ -56,3 +56,4 @@ next-env.d.ts
 # deploy directory (or survive redeploys some other way), same reasoning
 # as dev.db never being committed.
 /public/img/products/
+fotosinfositel/
