@@ -37,10 +37,11 @@ function adjacentMonth(month: string, delta: number): string {
 export default async function AdminCashboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; view?: string }>;
 }) {
-  const { month: monthParam } = await searchParams;
+  const { month: monthParam, view } = await searchParams;
   const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : monthKey();
+  const showAll = view === "all";
 
   const [transactions, monthTransactions, period, availableMonths] = await Promise.all([
     getCashboxTransactions(),
@@ -48,6 +49,8 @@ export default async function AdminCashboxPage({
     getCashboxPeriod(month),
     listCashboxMonths(),
   ]);
+
+  const displayedTransactions = showAll ? transactions : monthTransactions;
 
   const balance = transactions.reduce((sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount), 0);
   const totalsByMethod = Object.fromEntries(
@@ -118,32 +121,74 @@ export default async function AdminCashboxPage({
         <MonthlyReport month={month} period={period} transactions={monthTransactions} />
       </div>
 
-      <div className="print:hidden mt-10 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead>
-            <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
-              <th className="px-5 py-3">Fecha</th>
-              <th className="px-5 py-3">Tipo</th>
-              <th className="px-5 py-3">Descripción</th>
-              <th className="px-5 py-3">Método</th>
-              <th className="px-5 py-3">Monto</th>
-              <th className="px-5 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            <AddTransactionRow />
-            {[...transactions].reverse().map((t) => (
-              <TransactionRow key={t.id} transaction={t} />
-            ))}
-            {transactions.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-fg-muted">
-                  Todavía no hay movimientos registrados.
-                </td>
+      <div className="print:hidden mt-10">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg font-bold text-fg">
+              Movimientos de caja — {showAll ? "Historial completo" : month}
+            </h2>
+            <p className="text-xs text-fg-muted">
+              {showAll
+                ? `Mostrando todos los ${transactions.length} movimientos históricos.`
+                : `Mostrando ${monthTransactions.length} movimiento(s) de este mes. Los meses anteriores quedan archivados.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/taller-control/caja?month=${month}`}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                !showAll
+                  ? "bg-accent text-accent-fg shadow-sm"
+                  : "border border-border bg-bg-alt text-fg-muted hover:text-fg"
+              }`}
+            >
+              Mes activo ({month})
+            </Link>
+            <Link
+              href={`/taller-control/caja?month=${month}&view=all`}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                showAll
+                  ? "bg-accent text-accent-fg shadow-sm"
+                  : "border border-border bg-bg-alt text-fg-muted hover:text-fg"
+              }`}
+            >
+              Ver todo ({transactions.length})
+            </Link>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead>
+              <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
+                <th className="px-5 py-3">Fecha</th>
+                <th className="px-5 py-3">Tipo</th>
+                <th className="px-5 py-3">Descripción</th>
+                <th className="px-5 py-3">Método</th>
+                <th className="px-5 py-3">Monto</th>
+                <th className="px-5 py-3" />
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <AddTransactionRow />
+              {[...displayedTransactions].reverse().map((t) => (
+                <TransactionRow key={t.id} transaction={t} />
+              ))}
+              {displayedTransactions.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-12 text-center text-fg-muted">
+                    <p className="font-semibold text-fg">
+                      Todavía no hay movimientos registrados en {month}.
+                    </p>
+                    <p className="mt-1 text-xs">
+                      El nuevo mes inicia en blanco. Usa &quot;+ Agregar movimiento&quot; para registrar el primero.
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

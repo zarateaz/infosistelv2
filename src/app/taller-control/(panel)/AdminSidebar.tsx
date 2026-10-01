@@ -21,10 +21,13 @@ import {
   LogOut,
   Menu,
   X,
+  FileText,
+  Shield,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   "/taller-control": LayoutDashboard,
+  "/taller-control/seguridad": Shield,
   "/taller-control/caja": Wallet,
   "/taller-control/inventario": Boxes,
   "/taller-control/productos": Package,
@@ -33,6 +36,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/servicios": ClipboardList,
   "/taller-control/pedidos": ShoppingBag,
   "/taller-control/ventas": TrendingUp,
+  "/taller-control/reporte-mensual": FileText,
   "/taller-control/papelera": Trash2,
   "/taller-control/facturas": Receipt,
   "/taller-control/cuentas": HandCoins,
@@ -45,9 +49,11 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
 // falls back to "General" so a future addition never silently disappears.
 const GROUP_OF: Record<string, string> = {
   "/taller-control": "General",
+  "/taller-control/seguridad": "General",
   "/taller-control/caja": "Ventas",
   "/taller-control/pedidos": "Ventas",
   "/taller-control/ventas": "Ventas",
+  "/taller-control/reporte-mensual": "Ventas",
   "/taller-control/papelera": "Ventas",
   "/taller-control/facturas": "Ventas",
   "/taller-control/cuentas": "Ventas",

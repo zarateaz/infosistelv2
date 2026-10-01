@@ -3,6 +3,7 @@ import { Package, ShoppingBag, TrendingUp, AlertTriangle, Wrench, Wallet } from 
 import { prisma } from "@/lib/prisma";
 import { getAdminOrders } from "./pedidos/actions";
 import { StatCard, type StatTint } from "./StatCard";
+import { CriticalStockAlert } from "./CriticalStockAlert";
 
 const LOW_STOCK_THRESHOLD = 3;
 
@@ -15,6 +16,7 @@ export default async function AdminDashboardPage() {
     orderCount,
     revenueAgg,
     lowStockCount,
+    lowStockProducts,
     pendingRepairCount,
     todayIncomeAgg,
     todayExpenseAgg,
@@ -24,6 +26,12 @@ export default async function AdminDashboardPage() {
     prisma.order.count(),
     prisma.order.aggregate({ _sum: { total: true } }),
     prisma.product.count({ where: { stock: { lte: LOW_STOCK_THRESHOLD } } }),
+    prisma.product.findMany({
+      where: { stock: { lte: LOW_STOCK_THRESHOLD } },
+      select: { id: true, name: true, category: true, stock: true, price: true },
+      orderBy: { stock: "asc" },
+      take: 30,
+    }),
     prisma.repair.count({ where: { progress: { lt: 100 } } }),
     prisma.cashboxTransaction.aggregate({ where: { type: "INCOME", date: { gte: startOfDay } }, _sum: { amount: true } }),
     prisma.cashboxTransaction.aggregate({ where: { type: "EXPENSE", date: { gte: startOfDay } }, _sum: { amount: true } }),
@@ -63,7 +71,11 @@ export default async function AdminDashboardPage() {
     <div>
       <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Dashboard</h1>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6">
+        <CriticalStockAlert products={lowStockProducts} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (
           <StatCard key={s.label} icon={s.icon} label={s.label} value={s.value} href={s.href} tint={s.tint} />
         ))}

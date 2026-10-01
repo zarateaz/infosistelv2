@@ -2,12 +2,16 @@
 
 import { Fragment, useDeferredValue, useMemo, useState } from "react";
 import Image from "next/image";
-import { Search, PackageX, List, LayoutGrid } from "lucide-react";
+import { Search, PackageX, List, LayoutGrid, MessageCircle, AlertTriangle } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import { SellButton } from "./SellButton";
 import type { AdminProduct } from "../productos/actions";
+import {
+  buildWhatsAppLink,
+  generateStockReportMessage,
+} from "@/lib/whatsappStockReport";
 
-type StockFilter = "all" | "low" | "out";
+type StockFilter = "all" | "critical" | "low" | "out";
 type ViewMode = "list" | "grid";
 
 // Each variant sets its own `bg-*` — never combine one of these with a
@@ -45,9 +49,15 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewM
 function ProductGridCard({ p }: { p: AdminProduct }) {
   const badge =
     p.stock === 0 ? (
-      <span className="absolute left-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">Agotado</span>
+      <span className="absolute left-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white shadow-sm">
+        Agotado
+      </span>
+    ) : p.stock === 1 ? (
+      <span className="absolute left-2 top-2 rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black uppercase text-white shadow-md shadow-amber-500/40 animate-pulse">
+        ¡Queda 1!
+      </span>
     ) : p.stock <= 3 ? (
-      <span className="absolute left-2 top-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+      <span className="absolute left-2 top-2 rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
         Stock {p.stock}
       </span>
     ) : null;
@@ -133,12 +143,20 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
 
+  const criticalCount = products.filter((p) => p.stock === 1).length;
   const lowStockCount = products.filter((p) => p.stock <= 3 && p.stock > 0).length;
   const outOfStockCount = products.filter((p) => p.stock === 0).length;
+
+  const handleSendWhatsAppReport = () => {
+    const alertProducts = products.filter((p) => p.stock <= 3);
+    const message = generateStockReportMessage(alertProducts);
+    window.open(buildWhatsAppLink(message), "_blank");
+  };
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
     return products.filter((p) => {
+      if (stockFilter === "critical" && p.stock !== 1) return false;
       if (stockFilter === "low" && !(p.stock <= 3 && p.stock > 0)) return false;
       if (stockFilter === "out" && p.stock !== 0) return false;
       if (!q) return true;
@@ -181,7 +199,14 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
         <div className="flex flex-wrap items-center gap-2">
           <FilterChip label="Todos" count={products.length} active={stockFilter === "all"} onClick={() => setStockFilter("all")} />
           <FilterChip
-            label="Stock bajo"
+            label="Stock = 1"
+            count={criticalCount}
+            active={stockFilter === "critical"}
+            tone="danger"
+            onClick={() => setStockFilter("critical")}
+          />
+          <FilterChip
+            label="Stock bajo (≤3)"
             count={lowStockCount}
             active={stockFilter === "low"}
             tone="warn"
@@ -194,6 +219,15 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
             tone="danger"
             onClick={() => setStockFilter("out")}
           />
+          <button
+            type="button"
+            onClick={handleSendWhatsAppReport}
+            className="inline-flex items-center gap-1.5 rounded-full border-2 border-emerald-600 bg-emerald-600 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition-all hover:bg-emerald-700 active:scale-95"
+            title="Enviar reporte completo de stock crítico y bajo al WhatsApp de la empresa"
+          >
+            <MessageCircle size={14} />
+            Mandar a WhatsApp
+          </button>
           <ViewToggle mode={viewMode} onChange={setViewMode} />
         </div>
       </div>
@@ -245,7 +279,20 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
                       S/. {(p.onSale && p.salePrice ? p.salePrice : p.price).toFixed(2)}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={p.stock <= 3 ? "font-bold text-red-600" : "text-fg"}>{p.stock}</span>
+                      {p.stock === 0 ? (
+                        <span className="inline-flex items-center rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-bold text-red-500">
+                          Agotado
+                        </span>
+                      ) : p.stock === 1 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-black text-amber-500 animate-pulse">
+                          <AlertTriangle size={12} />
+                          ¡Queda 1!
+                        </span>
+                      ) : (
+                        <span className={p.stock <= 3 ? "font-bold text-amber-500" : "text-fg"}>
+                          {p.stock} u.
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <SellButton productId={p.id} productName={p.name} stock={p.stock} />

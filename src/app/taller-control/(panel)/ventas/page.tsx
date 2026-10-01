@@ -1,4 +1,5 @@
-import { DollarSign, TrendingUp, PieChart } from "lucide-react";
+import Link from "next/link";
+import { DollarSign, TrendingUp, PieChart, FileText } from "lucide-react";
 import { getSaleStats, getRecentSales, deleteSale } from "./actions";
 import { DeleteSaleButton } from "./DeleteSaleButton";
 import { InvoiceCell } from "./InvoiceCell";
@@ -15,8 +16,19 @@ export default async function AdminSalesPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Ventas</h1>
-      <p className="mt-1 text-sm text-fg-muted">Resumen de ingresos y ganancias.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Ventas</h1>
+          <p className="mt-1 text-sm text-fg-muted">Resumen de ingresos y ganancias.</p>
+        </div>
+        <Link
+          href="/taller-control/reporte-mensual"
+          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-xs font-bold text-accent-fg shadow-md shadow-accent/20 transition-all hover:opacity-90 active:scale-95 self-start sm:self-auto"
+        >
+          <FileText size={15} />
+          <span>Ver Reporte Mensual y Exportar PDF</span>
+        </Link>
+      </div>
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {STAT_CARDS.map(({ key, label, icon, tint }) => {

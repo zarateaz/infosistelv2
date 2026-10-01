@@ -36,9 +36,11 @@ export default function TiendaPage() {
     .sort((a, b) => (a.isFeatured === b.isFeatured ? 0 : a.isFeatured ? -1 : 1));
 
   const addToCart = (product: Product) => {
+    if (product.stock <= 0) return;
     setCart((prev) => {
       const existing = prev.find((line) => line.product.id === product.id);
       if (existing) {
+        if (existing.quantity >= product.stock) return prev;
         return prev.map((line) =>
           line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line
         );
@@ -162,7 +164,10 @@ export default function TiendaPage() {
         onClose={() => setIsCartOpen(false)}
         cart={cart}
         onRemove={removeFromCart}
-        onOrderPlaced={() => setCart([])}
+        onOrderPlaced={() => {
+          setCart([]);
+          getProducts().then(setProducts);
+        }}
       />
     </div>
   );

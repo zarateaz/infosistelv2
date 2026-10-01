@@ -1,8 +1,10 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { useMemo } from "react";
+import { Printer, Download, Calendar } from "lucide-react";
 import type { AdminTransaction, AdminCashboxPeriod } from "./actions";
 import { MonthlyReportRow } from "./MonthlyReportRow";
+import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
 
 const MONTH_NAMES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -23,23 +25,9 @@ function money(n: number): string {
   return n === 0 ? "" : `S/. ${n.toFixed(2)}`;
 }
 
-/** Row-by-row running balance + one entry per payment-method column —
- *  same layout as the spreadsheet this replaces (ING./EGR. × TOTAL/YAPE
- *  1/YAPE 2/EFECTIVO, then a cumulative SALDO). Printable via the
- *  browser's own Ctrl+P: everything outside .cashbox-report is hidden by
- *  the @media print rule in globals.css, so the printout is just this
- *  table, not the admin sidebar or the rest of the page. */
-export function MonthlyReport({
-  month,
-  period,
-  transactions,
-}: {
-  month: string;
-  period: AdminCashboxPeriod | null;
-  transactions: AdminTransaction[];
-}) {
+function computeRows(transactions: AdminTransaction[]) {
   let running = 0;
-  const rows = transactions.map((t) => {
+  return transactions.map((t) => {
     const isIncome = t.type === "INCOME";
     running += isIncome ? t.amount : -t.amount;
     return {
@@ -54,29 +42,78 @@ export function MonthlyReport({
       expenseCash: !isIncome && t.paymentMethod === "EFECTIVO" ? t.amount : 0,
     };
   });
+}
 
-  const totals = rows.reduce(
-    (acc, r) => ({
-      income: acc.income + (r.isIncome ? r.t.amount : 0),
-      incomeYape1: acc.incomeYape1 + r.incomeYape1,
-      incomeYape2: acc.incomeYape2 + r.incomeYape2,
-      incomeCash: acc.incomeCash + r.incomeCash,
-      expense: acc.expense + (!r.isIncome ? r.t.amount : 0),
-      expenseYape1: acc.expenseYape1 + r.expenseYape1,
-      expenseYape2: acc.expenseYape2 + r.expenseYape2,
-      expenseCash: acc.expenseCash + r.expenseCash,
-    }),
-    { income: 0, incomeYape1: 0, incomeYape2: 0, incomeCash: 0, expense: 0, expenseYape1: 0, expenseYape2: 0, expenseCash: 0 }
-  );
+/**
+ * Printable & downloadable monthly cashbox report.
+ * If there are no transactions in the selected month, it stays cleanly hidden/collapsed
+ * so the new month starts completely blank.
+ */
+export function MonthlyReport({
+  month,
+  period,
+  transactions,
+}: {
+  month: string;
+  period: AdminCashboxPeriod | null;
+  transactions: AdminTransaction[];
+}) {
+  const rows = useMemo(() => computeRows(transactions), [transactions]);
+
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (acc, r) => ({
+        income: acc.income + (r.isIncome ? r.t.amount : 0),
+        incomeYape1: acc.incomeYape1 + r.incomeYape1,
+        incomeYape2: acc.incomeYape2 + r.incomeYape2,
+        incomeCash: acc.incomeCash + r.incomeCash,
+        expense: acc.expense + (!r.isIncome ? r.t.amount : 0),
+        expenseYape1: acc.expenseYape1 + r.expenseYape1,
+        expenseYape2: acc.expenseYape2 + r.expenseYape2,
+        expenseCash: acc.expenseCash + r.expenseCash,
+      }),
+      {
+        income: 0,
+        incomeYape1: 0,
+        incomeYape2: 0,
+        incomeCash: 0,
+        expense: 0,
+        expenseYape1: 0,
+        expenseYape2: 0,
+        expenseCash: 0,
+      }
+    );
+  }, [rows]);
+
   const finalBalance = rows.length > 0 ? rows[rows.length - 1].running : 0;
+  const displayRows = useMemo(() => [...rows].reverse(), [rows]);
 
-  // Newest movement first on screen (reported directly: it should show up
-  // without scrolling past everything older) — but `rows` itself must stay
-  // in real chronological order above, since `running`/`totals`/
-  // `finalBalance` are all computed as a running sum over it. This is a
-  // display-only reversal: each row still carries the correct cumulative
-  // balance up to and including it in real time, just rendered newest-first.
-  const displayRows = [...rows].reverse();
+  const handleDownloadPDF = () => {
+    generateCashboxReportPDF({
+      month,
+      monthLabel: formatMonthLabel(month),
+      responsible: period?.responsible,
+      transactions,
+    });
+  };
+
+  // If there are no movements yet in this month, hide the massive empty report table
+  // so the new month starts completely in blank as requested!
+  if (transactions.length === 0) {
+    return (
+      <div className="admin-glass rounded-[var(--radius-lg)] p-8 text-center text-fg-muted">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-fg/5 text-fg-muted">
+          <Calendar size={24} />
+        </div>
+        <p className="mt-3 text-sm font-bold text-fg">
+          El reporte de caja para {formatMonthLabel(month)} no tiene movimientos registrados
+        </p>
+        <p className="mt-1 text-xs text-fg-muted">
+          El mes inicia en blanco. Al registrar movimientos en este mes, el balance y reporte se generarán automáticamente aquí.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="cashbox-report admin-glass overflow-x-auto rounded-[var(--radius-lg)] p-6">
@@ -84,19 +121,29 @@ export function MonthlyReport({
         <h2 className="font-display text-lg font-bold text-fg">
           Reporte de caja — {formatMonthLabel(month)}
         </h2>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="print:hidden inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-accent-fg transition-colors hover:bg-accent-hover"
-        >
-          <Printer size={14} />
-          Imprimir reporte
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            className="print:hidden inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs font-bold uppercase tracking-wide text-accent-fg shadow-sm transition-opacity hover:opacity-90 active:scale-95"
+            title="Descargar reporte mensual de caja en PDF"
+          >
+            <Download size={14} />
+            Descargar PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="print:hidden inline-flex items-center gap-2 rounded-full border border-border bg-bg-alt px-4 py-2 text-xs font-bold uppercase tracking-wide text-fg transition-colors hover:border-accent hover:text-accent"
+            title="Imprimir reporte"
+          >
+            <Printer size={14} />
+            Imprimir
+          </button>
+        </div>
       </div>
 
-      {/* Print-only letterhead — screen readers/users never see this, the
-          on-screen title above already covers it. Real border instead of
-          the glass card's blur, which most browsers skip on paper anyway. */}
+      {/* Print-only letterhead */}
       <div className="hidden print:block print:mb-4">
         <div className="flex items-baseline justify-between">
           <span className="text-2xl font-extrabold tracking-tight text-fg">INFOSISTEL</span>
@@ -130,13 +177,6 @@ export function MonthlyReport({
           {displayRows.map(({ t, running: rowBalance }) => (
             <MonthlyReportRow key={t.id} transaction={t} running={rowBalance} />
           ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={13} className="px-2 py-8 text-center text-fg-muted">
-                Todavía no hay movimientos este mes.
-              </td>
-            </tr>
-          )}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-border text-xs font-bold text-fg">

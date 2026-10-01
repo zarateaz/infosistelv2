@@ -33,22 +33,36 @@ export function ProductCard({
           </div>
         )}
 
-        {product.isFeatured && (
+        {product.stock === 0 ? (
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm">
+            Agotado
+          </div>
+        ) : product.stock === 1 ? (
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-gradient-to-r from-red-600 to-amber-500 px-2.5 py-0.5 text-[9px] font-black uppercase text-white shadow-md animate-pulse">
+            🔥 ¡Última unidad!
+          </div>
+        ) : product.stock <= 3 ? (
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm">
+            ⚡ Solo {product.stock} disp.
+          </div>
+        ) : product.isFeatured ? (
           <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-black text-accent-fg">
             <Star size={9} fill="currentColor" /> TOP
           </div>
-        )}
+        ) : null}
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAddToCart(product);
-          }}
-          aria-label="Añadir al carrito"
-          className="absolute bottom-2.5 right-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-fg opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
-        >
-          <ShoppingCart size={14} />
-        </button>
+        {product.stock > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddToCart(product);
+            }}
+            aria-label="Añadir al carrito"
+            className="absolute bottom-2.5 right-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-fg opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+          >
+            <ShoppingCart size={14} />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 p-3.5">
