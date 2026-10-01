@@ -325,11 +325,11 @@ export function CotizacionDetailModal({
             </div>
           </div>
 
-          {/* Visítanos en Huancayo */}
+          {/* Visítanos en Huancayo & Web */}
           <div className="rounded-2xl border border-border bg-bg-alt/40 p-3.5 text-xs space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
               <MapPin size={12} />
-              <span>Visítanos en Huancayo</span>
+              <span>Visítanos en Huancayo y en nuestra Web</span>
             </span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-fg-muted">
               <div>
@@ -338,7 +338,7 @@ export function CotizacionDetailModal({
               </div>
               <div>
                 <p>• Tel / WhatsApp: +51 964 648 202</p>
-                <p>• Correo: ecaballero@hotmail.com · Lun-Sáb 9am-7pm</p>
+                <p>• Web oficial: infosistel.pe · Lun-Sáb 9am-7pm</p>
               </div>
             </div>
           </div>

@@ -216,30 +216,56 @@ export function generateQuotationPDF(data: QuotationPdfData) {
 
   // Top Header: Logo on left
   try {
-    doc.addImage(INFOSISTEL_LOGO_BASE64, "PNG", 14, 12, 50, 6.1);
+    doc.addImage(INFOSISTEL_LOGO_BASE64, "PNG", 14, 9.5, 48, 5.8);
   } catch (err) {
     console.warn("Could not add image logo, using text header:", err);
     doc.setTextColor(...brandPrimary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("INFOSISTEL", 14, 16);
+    doc.text("INFOSISTEL", 14, 15);
   }
 
-  // Company info below logo
+  // Company brand meaning & services below logo
+  doc.setTextColor(...brandPrimary);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.2);
+  doc.text("INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES", 14, 18.5);
+
   doc.setTextColor(...brandDark);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("TECNOLOGÍA · VENTA DE EQUIPOS · SERVICIO TÉCNICO · REPUESTOS", 14, 23);
+  doc.setFontSize(6.7);
+  doc.text("Venta de Equipos · Servicio Técnico Especializado · Repuestos", 14, 22.5);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setTextColor(...mutedGray);
-  doc.text("RUC: 10444342247  |  Huancayo, Junín, Perú", 14, 27.5);
-  doc.text("WhatsApp: (+51) 964 648 202  |  Correo: ecaballero@hotmail.com  |  Sitio Web: infosistel.pe", 14, 31.5);
+  doc.text("RUC: 10444342247  |  Huancayo, Junín  |  WhatsApp: (+51) 964 648 202", 14, 26.5);
+  doc.text("Correo: ecaballero@hotmail.com", 14, 30);
+
+  // Pleasant Promotional Pill for the Website
+  const webPillX = 14;
+  const webPillY = 32.5;
+  const webPillWidth = 104;
+  const webPillHeight = 6;
+  doc.setFillColor(239, 246, 255);
+  doc.setDrawColor(191, 219, 254);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(webPillX, webPillY, webPillWidth, webPillHeight, 1.5, 1.5, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.setTextColor(10, 95, 219);
+  doc.text(
+    "¡Visítanos en nuestra página web: infosistel.pe! Cotiza y compra online 24/7",
+    webPillX + webPillWidth / 2,
+    webPillY + 4.2,
+    { align: "center" }
+  );
+  doc.link(webPillX, webPillY, webPillWidth, webPillHeight, { url: "https://infosistel.pe" });
 
   // Right Header Box (Quotation Details Card)
   const headerBoxWidth = 72;
-  const headerBoxHeight = 27;
+  const headerBoxHeight = 28.5;
   const headerBoxX = pageWidth - 14 - headerBoxWidth;
   const headerBoxY = 10;
 
@@ -272,7 +298,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   );
 
   // Customer Information Box
-  const clientBoxY = 40;
+  const clientBoxY = 41.5;
   const clientBoxHeight = 22;
   doc.setFillColor(...lightBg);
   doc.setDrawColor(...cardBorder);
@@ -471,10 +497,10 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.text("• Yape / Plin: 964 648 202 (Infosistel / Carlos Zárate)", 18 + halfWidth + 4, infoBoxesY + 21.5);
   doc.text("• Titular: INFOSISTEL", 18 + halfWidth + 4, infoBoxesY + 25);
 
-  // Box 3: Company Location & Contact ("Visítanos en Huancayo" - Replaces signatures)
+  // Box 3: Company Location & Contact ("Visítanos en Huancayo y en nuestra Web")
   const visitBoxY = infoBoxesY + 28.5;
   const visitBoxWidth = pageWidth - 28;
-  const visitBoxHeight = 22.5;
+  const visitBoxHeight = 26;
 
   doc.setFillColor(...lightBg);
   doc.setDrawColor(...cardBorder);
@@ -485,43 +511,57 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(...brandPrimary);
-  doc.text("VISÍTANOS EN HUANCAYO", 18, visitBoxY + 5);
+  doc.text("VISÍTANOS EN NUESTRAS TIENDAS EN HUANCAYO", 18, visitBoxY + 5);
 
   // Left Column: Dirección
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.8);
   doc.setTextColor(...brandDark);
-  doc.text("Dirección:", 18, visitBoxY + 9.5);
+  doc.text("Dirección:", 18, visitBoxY + 9);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(...brandDark);
-  doc.text("• Av. Giráldez 274, Semisótano Stand S25, Huancayo", 18, visitBoxY + 13.5);
-  doc.text("• Av. Giráldez 274, 1er Nivel Stand B-10, Huancayo", 18, visitBoxY + 17.5);
+  doc.text("• Av. Giráldez 274, Semisótano Stand S25, Huancayo", 18, visitBoxY + 12.8);
+  doc.text("• Av. Giráldez 274, 1er Nivel Stand B-10, Huancayo", 18, visitBoxY + 16.5);
 
   // Right Column: Teléfono, Correo, Horario
   const visitCol2X = 110;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.8);
   doc.setTextColor(...brandDark);
-  doc.text("Teléfono / WhatsApp:", visitCol2X, visitBoxY + 9.5);
+  doc.text("Teléfono / WhatsApp:", visitCol2X, visitBoxY + 9);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.text("+51 964 648 202", visitCol2X + 28, visitBoxY + 9.5);
+  doc.text("+51 964 648 202", visitCol2X + 28, visitBoxY + 9);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.8);
-  doc.text("Correo electrónico:", visitCol2X, visitBoxY + 13.5);
+  doc.text("Correo electrónico:", visitCol2X, visitBoxY + 12.8);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.text("ecaballero@hotmail.com", visitCol2X + 28, visitBoxY + 13.5);
+  doc.text("ecaballero@hotmail.com", visitCol2X + 28, visitBoxY + 12.8);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.8);
-  doc.text("Horario de atención:", visitCol2X, visitBoxY + 17.5);
+  doc.text("Horario de atención:", visitCol2X, visitBoxY + 16.5);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.text("Lun. a sáb., 9:00 am – 7:00 pm", visitCol2X + 28, visitBoxY + 17.5);
+  doc.text("Lun. a sáb., 9:00 am – 7:00 pm", visitCol2X + 28, visitBoxY + 16.5);
+
+  // Pleasant Web Banner bar inside visit box
+  doc.setFillColor(239, 246, 255);
+  doc.roundedRect(15, visitBoxY + 19.5, visitBoxWidth - 2, 5.2, 1, 1, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...brandPrimary);
+  doc.text(
+    "¡Visítanos en nuestra web www.infosistel.pe! Explora todo nuestro catálogo tecnológico y cotiza online.",
+    visitBoxWidth / 2 + 14,
+    visitBoxY + 23.2,
+    { align: "center" }
+  );
+  doc.link(15, visitBoxY + 19.5, visitBoxWidth - 2, 5.2, { url: "https://infosistel.pe" });
 
   // Page Numbers and Footer
   const totalPages = doc.getNumberOfPages();
@@ -531,7 +571,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
     doc.setFontSize(7);
     doc.setTextColor(...mutedGray);
     doc.text(
-      "Infosistel · Tecnología · Servicio Técnico · Cotización Oficial emitida vía infosistel.pe",
+      "Infosistel · Informática, Sistemas y Telecomunicaciones · Visítanos en infosistel.pe",
       14,
       pageHeight - 6
     );

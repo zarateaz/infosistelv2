@@ -117,15 +117,22 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
                 priority
                 className="h-9 w-auto object-contain"
               />
-              <p className="mt-2 text-xs font-bold text-accent">
-                TECNOLOGÍA · VENTA DE EQUIPOS · SERVICIO TÉCNICO · REPUESTOS
+              <p className="mt-2 text-xs font-bold text-accent tracking-wide">
+                INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES
               </p>
-              <p className="text-xs text-fg-muted mt-0.5">
-                RUC: 10444342247 · Huancayo, Junín, Perú
+              <p className="text-[11px] font-medium text-fg-muted mt-0.5">
+                Venta de Equipos · Servicio Técnico Especializado · Repuestos
               </p>
-              <p className="text-xs text-fg-muted">
-                WhatsApp: (+51) 964 648 202 · Web: infosistel.pe
+              <p className="text-xs text-fg-muted mt-1">
+                RUC: 10444342247 · Huancayo, Junín · WhatsApp: (+51) 964 648 202
               </p>
+              <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/20 px-3.5 py-1 text-xs font-semibold text-accent">
+                <span>🌐 ¡Visítanos en nuestra web:</span>
+                <Link href="/" className="underline hover:opacity-80 font-bold">
+                  infosistel.pe
+                </Link>
+                <span>! Cotizaciones y compras online 24/7</span>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4 sm:text-right">
