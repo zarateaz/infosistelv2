@@ -1,5 +1,11 @@
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import autoTable, { applyPlugin } from "jspdf-autotable";
+
+try {
+  applyPlugin(jsPDF);
+} catch {
+  // Handled safely
+}
 
 export interface MonthlyProductSummary {
   pName: string;
@@ -27,7 +33,7 @@ export interface MonthlyReportExportData {
 
 export interface CashboxReportTransaction {
   id: string;
-  date: Date;
+  date: Date | string;
   description: string;
   type: "INCOME" | "EXPENSE";
   amount: number;
@@ -43,12 +49,19 @@ export interface CashboxReportExportData {
 }
 
 function safeRunAutoTable(doc: jsPDF, options: any) {
+  try {
+    if (typeof (doc as any).autoTable === "function") {
+      (doc as any).autoTable(options);
+      return;
+    }
+  } catch (e) {
+    console.warn("doc.autoTable failed, falling back to direct function", e);
+  }
+
   if (typeof autoTable === "function") {
     autoTable(doc, options);
   } else if (typeof (autoTable as any)?.default === "function") {
     (autoTable as any).default(doc, options);
-  } else if (typeof (doc as any).autoTable === "function") {
-    (doc as any).autoTable(options);
   } else {
     throw new Error("No se pudo ejecutar autoTable en el documento PDF.");
   }
@@ -56,8 +69,6 @@ function safeRunAutoTable(doc: jsPDF, options: any) {
 
 function safeSavePdf(doc: jsPDF, filename: string) {
   try {
-    doc.save(filename);
-  } catch {
     const blob = doc.output("blob");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -65,8 +76,12 @@ function safeSavePdf(doc: jsPDF, filename: string) {
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 2000);
+  } catch {
+    doc.save(filename);
   }
 }
 
@@ -334,7 +349,17 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
   let cashExpense = 0;
   let yapeExpense = 0;
 
-  const rows = data.transactions.map((t) => {
+  function formatTxDate(dateVal: Date | string): string {
+    if (typeof dateVal === "string") {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateVal);
+      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    }
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return "-";
+    return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+  }
+
+  const rows = data.transactions.map((t, idx) => {
     const isInc = t.type === "INCOME";
     if (isInc) {
       totalIncome += t.amount;
@@ -348,11 +373,9 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
       running -= t.amount;
     }
 
-    const d = new Date(t.date);
-    const dateFormatted = `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
-
     return [
-      dateFormatted,
+      (idx + 1).toString(),
+      formatTxDate(t.date),
       t.description,
       isInc ? "INGRESO" : "GASTO",
       t.paymentMethod,
@@ -423,12 +446,13 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
   const tableBody =
     rows.length > 0
       ? rows
-      : [["-", "Sin movimientos registrados en este período", "-", "-", "-", "-", "S/. 0.00", ""]];
+      : [["-", "-", "Sin movimientos registrados en este período", "-", "-", "-", "-", "S/. 0.00", ""]];
 
   safeRunAutoTable(doc, {
     startY: cardY + cardHeight + 6,
     head: [
       [
+        "#",
         "Fecha",
         "Concepto / Descripción",
         "Tipo",
@@ -442,6 +466,7 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
     body: tableBody,
     foot: [
       [
+        "",
         "",
         "TOTALES DEL PERÍODO",
         "",
@@ -470,26 +495,69 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
       textColor: [30, 41, 59],
     },
     columnStyles: {
-      0: { cellWidth: 22, halign: "center" },
-      1: { cellWidth: 85 },
-      2: { cellWidth: 20, halign: "center", fontStyle: "bold" },
-      3: { cellWidth: 25, halign: "center" },
-      4: { cellWidth: 25, halign: "right", textColor: [16, 185, 129] },
-      5: { cellWidth: 25, halign: "right", textColor: [220, 38, 38] },
-      6: { cellWidth: 25, halign: "right", fontStyle: "bold" },
-      7: { cellWidth: 42 },
+      0: { cellWidth: 8, halign: "center" },
+      1: { cellWidth: 20, halign: "center" },
+      2: { cellWidth: 85 },
+      3: { cellWidth: 18, halign: "center", fontStyle: "bold" },
+      4: { cellWidth: 20, halign: "center" },
+      5: { cellWidth: 25, halign: "right", textColor: [16, 185, 129] },
+      6: { cellWidth: 25, halign: "right", textColor: [220, 38, 38] },
+      7: { cellWidth: 25, halign: "right", fontStyle: "bold" },
+      8: { cellWidth: 43 },
     },
-    margin: { left: 14, right: 14, bottom: 15 },
-    didDrawPage: (pageData: any) => {
-      const str = `Página ${pageData.pageNumber}`;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(mutedGray[0], mutedGray[1], mutedGray[2]);
-      doc.text("Infosistel · Control de Caja", 14, pageHeight - 6);
-      doc.text(str, pageWidth - 14, pageHeight - 6, { align: "right" });
-    },
+    margin: { left: 14, right: 14, bottom: 20 },
   });
 
-  const filename = `Reporte_Caja_INFOSISTEL_${data.month}.pdf`;
+  // Signature Block on last page
+  const finalY = (doc as any).lastAutoTable?.finalY ?? cardY + cardHeight + 20;
+  const signHeight = 22;
+  if (finalY + signHeight + 15 > pageHeight) {
+    doc.addPage();
+  }
+  const signY =
+    (doc as any).lastAutoTable?.finalY && finalY + signHeight + 15 <= pageHeight
+      ? Math.max(finalY + 14, pageHeight - 28)
+      : pageHeight - 28;
+
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.35);
+
+  const line1X = 35;
+  const line2X = pageWidth - 95;
+  const lineWidth = 60;
+
+  doc.line(line1X, signY, line1X + lineWidth, signY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(30, 41, 59);
+  doc.text("RESPONSABLE DE CAJA", line1X + lineWidth / 2, signY + 4, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(mutedGray[0], mutedGray[1], mutedGray[2]);
+  doc.text(data.responsible || "Administración", line1X + lineWidth / 2, signY + 8, { align: "center" });
+
+  doc.line(line2X, signY, line2X + lineWidth, signY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(30, 41, 59);
+  doc.text("GERENCIA GENERAL / AUDITORÍA", line2X + lineWidth / 2, signY + 4, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(mutedGray[0], mutedGray[1], mutedGray[2]);
+  doc.text("Infosistel · V°B° Arqueo Oficial", line2X + lineWidth / 2, signY + 8, { align: "center" });
+
+  // Two-pass page numbering
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(mutedGray[0], mutedGray[1], mutedGray[2]);
+    doc.text("Infosistel · Control de Caja — Documento Oficial de Arqueo", 14, pageHeight - 6);
+    doc.text(`Página ${i} de ${totalPages}`, pageWidth - 14, pageHeight - 6, { align: "right" });
+  }
+
+  const cleanMonth = data.month.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filename = `Reporte_Caja_INFOSISTEL_${cleanMonth}.pdf`;
   safeSavePdf(doc, filename);
 }

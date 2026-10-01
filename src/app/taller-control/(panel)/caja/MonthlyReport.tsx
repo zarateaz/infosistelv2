@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { Printer, Download, Calendar } from "lucide-react";
-import type { AdminTransaction, AdminCashboxPeriod } from "./actions";
+import Link from "next/link";
+import { Printer, Download, Calendar, ArrowRight } from "lucide-react";
+import type { AdminTransaction, AdminCashboxPeriod, CashboxMonthSummary } from "./actions";
 import { MonthlyReportRow } from "./MonthlyReportRow";
 import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
+import { monthKeyUTC } from "./month";
 
 const MONTH_NAMES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -46,17 +48,21 @@ function computeRows(transactions: AdminTransaction[]) {
 
 /**
  * Printable & downloadable monthly cashbox report.
- * If there are no transactions in the selected month, it stays cleanly hidden/collapsed
- * so the new month starts completely blank.
+ * If there are no transactions in the selected month, it stays cleanly collapsed
+ * with a quick shortcut to download the previous closed month's PDF.
  */
 export function MonthlyReport({
   month,
   period,
   transactions,
+  monthsSummary,
+  allTransactions,
 }: {
   month: string;
   period: AdminCashboxPeriod | null;
   transactions: AdminTransaction[];
+  monthsSummary?: CashboxMonthSummary[];
+  allTransactions?: AdminTransaction[];
 }) {
   const rows = useMemo(() => computeRows(transactions), [transactions]);
 
@@ -97,9 +103,24 @@ export function MonthlyReport({
     });
   };
 
-  // If there are no movements yet in this month, hide the massive empty report table
-  // so the new month starts completely in blank as requested!
+  // If there are no movements yet in this month, offer a clear shortcut to download
+  // the previous closed month's PDF so the user is never stuck!
   if (transactions.length === 0) {
+    const latestClosedMonth = monthsSummary?.find((m) => !m.isCurrent && m.count > 0);
+
+    const handleDownloadPreviousMonth = () => {
+      if (!latestClosedMonth) return;
+      const txs = allTransactions
+        ? allTransactions.filter((t) => monthKeyUTC(t.date) === latestClosedMonth.month)
+        : [];
+      generateCashboxReportPDF({
+        month: latestClosedMonth.month,
+        monthLabel: latestClosedMonth.label,
+        responsible: latestClosedMonth.responsible || undefined,
+        transactions: txs,
+      });
+    };
+
     return (
       <div className="admin-glass rounded-[var(--radius-lg)] p-8 text-center text-fg-muted">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-fg/5 text-fg-muted">
@@ -108,9 +129,43 @@ export function MonthlyReport({
         <p className="mt-3 text-sm font-bold text-fg">
           El reporte de caja para {formatMonthLabel(month)} no tiene movimientos registrados
         </p>
-        <p className="mt-1 text-xs text-fg-muted">
+        <p className="mt-1 text-xs text-fg-muted max-w-md mx-auto">
           El mes inicia en blanco. Al registrar movimientos en este mes, el balance y reporte se generarán automáticamente aquí.
         </p>
+
+        {latestClosedMonth && (
+          <div className="mt-6 flex flex-col items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent/[0.04] p-4 text-left sm:flex-row max-w-xl mx-auto">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                Último mes cerrado disponible
+              </span>
+              <p className="font-display text-sm font-bold text-fg">
+                {latestClosedMonth.label} — {latestClosedMonth.count} movimientos
+              </p>
+              <p className="text-xs text-fg-muted">
+                Saldo neto: S/. {latestClosedMonth.balance.toFixed(2)}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPreviousMonth}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-bold text-accent-fg shadow-sm shadow-accent/25 transition-all hover:opacity-90 active:scale-95"
+                title={`Descargar reporte en PDF de ${latestClosedMonth.label}`}
+              >
+                <Download size={13} />
+                <span>Descargar PDF</span>
+              </button>
+              <Link
+                href={`/taller-control/caja?month=${latestClosedMonth.month}`}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-bg px-3 py-2 text-xs font-semibold text-fg transition-colors hover:border-accent hover:text-accent"
+              >
+                <span>Ver mes</span>
+                <ArrowRight size={13} />
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -129,7 +184,7 @@ export function MonthlyReport({
             title="Descargar reporte mensual de caja en PDF"
           >
             <Download size={14} />
-            Descargar PDF
+            Descargar PDF ({transactions.length} movs.)
           </button>
           <button
             type="button"

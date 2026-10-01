@@ -84,6 +84,68 @@ export async function listCashboxMonths(): Promise<string[]> {
   return [...months].sort().reverse();
 }
 
+export interface CashboxMonthSummary {
+  month: string;
+  label: string;
+  isCurrent: boolean;
+  count: number;
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
+  responsible: string | null;
+}
+
+const MONTH_NAMES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+export async function getCashboxMonthsSummary(): Promise<CashboxMonthSummary[]> {
+  const [transactions, periods] = await Promise.all([
+    prisma.cashboxTransaction.findMany({
+      where: { deletedAt: null },
+      orderBy: CHRONOLOGICAL_ORDER,
+      select: { id: true, date: true, type: true, amount: true },
+    }),
+    prisma.cashboxPeriod.findMany({ select: { month: true, responsible: true } }),
+  ]);
+
+  const periodMap = new Map(periods.map((p) => [p.month, p.responsible]));
+  const current = monthKey();
+
+  const monthKeys = new Set<string>([
+    current,
+    ...transactions.map((t) => monthKeyUTC(t.date)),
+    ...periods.map((p) => p.month),
+  ]);
+
+  const sortedMonths = [...monthKeys].sort().reverse();
+
+  return sortedMonths.map((m) => {
+    const [year, monthNum] = m.split("-").map(Number);
+    const label = `${MONTH_NAMES_ES[monthNum - 1] || m} de ${year}`;
+    const txs = transactions.filter((t) => monthKeyUTC(t.date) === m);
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    for (const t of txs) {
+      if (t.type === "INCOME") totalIncome += t.amount;
+      else totalExpense += t.amount;
+    }
+
+    return {
+      month: m,
+      label,
+      isCurrent: m === current,
+      count: txs.length,
+      totalIncome,
+      totalExpense,
+      balance: totalIncome - totalExpense,
+      responsible: periodMap.get(m) ?? null,
+    };
+  });
+}
+
 const periodSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Mes inválido."),
   responsible: z.string().trim().min(1, "El responsable es obligatorio.").max(120),

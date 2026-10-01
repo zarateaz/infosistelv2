@@ -5,6 +5,7 @@ import {
   getCashboxTransactionsForMonth,
   getCashboxPeriod,
   listCashboxMonths,
+  getCashboxMonthsSummary,
 } from "./actions";
 import { monthKey } from "./month";
 import { PAYMENT_METHODS } from "./constants";
@@ -15,6 +16,8 @@ import { TransactionRow } from "./TransactionRow";
 import { PeriodHeader } from "./PeriodHeader";
 import { MonthlyReport } from "./MonthlyReport";
 import { MonthSelector } from "./MonthSelector";
+import { MonthlyReportsArchive } from "./MonthlyReportsArchive";
+import { DownloadHistoryPdfButton } from "./DownloadHistoryPdfButton";
 import { StatCard, type StatTint } from "../StatCard";
 
 const METHOD_ICON: Record<(typeof PAYMENT_METHODS)[number], typeof Banknote> = {
@@ -43,11 +46,12 @@ export default async function AdminCashboxPage({
   const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : monthKey();
   const showAll = view === "all";
 
-  const [transactions, monthTransactions, period, availableMonths] = await Promise.all([
+  const [transactions, monthTransactions, period, availableMonths, monthsSummary] = await Promise.all([
     getCashboxTransactions(),
     getCashboxTransactionsForMonth(month),
     getCashboxPeriod(month),
     listCashboxMonths(),
+    getCashboxMonthsSummary(),
   ]);
 
   const displayedTransactions = showAll ? transactions : monthTransactions;
@@ -102,7 +106,7 @@ export default async function AdminCashboxPage({
           >
             <ChevronLeft size={15} />
           </Link>
-          <MonthSelector month={month} availableMonths={availableMonths} />
+          <MonthSelector month={month} availableMonths={availableMonths} monthsSummary={monthsSummary} />
           <Link
             href={`/taller-control/caja?month=${adjacentMonth(month, 1)}`}
             aria-label="Mes siguiente"
@@ -118,7 +122,21 @@ export default async function AdminCashboxPage({
       </div>
 
       <div className="mt-4">
-        <MonthlyReport month={month} period={period} transactions={monthTransactions} />
+        <MonthlyReport
+          month={month}
+          period={period}
+          transactions={monthTransactions}
+          monthsSummary={monthsSummary}
+          allTransactions={transactions}
+        />
+      </div>
+
+      <div className="print:hidden mt-8">
+        <MonthlyReportsArchive
+          monthsSummary={monthsSummary}
+          allTransactions={transactions}
+          currentSelectedMonth={month}
+        />
       </div>
 
       <div className="print:hidden mt-10">
@@ -133,7 +151,7 @@ export default async function AdminCashboxPage({
                 : `Mostrando ${monthTransactions.length} movimiento(s) de este mes. Los meses anteriores quedan archivados.`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href={`/taller-control/caja?month=${month}`}
               className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
@@ -154,6 +172,12 @@ export default async function AdminCashboxPage({
             >
               Ver todo ({transactions.length})
             </Link>
+            <DownloadHistoryPdfButton
+              transactions={displayedTransactions}
+              label={showAll ? `Descargar PDF (${transactions.length})` : `Descargar PDF (${monthTransactions.length})`}
+              monthKey={showAll ? "HISTORIAL_COMPLETO" : month}
+              monthLabel={showAll ? "Historial Completo de Caja" : `Reporte de Caja ${month}`}
+            />
           </div>
         </div>
 
