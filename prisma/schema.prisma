@@ -335,3 +335,58 @@ model Admin {
   // — no new hash primitive), one per unused one-time recovery code.
   recoveryCodesHash String?
 }
+
+/**
+ * Cotización comercial para clientes — emitida desde /taller-control/cotizaciones
+ * o solicitada desde la web. Permite registrar ítems con productos del inventario
+ * o ítems libres/servicios, calcular IGV/descuentos y exportar PDF con logo oficial.
+ */
+model Quotation {
+  id            String          @id @default(cuid())
+  code          String          @unique // "COT-2026-0001"
+  clientName    String
+  clientDocType String?         // "DNI" | "RUC" | "OTRO"
+  clientDocNum  String?
+  clientPhone   String?
+  clientEmail   String?
+  clientAddress String?
+  attentionTo   String?
+  issueDate     DateTime        @default(now())
+  validDays     Int             @default(15)
+  currency      String          @default("PEN") // "PEN" | "USD"
+  includeIgv    Boolean         @default(true)
+  subtotal      Float
+  igv           Float           @default(0)
+  discount      Float           @default(0)
+  total         Float
+  status        String          @default("PENDIENTE") // "PENDIENTE" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "FACTURADA"
+  deliveryTime  String?
+  paymentMethod String?
+  warranty      String?
+  notes         String?
+  items         QuotationItem[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
+
+  @@index([status])
+  @@index([deletedAt])
+  @@index([issueDate])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId   String?
+  description String
+  brand       String?
+  model       String?
+  quantity    Int       @default(1)
+  unitPrice   Float
+  total       Float
+  notes       String?
+
+  @@index([quotationId])
+}
+

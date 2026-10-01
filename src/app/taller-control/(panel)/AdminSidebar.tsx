@@ -23,6 +23,7 @@ import {
   X,
   FileText,
   Shield,
+  Calculator,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -37,6 +38,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/pedidos": ShoppingBag,
   "/taller-control/ventas": TrendingUp,
   "/taller-control/reporte-mensual": FileText,
+  "/taller-control/cotizaciones": Calculator,
   "/taller-control/papelera": Trash2,
   "/taller-control/facturas": Receipt,
   "/taller-control/cuentas": HandCoins,
@@ -54,6 +56,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/pedidos": "Ventas",
   "/taller-control/ventas": "Ventas",
   "/taller-control/reporte-mensual": "Ventas",
+  "/taller-control/cotizaciones": "Ventas",
   "/taller-control/papelera": "Ventas",
   "/taller-control/facturas": "Ventas",
   "/taller-control/cuentas": "Ventas",
