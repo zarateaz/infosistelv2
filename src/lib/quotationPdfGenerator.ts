@@ -216,7 +216,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
 
   // Top Header: Logo on left
   try {
-    doc.addImage(INFOSISTEL_LOGO_BASE64, "PNG", 14, 9.5, 48, 5.8);
+    doc.addImage(INFOSISTEL_LOGO_BASE64, "PNG", 14, 10, 48, 5.8);
   } catch (err) {
     console.warn("Could not add image logo, using text header:", err);
     doc.setTextColor(...brandPrimary);
@@ -225,26 +225,21 @@ export function generateQuotationPDF(data: QuotationPdfData) {
     doc.text("INFOSISTEL", 14, 15);
   }
 
-  // Company brand meaning & services below logo
-  doc.setTextColor(...brandPrimary);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.2);
-  doc.text("INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES", 14, 18.5);
-
+  // Tagline below logo: Informática, Sistemas y Telecomunicaciones
   doc.setTextColor(...brandDark);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.7);
-  doc.text("Venta de Equipos · Servicio Técnico Especializado · Repuestos", 14, 22.5);
+  doc.setFontSize(7.5);
+  doc.text("INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES", 14, 19.5);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.8);
   doc.setTextColor(...mutedGray);
-  doc.text("RUC: 10444342247  |  Huancayo, Junín  |  WhatsApp: (+51) 964 648 202", 14, 26.5);
-  doc.text("Correo: ecaballero@hotmail.com", 14, 30);
+  doc.text("RUC: 10444342247  |  Huancayo, Junín  |  WhatsApp: (+51) 964 648 202", 14, 24);
+  doc.text("Correo: ecaballero@hotmail.com", 14, 28);
 
   // Pleasant Promotional Pill for the Website
   const webPillX = 14;
-  const webPillY = 32.5;
+  const webPillY = 31;
   const webPillWidth = 104;
   const webPillHeight = 6;
   doc.setFillColor(239, 246, 255);
@@ -265,7 +260,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
 
   // Right Header Box (Quotation Details Card)
   const headerBoxWidth = 72;
-  const headerBoxHeight = 28.5;
+  const headerBoxHeight = 27;
   const headerBoxX = pageWidth - 14 - headerBoxWidth;
   const headerBoxY = 10;
 
@@ -298,7 +293,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   );
 
   // Customer Information Box
-  const clientBoxY = 41.5;
+  const clientBoxY = 40;
   const clientBoxHeight = 22;
   doc.setFillColor(...lightBg);
   doc.setDrawColor(...cardBorder);

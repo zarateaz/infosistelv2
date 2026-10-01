@@ -120,9 +120,6 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
               <p className="mt-2 text-xs font-bold text-accent tracking-wide">
                 INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES
               </p>
-              <p className="text-[11px] font-medium text-fg-muted mt-0.5">
-                Venta de Equipos · Servicio Técnico Especializado · Repuestos
-              </p>
               <p className="text-xs text-fg-muted mt-1">
                 RUC: 10444342247 · Huancayo, Junín · WhatsApp: (+51) 964 648 202
               </p>
