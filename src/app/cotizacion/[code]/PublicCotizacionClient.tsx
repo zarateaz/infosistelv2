@@ -11,6 +11,9 @@ import {
   ShieldCheck,
   CheckCircle2,
   ChevronLeft,
+  MapPin,
+  Phone,
+  Mail,
 } from "lucide-react";
 import type { QuotationRecord } from "@/app/taller-control/(panel)/cotizaciones/actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
@@ -279,6 +282,44 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
               <p className="text-fg-muted">• BBVA Soles: 0011-0234-0200987654</p>
               <p className="text-fg-muted">• Interbank Soles: 200-3001234567</p>
               <p className="text-fg-muted">• Yape / Plin: 964 648 202 (Titular: INFOSISTEL)</p>
+            </div>
+          </div>
+
+          {/* Visítanos en Huancayo */}
+          <div className="mt-4 rounded-2xl border border-border bg-bg-alt/40 p-5 text-xs">
+            <h4 className="font-display font-bold uppercase tracking-wider text-accent text-[11px] mb-3">
+              Visítanos en Huancayo
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-fg font-semibold">
+                  <MapPin size={13} className="text-accent" />
+                  <span>Dirección / Tiendas:</span>
+                </div>
+                <p className="text-fg-muted pl-4.5">• Av. Giráldez 274, Semisótano Stand S25, Huancayo</p>
+                <p className="text-fg-muted pl-4.5">• Av. Giráldez 274, 1er Nivel Stand B-10, Huancayo</p>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-fg">
+                  <Phone size={13} className="text-emerald-500" />
+                  <span className="font-semibold">Teléfono / WhatsApp:</span>
+                  <a href="https://wa.me/51964648202" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                    +51 964 648 202
+                  </a>
+                </div>
+                <div className="flex items-center gap-1.5 text-fg">
+                  <Mail size={13} className="text-accent" />
+                  <span className="font-semibold">Correo:</span>
+                  <a href="mailto:ecaballero@hotmail.com" className="text-accent hover:underline">
+                    ecaballero@hotmail.com
+                  </a>
+                </div>
+                <div className="flex items-center gap-1.5 text-fg">
+                  <Clock size={13} className="text-fg-muted" />
+                  <span className="font-semibold">Horario:</span>
+                  <span className="text-fg-muted">Lun. a sáb., 9:00 am – 7:00 pm</span>
+                </div>
+              </div>
             </div>
           </div>
 

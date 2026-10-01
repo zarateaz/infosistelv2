@@ -63,6 +63,9 @@ function safeRunAutoTable(doc: jsPDF, options: any) {
 }
 
 function safeSavePdf(doc: jsPDF, filename: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
   try {
     const blob = doc.output("blob");
     const url = URL.createObjectURL(blob);
@@ -232,7 +235,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFontSize(7);
   doc.setTextColor(...mutedGray);
   doc.text("RUC: 10444342247  |  Huancayo, Junín, Perú", 14, 27.5);
-  doc.text("Contacto: (+51) 964 648 202  |  Sitio Web: infosistel.pe", 14, 31.5);
+  doc.text("WhatsApp: (+51) 964 648 202  |  Correo: ecaballero@hotmail.com  |  Sitio Web: infosistel.pe", 14, 31.5);
 
   // Right Header Box (Quotation Details Card)
   const headerBoxWidth = 72;
@@ -361,9 +364,9 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   let currentY = (doc as any).lastAutoTable?.finalY ?? 140;
 
   // If table ended too close to bottom, add a new page
-  if (currentY + 65 > pageHeight - 15) {
+  if (currentY + 86 > pageHeight - 15) {
     doc.addPage();
-    currentY = 20;
+    currentY = 18;
   } else {
     currentY += 4;
   }
@@ -468,38 +471,57 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.text("• Yape / Plin: 964 648 202 (Infosistel / Carlos Zárate)", 18 + halfWidth + 4, infoBoxesY + 21.5);
   doc.text("• Titular: INFOSISTEL", 18 + halfWidth + 4, infoBoxesY + 25);
 
-  // Signatures Section
-  const signY = infoBoxesY + 33;
-  if (signY + 20 <= pageHeight - 12) {
-    doc.setDrawColor(148, 163, 184);
-    doc.setLineWidth(0.35);
+  // Box 3: Company Location & Contact ("Visítanos en Huancayo" - Replaces signatures)
+  const visitBoxY = infoBoxesY + 28.5;
+  const visitBoxWidth = pageWidth - 28;
+  const visitBoxHeight = 22.5;
 
-    const signLineWidth = 55;
-    const sign1X = 25;
-    const sign2X = pageWidth - 25 - signLineWidth;
+  doc.setFillColor(...lightBg);
+  doc.setDrawColor(...cardBorder);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(14, visitBoxY, visitBoxWidth, visitBoxHeight, 2, 2, "FD");
 
-    // Signature 1: Infosistel
-    doc.line(sign1X, signY + 12, sign1X + signLineWidth, signY + 12);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...brandDark);
-    doc.text("INFOSISTEL", sign1X + signLineWidth / 2, signY + 16, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.5);
-    doc.setTextColor(...mutedGray);
-    doc.text("Área de Ventas & Cotizaciones", sign1X + signLineWidth / 2, signY + 19.5, { align: "center" });
+  // Title with brand primary
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...brandPrimary);
+  doc.text("VISÍTANOS EN HUANCAYO", 18, visitBoxY + 5);
 
-    // Signature 2: Client
-    doc.line(sign2X, signY + 12, sign2X + signLineWidth, signY + 12);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...brandDark);
-    doc.text("CONFORMIDAD DEL CLIENTE", sign2X + signLineWidth / 2, signY + 16, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.5);
-    doc.setTextColor(...mutedGray);
-    doc.text("Firma, Nombre y DNI / RUC", sign2X + signLineWidth / 2, signY + 19.5, { align: "center" });
-  }
+  // Left Column: Dirección
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  doc.setTextColor(...brandDark);
+  doc.text("Dirección:", 18, visitBoxY + 9.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...brandDark);
+  doc.text("• Av. Giráldez 274, Semisótano Stand S25, Huancayo", 18, visitBoxY + 13.5);
+  doc.text("• Av. Giráldez 274, 1er Nivel Stand B-10, Huancayo", 18, visitBoxY + 17.5);
+
+  // Right Column: Teléfono, Correo, Horario
+  const visitCol2X = 110;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  doc.setTextColor(...brandDark);
+  doc.text("Teléfono / WhatsApp:", visitCol2X, visitBoxY + 9.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("+51 964 648 202", visitCol2X + 28, visitBoxY + 9.5);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  doc.text("Correo electrónico:", visitCol2X, visitBoxY + 13.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("ecaballero@hotmail.com", visitCol2X + 28, visitBoxY + 13.5);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  doc.text("Horario de atención:", visitCol2X, visitBoxY + 17.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("Lun. a sáb., 9:00 am – 7:00 pm", visitCol2X + 28, visitBoxY + 17.5);
 
   // Page Numbers and Footer
   const totalPages = doc.getNumberOfPages();
@@ -519,4 +541,5 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   const cleanCode = data.code.replace(/[^a-zA-Z0-9_-]/g, "_");
   const filename = `Cotizacion_INFOSISTEL_${cleanCode}.pdf`;
   safeSavePdf(doc, filename);
+  return doc;
 }
