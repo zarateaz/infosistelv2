@@ -56,28 +56,77 @@ export default async function AdminCashboxPage({
 
   const displayedTransactions = showAll ? transactions : monthTransactions;
 
-  const balance = transactions.reduce((sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount), 0);
+  // Monthly balance starts from 0 for each month! When viewing a specific month,
+  // it computes strictly the transactions of that month, not carrying over past months.
+  const balance = displayedTransactions.reduce(
+    (sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount),
+    0
+  );
+
   const totalsByMethod = Object.fromEntries(
     PAYMENT_METHODS.map((method) => [
       method,
-      transactions
+      displayedTransactions
         .filter((t) => t.paymentMethod === method)
         .reduce((sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount), 0),
     ])
   );
 
+  const [yearStr, monthStr] = month.split("-");
+  const monthIndex = parseInt(monthStr, 10) - 1;
+  const monthNames = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+  const monthLabel = `${monthNames[monthIndex] || month} de ${yearStr}`;
+
   return (
     <div>
       <div className="print:hidden">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Caja</h1>
-        <p className="mt-1 text-sm text-fg-muted">Saldo actual: S/. {balance.toFixed(2)}</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
+                Caja — {showAll ? "Historial Completo" : monthLabel}
+              </h1>
+              {!showAll && (
+                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                  Mes activo · Inicia en S/. 0.00
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-fg-muted">
+              {showAll
+                ? `Saldo histórico acumulado: S/. ${balance.toFixed(2)} (${transactions.length} movimientos)`
+                : `Saldo neto de ${monthLabel}: S/. ${balance.toFixed(2)} (${monthTransactions.length} mov.)`}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/taller-control/caja?month=${adjacentMonth(month, -1)}`}
+              aria-label="Mes anterior"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              <ChevronLeft size={15} />
+            </Link>
+            <MonthSelector month={month} availableMonths={availableMonths} monthsSummary={monthsSummary} />
+            <Link
+              href={`/taller-control/caja?month=${adjacentMonth(month, 1)}`}
+              aria-label="Mes siguiente"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              <ChevronRight size={15} />
+            </Link>
+          </div>
+        </div>
 
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {PAYMENT_METHODS.map((method) => (
             <StatCard
               key={method}
               icon={METHOD_ICON[method]}
-              label={method}
+              label={`${method} (${showAll ? "Total" : monthLabel})`}
               value={`S/. ${totalsByMethod[method].toFixed(2)}`}
               tint={METHOD_TINT[method]}
             />
@@ -85,14 +134,21 @@ export default async function AdminCashboxPage({
         </div>
 
         <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">
-          <h2 className="font-display text-lg font-bold text-fg">Evolución del saldo</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-bold text-fg">
+              Evolución del saldo — {showAll ? "Historial Completo" : monthLabel}
+            </h2>
+            <span className="text-xs text-fg-muted font-medium">
+              {showAll ? "Historial total acumulado" : `Inicia desde S/. 0.00 en ${monthLabel}`}
+            </span>
+          </div>
           <div className="mt-4">
-            <CajaChart transactions={transactions} />
+            <CajaChart transactions={displayedTransactions} />
           </div>
         </div>
 
         <div className="mt-8">
-          <AddTransactionForm />
+          <AddTransactionForm month={month} />
         </div>
       </div>
 

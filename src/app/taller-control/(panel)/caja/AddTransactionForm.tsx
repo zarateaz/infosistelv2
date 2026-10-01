@@ -10,14 +10,40 @@ const initialState: TransactionFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
 const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
 
-export function AddTransactionForm() {
+export function AddTransactionForm({ month }: { month?: string }) {
   const [state, formAction, isPending] = useActionState(createTransaction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  // Kept outside the form reset below so registering several movements in a
-  // row (e.g. backfilling all of September) doesn't snap the date back to
-  // today after every submit.
-  const [date, setDate] = useState(() => todayInputValue());
+  const typeSelectRef = useRef<HTMLSelectElement>(null);
+  const methodSelectRef = useRef<HTMLSelectElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  // Default to today if viewing current month, or the 1st of the selected month
+  const [date, setDate] = useState(() => {
+    const today = todayInputValue();
+    if (month && !today.startsWith(month)) {
+      return `${month}-01`;
+    }
+    return today;
+  });
+
+  const handlePreFillOpening = () => {
+    if (formRef.current) {
+      const openingDate = month ? `${month}-01` : todayInputValue();
+      setDate(openingDate);
+      if (dateInputRef.current) dateInputRef.current.value = openingDate;
+      if (typeSelectRef.current) typeSelectRef.current.value = "INCOME";
+      if (methodSelectRef.current) methodSelectRef.current.value = "EFECTIVO";
+      const descInput = formRef.current.querySelector('input[name="description"]') as HTMLInputElement;
+      if (descInput) {
+        descInput.value = "SALDO INICIAL - APERTURA DE CAJA";
+      }
+      if (amountInputRef.current) {
+        amountInputRef.current.value = "";
+        amountInputRef.current.focus();
+      }
+    }
+  };
 
   useEffect(() => {
     if (!state.error && !isPending) {
@@ -28,7 +54,17 @@ export function AddTransactionForm() {
 
   return (
     <div className="admin-glass rounded-[var(--radius-lg)] p-6">
-      <h2 className="font-display text-lg font-bold text-fg">Registrar movimiento</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-bold text-fg">Registrar movimiento</h2>
+        <button
+          type="button"
+          onClick={handlePreFillOpening}
+          className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3.5 py-1 text-xs font-bold text-accent transition-colors hover:bg-accent/20 active:scale-95"
+          title="Autocompletar para registrar apertura de caja con saldo inicial"
+        >
+          <span>🌱 Apertura / Saldo Inicial</span>
+        </button>
+      </div>
 
       <form ref={formRef} action={formAction} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="sm:col-span-2 lg:col-span-1">
