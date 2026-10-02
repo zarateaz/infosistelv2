@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { parseDateInputToUtcNoon, formatQuotationDate } from "@/lib/quotationDates";
 
 export interface QuotationItemData {
   id?: string;
@@ -208,7 +209,7 @@ export async function createQuotation(
     }
 
     const code = await generateNextQuotationCode();
-    const issueDate = val.issueDate ? new Date(val.issueDate) : new Date();
+    const issueDate = parseDateInputToUtcNoon(val.issueDate);
 
     const created = await prisma.quotation.create({
       data: {
@@ -291,7 +292,7 @@ export async function updateQuotation(
       finalTotal = Number((taxableBase + igv).toFixed(2));
     }
 
-    const issueDate = val.issueDate ? new Date(val.issueDate) : undefined;
+    const issueDate = val.issueDate ? parseDateInputToUtcNoon(val.issueDate) : undefined;
 
     // Delete previous items and insert new ones
     const updated = await prisma.$transaction(async (tx) => {
@@ -423,7 +424,7 @@ export async function buildWhatsAppQuotationLink(
     ``,
     `Le hacemos llegar la cotización solicitada:`,
     `📄 *Cotización N°:* ${quotation.code}`,
-    `📅 *Fecha:* ${new Date(quotation.issueDate).toLocaleDateString("es-PE")}`,
+    `📅 *Fecha:* ${formatQuotationDate(quotation.issueDate)}`,
     `⏳ *Validez:* ${quotation.validDays} días calendario`,
     ``,
     `📦 *Detalle de Productos / Servicios:*`,

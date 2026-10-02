@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { QuotationRecord } from "./actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
+import { formatQuotationDate } from "@/lib/quotationDates";
 import { updateQuotationStatus, buildWhatsAppQuotationLink } from "./actions";
 
 interface CotizacionDetailModalProps {
@@ -115,7 +116,7 @@ export function CotizacionDetailModal({
               </span>
             </div>
             <p className="mt-0.5 text-xs text-fg-muted">
-              Emitida el {new Date(quotation.issueDate).toLocaleDateString("es-PE")} · Validez de {quotation.validDays} días
+              Emitida el {formatQuotationDate(quotation.issueDate)} · Validez de {quotation.validDays} días
             </p>
           </div>
 

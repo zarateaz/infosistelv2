@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { QuotationRecord } from "@/app/taller-control/(panel)/cotizaciones/actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
+import { formatQuotationDate, COMPANY_RUC } from "@/lib/quotationDates";
 
 export function PublicCotizacionClient({ quotation }: { quotation: QuotationRecord }) {
   const currSymbol = quotation.currency === "USD" ? "$" : "S/.";
@@ -121,7 +122,7 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
                 INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES
               </p>
               <p className="text-xs text-fg-muted mt-1">
-                RUC: 10444342247 · Huancayo, Junín · WhatsApp: (+51) 964 648 202
+                RUC: {COMPANY_RUC} · Huancayo, Junín · WhatsApp: (+51) 964 648 202
               </p>
               <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/20 px-3.5 py-1 text-xs font-semibold text-accent">
                 <span>🌐 ¡Visítanos en nuestra web:</span>
@@ -140,7 +141,7 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
                 {quotation.code}
               </h2>
               <p className="text-xs text-fg-muted mt-1">
-                Fecha: {new Date(quotation.issueDate).toLocaleDateString("es-PE")}
+                Fecha: {formatQuotationDate(quotation.issueDate)}
               </p>
               <p className="text-xs font-semibold text-accent">
                 Válido por {quotation.validDays} días calendario

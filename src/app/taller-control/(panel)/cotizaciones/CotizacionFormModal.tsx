@@ -28,6 +28,7 @@ import {
   type CatalogProductResult,
 } from "./actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
+import { getPeruTodayString, toDateInputValue } from "@/lib/quotationDates";
 
 interface CotizacionFormModalProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export function CotizacionFormModal({
   const [clientEmail, setClientEmail] = useState("");
   const [clientAddress, setClientAddress] = useState("");
   const [attentionTo, setAttentionTo] = useState("");
-  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [issueDate, setIssueDate] = useState(() => getPeruTodayString());
   const [validDays, setValidDays] = useState(15);
   const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
   const [includeIgv, setIncludeIgv] = useState(true);
@@ -91,7 +92,7 @@ export function CotizacionFormModal({
       setClientEmail(quotationToEdit.clientEmail || "");
       setClientAddress(quotationToEdit.clientAddress || "");
       setAttentionTo(quotationToEdit.attentionTo || "");
-      setIssueDate(new Date(quotationToEdit.issueDate).toISOString().slice(0, 10));
+      setIssueDate(toDateInputValue(quotationToEdit.issueDate));
       setValidDays(quotationToEdit.validDays || 15);
       setCurrency((quotationToEdit.currency as "PEN" | "USD") || "PEN");
       setIncludeIgv(quotationToEdit.includeIgv ?? true);
@@ -128,7 +129,7 @@ export function CotizacionFormModal({
       setClientEmail("");
       setClientAddress("");
       setAttentionTo("");
-      setIssueDate(new Date().toISOString().slice(0, 10));
+      setIssueDate(getPeruTodayString());
       setValidDays(15);
       setCurrency("PEN");
       setIncludeIgv(true);

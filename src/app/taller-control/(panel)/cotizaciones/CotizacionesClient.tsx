@@ -24,6 +24,7 @@ import type { QuotationRecord } from "./actions";
 import { CotizacionFormModal } from "./CotizacionFormModal";
 import { CotizacionDetailModal } from "./CotizacionDetailModal";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
+import { formatQuotationDate } from "@/lib/quotationDates";
 import { buildWhatsAppQuotationLink, deleteQuotation, updateQuotationStatus } from "./actions";
 
 interface CotizacionesClientProps {
@@ -300,7 +301,7 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
                       {q.code}
                     </button>
                     <p className="mt-0.5 text-[11px] text-fg-muted">
-                      {new Date(q.issueDate).toLocaleDateString("es-PE")} · {q.validDays}d validez
+                      {formatQuotationDate(q.issueDate)} · {q.validDays}d validez
                     </p>
                   </td>
 

@@ -1,6 +1,9 @@
 import jsPDF from "jspdf";
 import autoTable, { applyPlugin } from "jspdf-autotable";
 import { INFOSISTEL_LOGO_BASE64 } from "./infosistelLogoBase64";
+import { formatQuotationDate, addQuotationDays, COMPANY_RUC } from "./quotationDates";
+
+export { formatQuotationDate, addQuotationDays, COMPANY_RUC };
 
 try {
   applyPlugin(jsPDF);
@@ -84,20 +87,11 @@ function safeSavePdf(doc: jsPDF, filename: string) {
 }
 
 function formatDate(dateVal: Date | string): string {
-  if (typeof dateVal === "string") {
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateVal);
-    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-  }
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return "-";
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  return formatQuotationDate(dateVal);
 }
 
 function addDays(dateVal: Date | string, days: number): string {
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return "-";
-  d.setDate(d.getDate() + days);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  return addQuotationDays(dateVal, days);
 }
 
 // Convert number to Spanish words for Peruvian commercial documents
@@ -234,7 +228,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.8);
   doc.setTextColor(...mutedGray);
-  doc.text("RUC: 10444342247  |  Huancayo, Junín  |  WhatsApp: (+51) 964 648 202", 14, 24);
+  doc.text(`RUC: ${COMPANY_RUC}  |  Huancayo, Junín  |  WhatsApp: (+51) 964 648 202`, 14, 24);
   doc.text("Correo: ecaballero@hotmail.com", 14, 28);
 
   // Pleasant Promotional Pill for the Website
@@ -566,7 +560,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
     doc.setFontSize(7);
     doc.setTextColor(...mutedGray);
     doc.text(
-      "Infosistel · Informática, Sistemas y Telecomunicaciones · Visítanos en infosistel.pe",
+      "Infosistel · Informática · Sistemas · Telecomunicaciones · Visítanos en infosistel.pe",
       14,
       pageHeight - 6
     );
