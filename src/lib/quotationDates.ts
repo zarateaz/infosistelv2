@@ -6,6 +6,27 @@
 export const COMPANY_RUC = process.env.NEXT_PUBLIC_COMPANY_RUC || "20486119315";
 export const COMPANY_NAME = "INFOSISTEL E.I.R.L.";
 export const COMPANY_BUSINESS_NAME = "INFORMATICA, SISTEMAS Y TELECOMUNICACIONES E.I.R.L.";
+export const COMPANY_EMAIL = "ecaballero@infosistel.com.pe";
+export const COMPANY_PHONE = "+51 964 648 202";
+export const COMPANY_WEB = "infosistel.pe";
+
+export const COMPANY_BANK_ACCOUNTS = [
+  {
+    bank: "Banco de la Nación",
+    type: "Cuenta Corriente",
+    accountNumber: "00-381-139530",
+    cci: "018-381-000381139530-44",
+    holder: "INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL",
+  },
+  {
+    bank: "Banco de Crédito del Perú (BCP)",
+    type: "Cuenta Ahorros Soles",
+    accountNumber: "35533459619031",
+    cci: "00235513345961903166",
+    holder: "Edgar Wenceslao Caballero Pecho",
+  },
+];
+export const COMPANY_YAPE_PLIN = "964 648 202 (Edgar Caballero / Infosistel)";
 
 /**
  * Returns "YYYY-MM-DD" for current day in Peru (America/Lima).

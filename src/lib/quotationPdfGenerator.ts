@@ -1,9 +1,25 @@
 import jsPDF from "jspdf";
 import autoTable, { applyPlugin } from "jspdf-autotable";
 import { INFOSISTEL_LOGO_BASE64 } from "./infosistelLogoBase64";
-import { formatQuotationDate, addQuotationDays, COMPANY_RUC } from "./quotationDates";
+import {
+  formatQuotationDate,
+  addQuotationDays,
+  COMPANY_RUC,
+  COMPANY_BANK_ACCOUNTS,
+  COMPANY_YAPE_PLIN,
+  COMPANY_EMAIL,
+  COMPANY_WEB,
+} from "./quotationDates";
 
-export { formatQuotationDate, addQuotationDays, COMPANY_RUC };
+export {
+  formatQuotationDate,
+  addQuotationDays,
+  COMPANY_RUC,
+  COMPANY_BANK_ACCOUNTS,
+  COMPANY_YAPE_PLIN,
+  COMPANY_EMAIL,
+  COMPANY_WEB,
+};
 
 try {
   applyPlugin(jsPDF);
@@ -229,7 +245,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFontSize(6.8);
   doc.setTextColor(...mutedGray);
   doc.text(`RUC: ${COMPANY_RUC}  |  Huancayo, Junín  |  WhatsApp: (+51) 964 648 202`, 14, 24);
-  doc.text("Correo: ecaballero@hotmail.com", 14, 28);
+  doc.text(`Correo: ${COMPANY_EMAIL}`, 14, 28);
 
   // Pleasant Promotional Pill for the Website
   const webPillX = 14;
@@ -445,11 +461,12 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   // Commercial Terms & Bank Accounts (2 boxes on Left)
   const infoBoxesY = totalsBoxY + 26;
   const halfWidth = (pageWidth - 28 - 4) / 2;
+  const infoBoxesHeight = 33;
 
   // Box 1: Commercial Conditions
   doc.setFillColor(...lightBg);
   doc.setDrawColor(...cardBorder);
-  doc.roundedRect(14, infoBoxesY, halfWidth, 26, 2, 2, "FD");
+  doc.roundedRect(14, infoBoxesY, halfWidth, infoBoxesHeight, 2, 2, "FD");
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
@@ -459,35 +476,54 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(...brandDark);
-  doc.text(`• Validez de la oferta: ${data.validDays} días calendario`, 18, infoBoxesY + 9.5);
-  doc.text(`• Tiempo de entrega: ${data.deliveryTime || "Inmediata / según stock"}`, 18, infoBoxesY + 13.5);
-  doc.text(`• Forma de pago: ${data.paymentMethod || "Contado contra entrega / Transferencia"}`, 18, infoBoxesY + 17.5);
-  doc.text(`• Garantía: ${data.warranty || "12 meses de garantía oficial Infosistel"}`, 18, infoBoxesY + 21.5);
+  doc.text(`• Validez de oferta: ${data.validDays} días cal. (o hasta agotar stock)`, 18, infoBoxesY + 9.5);
+  doc.text(`• Plazo de entrega: ${data.deliveryTime || "Inmediata / según stock"}`, 18, infoBoxesY + 14);
+  doc.text(`• Forma de pago: ${data.paymentMethod || "Contado / Depósito / Transferencia"}`, 18, infoBoxesY + 18.5);
+  doc.text(`• Garantía: ${data.warranty || "12 meses de garantía oficial Infosistel"}`, 18, infoBoxesY + 23);
   if (data.notes) {
-    doc.text(`• Obs: ${data.notes.slice(0, 42)}`, 18, infoBoxesY + 25);
+    doc.text(`• Obs: ${data.notes.slice(0, 42)}`, 18, infoBoxesY + 27.5);
   }
 
   // Box 2: Bank Accounts
   doc.setFillColor(...lightBg);
   doc.setDrawColor(...cardBorder);
-  doc.roundedRect(14 + halfWidth + 4, infoBoxesY, halfWidth, 26, 2, 2, "FD");
+  doc.roundedRect(14 + halfWidth + 4, infoBoxesY, halfWidth, infoBoxesHeight, 2, 2, "FD");
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(...brandPrimary);
-  doc.text("CUENTAS BANCARIAS PARA DEPÓSITO", 18 + halfWidth + 4, infoBoxesY + 5);
+  doc.text("DEPÓSITOS A CUENTAS BANCARIAS", 18 + halfWidth + 4, infoBoxesY + 5);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
+  // Banco de la Nación
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.2);
   doc.setTextColor(...brandDark);
-  doc.text("• BCP Soles: 355-98765432-0-12 (CCI: 002-3550098765432012-34)", 18 + halfWidth + 4, infoBoxesY + 9.5);
-  doc.text("• BBVA Soles: 0011-0234-0200987654", 18 + halfWidth + 4, infoBoxesY + 13.5);
-  doc.text("• Interbank Soles: 200-3001234567", 18 + halfWidth + 4, infoBoxesY + 17.5);
-  doc.text("• Yape / Plin: 964 648 202 (Infosistel / Carlos Zárate)", 18 + halfWidth + 4, infoBoxesY + 21.5);
-  doc.text("• Titular: INFOSISTEL", 18 + halfWidth + 4, infoBoxesY + 25);
+  doc.text("• BANCO DE LA NACIÓN (Cta. Corriente):", 18 + halfWidth + 4, infoBoxesY + 9.2);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.8);
+  doc.text("  Cta: 00-381-139530  |  CCI: 018-381-000381139530-44", 18 + halfWidth + 4, infoBoxesY + 12.5);
+  doc.setTextColor(...mutedGray);
+  doc.text("  Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL", 18 + halfWidth + 4, infoBoxesY + 15.5);
+
+  // BCP
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.2);
+  doc.setTextColor(...brandDark);
+  doc.text("• BCP SOLES (Cuenta de Ahorros):", 18 + halfWidth + 4, infoBoxesY + 19.8);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.8);
+  doc.text("  Cta: 35533459619031  |  CCI: 00235513345961903166", 18 + halfWidth + 4, infoBoxesY + 23.1);
+  doc.setTextColor(...mutedGray);
+  doc.text("  Titular: Edgar Wenceslao Caballero Pecho", 18 + halfWidth + 4, infoBoxesY + 26.1);
+
+  // Yape / Plin
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.2);
+  doc.setTextColor(...brandPrimary);
+  doc.text("• Yape / Plin: 964 648 202 (Edgar Caballero / Infosistel)", 18 + halfWidth + 4, infoBoxesY + 30);
 
   // Box 3: Company Location & Contact ("Visítanos en Huancayo y en nuestra Web")
-  const visitBoxY = infoBoxesY + 28.5;
+  const visitBoxY = infoBoxesY + infoBoxesHeight + 2.5;
   const visitBoxWidth = pageWidth - 28;
   const visitBoxHeight = 26;
 
@@ -529,7 +565,7 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.text("Correo electrónico:", visitCol2X, visitBoxY + 12.8);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.text("ecaballero@hotmail.com", visitCol2X + 28, visitBoxY + 12.8);
+  doc.text(COMPANY_EMAIL, visitCol2X + 28, visitBoxY + 12.8);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.8);

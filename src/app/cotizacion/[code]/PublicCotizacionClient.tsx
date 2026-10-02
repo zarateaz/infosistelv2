@@ -17,7 +17,13 @@ import {
 } from "lucide-react";
 import type { QuotationRecord } from "@/app/taller-control/(panel)/cotizaciones/actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
-import { formatQuotationDate, COMPANY_RUC } from "@/lib/quotationDates";
+import {
+  formatQuotationDate,
+  COMPANY_RUC,
+  COMPANY_BANK_ACCOUNTS,
+  COMPANY_YAPE_PLIN,
+  COMPANY_EMAIL,
+} from "@/lib/quotationDates";
 
 export function PublicCotizacionClient({ quotation }: { quotation: QuotationRecord }) {
   const currSymbol = quotation.currency === "USD" ? "$" : "S/.";
@@ -278,15 +284,28 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
               )}
             </div>
 
-            <div className="rounded-2xl border border-border bg-bg-alt/40 p-4 space-y-2">
+            <div className="rounded-2xl border border-border bg-bg-alt/40 p-4 space-y-2.5">
               <div className="flex items-center gap-1.5 text-accent font-bold uppercase tracking-wider text-[11px]">
                 <Building2 size={14} />
-                <span>Cuentas para Pago</span>
+                <span>Depósitos a Cuentas Bancarias</span>
               </div>
-              <p className="text-fg-muted">• BCP Soles: 355-98765432-0-12 (CCI: 002-3550098765432012-34)</p>
-              <p className="text-fg-muted">• BBVA Soles: 0011-0234-0200987654</p>
-              <p className="text-fg-muted">• Interbank Soles: 200-3001234567</p>
-              <p className="text-fg-muted">• Yape / Plin: 964 648 202 (Titular: INFOSISTEL)</p>
+              <div className="space-y-2 text-xs">
+                <div className="rounded-lg bg-bg/70 p-2.5 border border-border/60">
+                  <p className="font-bold text-fg">Banco de la Nación (Cta. Corriente)</p>
+                  <p className="text-fg-muted font-mono text-[11px]">N° Cta: <strong className="text-fg font-semibold">00-381-139530</strong></p>
+                  <p className="text-fg-muted font-mono text-[11px]">CCI: 018-381-000381139530-44</p>
+                  <p className="text-[10px] text-fg-muted/80">Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL</p>
+                </div>
+                <div className="rounded-lg bg-bg/70 p-2.5 border border-border/60">
+                  <p className="font-bold text-fg">BCP Soles (Cuenta de Ahorros)</p>
+                  <p className="text-fg-muted font-mono text-[11px]">N° Cta: <strong className="text-fg font-semibold">35533459619031</strong></p>
+                  <p className="text-fg-muted font-mono text-[11px]">CCI: 00235513345961903166</p>
+                  <p className="text-[10px] text-fg-muted/80">Titular: Edgar Wenceslao Caballero Pecho</p>
+                </div>
+                <p className="text-xs font-semibold text-accent pt-0.5">
+                  • Yape / Plin: 964 648 202 (Edgar Caballero / Infosistel)
+                </p>
+              </div>
             </div>
           </div>
 
@@ -315,8 +334,8 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
                 <div className="flex items-center gap-1.5 text-fg">
                   <Mail size={13} className="text-accent" />
                   <span className="font-semibold">Correo:</span>
-                  <a href="mailto:ecaballero@hotmail.com" className="text-accent hover:underline">
-                    ecaballero@hotmail.com
+                  <a href={`mailto:${COMPANY_EMAIL}`} className="text-accent hover:underline">
+                    {COMPANY_EMAIL}
                   </a>
                 </div>
                 <div className="flex items-center gap-1.5 text-fg">

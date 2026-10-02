@@ -316,13 +316,25 @@ export function CotizacionDetailModal({
               </p>
             </div>
 
-            <div className="rounded-2xl border border-border bg-bg-alt/30 p-3.5 space-y-1.5">
+            <div className="rounded-2xl border border-border bg-bg-alt/30 p-3.5 space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
-                Cuentas Bancarias
+                Cuentas Bancarias para Depósito
               </span>
-              <p className="text-fg-muted">• BCP Soles: 355-98765432-0-12</p>
-              <p className="text-fg-muted">• BBVA Soles: 0011-0234-0200987654</p>
-              <p className="text-fg-muted">• Yape / Plin: 964 648 202</p>
+              <div className="space-y-1.5 text-xs">
+                <div className="rounded-lg bg-bg/70 p-2 border border-border/50 text-[11px]">
+                  <p className="font-bold text-fg">Banco de la Nación (Cta. Corriente):</p>
+                  <p className="text-fg-muted font-mono">00-381-139530 · CCI: 018-381-000381139530-44</p>
+                  <p className="text-[10px] text-fg-muted/80">Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL</p>
+                </div>
+                <div className="rounded-lg bg-bg/70 p-2 border border-border/50 text-[11px]">
+                  <p className="font-bold text-fg">BCP Soles (Ahorros):</p>
+                  <p className="text-fg-muted font-mono">35533459619031 · CCI: 00235513345961903166</p>
+                  <p className="text-[10px] text-fg-muted/80">Titular: Edgar Wenceslao Caballero Pecho</p>
+                </div>
+                <p className="text-xs font-semibold text-accent">
+                  • Yape / Plin: 964 648 202 (Edgar Caballero / Infosistel)
+                </p>
+              </div>
             </div>
           </div>
 
