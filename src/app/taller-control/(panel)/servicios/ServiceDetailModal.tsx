@@ -60,9 +60,25 @@ export function ServiceDetailModal({ service, onClose, onEdit }: { service: Admi
           ) : (
             <DetailItem label="Forma de pago" value={PAYMENT_METHOD_LABELS[service.paymentMethod]} />
           )}
+          {service.diagnosis && (
+            <div className="sm:col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Diagnóstico (Falla encontrada)</p>
+              <div className="mt-1 rounded-lg border-l-4 border-orange-600 bg-surface-base px-3 py-2">
+                <p className="whitespace-pre-wrap text-sm text-fg">{service.diagnosis}</p>
+              </div>
+            </div>
+          )}
+          {service.solution && (
+            <div className="sm:col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Solución</p>
+              <div className="mt-1 rounded-lg border-l-4 border-emerald-600 bg-surface-base px-3 py-2">
+                <p className="whitespace-pre-wrap text-sm text-fg">{service.solution}</p>
+              </div>
+            </div>
+          )}
           {service.description && (
             <div className="sm:col-span-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Descripción del trabajo</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Descripción adicional</p>
               <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{service.description}</p>
             </div>
           )}

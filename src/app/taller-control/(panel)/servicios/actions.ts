@@ -234,6 +234,10 @@ export interface AdminService {
   clientPhone: string;
   title: string;
   description: string;
+  diagnosis: string | null;
+  solution: string | null;
+  equipmentBrand: string | null;
+  equipmentModel: string | null;
   equipmentTypeId: string;
   equipmentTypeName: string;
   equipmentTypeIcon: string;
@@ -259,6 +263,10 @@ function toAdminService(s: Prisma.ServiceGetPayload<{ include: typeof serviceInc
     clientPhone: s.clientPhone,
     title: s.title,
     description: s.description,
+    diagnosis: s.diagnosis,
+    solution: s.solution,
+    equipmentBrand: s.equipmentBrand,
+    equipmentModel: s.equipmentModel,
     equipmentTypeId: s.equipmentTypeId,
     equipmentTypeName: s.equipmentType.name,
     equipmentTypeIcon: s.equipmentType.icon,
@@ -447,6 +455,8 @@ const baseServiceSchema = z.object({
     .refine((v) => /^\d{9}$/.test(v), "El teléfono debe tener exactamente 9 dígitos numéricos."),
   title: z.string().trim().min(1, "El trabajo realizado es obligatorio.").max(150),
   description: z.string().trim().max(2000).optional(),
+  diagnosis: z.string().trim().max(2000).optional(),
+  solution: z.string().trim().max(2000).optional(),
   // Either an existing type's id, or a brand-new name typed on the spot
   // (see resolveEquipmentTypeId) — the form sends exactly one of the two.
   equipmentTypeId: z.string().trim().optional(),
@@ -509,6 +519,8 @@ function readServiceForm(formData: FormData) {
     clientPhone: formData.get("clientPhone"),
     title: formData.get("title"),
     description: formData.get("description") || undefined,
+    diagnosis: formData.get("diagnosis") || undefined,
+    solution: formData.get("solution") || undefined,
     equipmentTypeId: formData.get("equipmentTypeId") || undefined,
     equipmentTypeCustomName: formData.get("equipmentTypeCustomName") || undefined,
     equipmentBrand: formData.get("equipmentBrand") || undefined,
@@ -572,6 +584,8 @@ export async function createService(_prevState: ServiceFormState, formData: Form
       clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
+      diagnosis: parsed.data.diagnosis ?? "",
+      solution: parsed.data.solution ?? "",
       equipmentBrand: parsed.data.equipmentBrand,
       equipmentModel: parsed.data.equipmentModel,
       equipmentTypeId: equipmentTypeResult.id,
@@ -623,6 +637,8 @@ export async function updateService(
       clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
+      diagnosis: parsed.data.diagnosis ?? "",
+      solution: parsed.data.solution ?? "",
       equipmentBrand: parsed.data.equipmentBrand,
       equipmentModel: parsed.data.equipmentModel,
       equipmentTypeId: equipmentTypeResult.id,

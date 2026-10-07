@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import Image from "next/image";
-import { ShieldCheck, X } from "lucide-react";
+import { ShieldCheck, X, ClipboardList } from "lucide-react";
 import {
   createService,
   updateService,
@@ -50,6 +50,18 @@ export function ServiceForm({
   // resolveEquipmentTypeId in actions.ts), so this select is intentionally
   // `name`-less while the text input is shown.
   const [customEquipmentType, setCustomEquipmentType] = useState(false);
+  const [diagnosisText, setDiagnosisText] = useState(service?.diagnosis ?? "");
+  const [solutionText, setSolutionText] = useState(service?.solution ?? "");
+
+  const diagnosisPills = ["No enciende", "Sobrecalentamiento", "Lentitud del sistema", "Virus / malware", "Disco duro dañado", "Pantalla rota", "Sistema operativo dañado"];
+  const solutionPills = ["Limpieza interna", "Cambio de pasta térmica", "Formateo e instalación", "Eliminación de virus", "Cambio de disco a SSD", "Cambio de pantalla", "Respaldo de información"];
+
+  const handleDiagnosisPill = (text: string) => {
+    setDiagnosisText((prev: string) => (prev ? `${prev}. ${text}` : text));
+  };
+  const handleSolutionPill = (text: string) => {
+    setSolutionText((prev: string) => (prev ? `${prev}. ${text}` : text));
+  };
 
   // `state !== initialState` is the part that was missing: useActionState's
   // `state` IS `initialState` (same object reference) on first render,
@@ -163,7 +175,75 @@ export function ServiceForm({
         </div>
 
         <div className="sm:col-span-2">
-          <label className={labelClass}>Descripción del trabajo (opcional)</label>
+          <div className="mt-4 rounded-xl border border-border-strong bg-bg-surface-elevated p-5">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-base text-fg">
+                <ClipboardList className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-fg">Diagnóstico del equipo</h3>
+                <p className="text-xs text-fg-muted">Qué falla tiene el equipo y qué solución le estamos dando</p>
+              </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-[10px] font-bold text-white">1</span>
+                  <span className="text-xs font-bold text-fg">Diagnóstico (falla encontrada)</span>
+                </div>
+                <AutoGrowInput
+                  name="diagnosis"
+                  value={diagnosisText}
+                  onChange={(e) => setDiagnosisText(e.target.value)}
+                  placeholder="Ej. El equipo se apaga solo por sobrecalentamiento. Ventilador obstruido y pasta térmica seca."
+                  className={`${inputClass} border-l-4 border-l-orange-600 focus:border-l-orange-600 focus:ring-orange-600/20`}
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {diagnosisPills.map((pill) => (
+                    <button
+                      key={pill}
+                      type="button"
+                      onClick={() => handleDiagnosisPill(pill)}
+                      className="rounded-full border border-border-strong px-3 py-1 text-[11px] font-medium text-fg-muted hover:border-fg hover:text-fg"
+                    >
+                      + {pill}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">2</span>
+                  <span className="text-xs font-bold text-fg">Solución que le estamos dando</span>
+                </div>
+                <AutoGrowInput
+                  name="solution"
+                  value={solutionText}
+                  onChange={(e) => setSolutionText(e.target.value)}
+                  placeholder="Ej. Limpieza interna, cambio de pasta térmica y reemplazo del ventilador."
+                  className={`${inputClass} border-l-4 border-l-emerald-600 focus:border-l-emerald-600 focus:ring-emerald-600/20`}
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {solutionPills.map((pill) => (
+                    <button
+                      key={pill}
+                      type="button"
+                      onClick={() => handleSolutionPill(pill)}
+                      className="rounded-full border border-border-strong px-3 py-1 text-[11px] font-medium text-fg-muted hover:border-fg hover:text-fg"
+                    >
+                      + {pill}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className={labelClass}>Descripción adicional (opcional)</label>
           <AutoGrowInput
             name="description"
             defaultValue={service?.description}
