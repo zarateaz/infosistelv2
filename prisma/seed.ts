@@ -37,6 +37,8 @@ async function main() {
   for (const p of PRODUCTS) {
     const existing = await prisma.product.findFirst({ where: { name: p.name } });
     if (existing) continue;
+    const maxItem = await prisma.product.findFirst({ orderBy: { itemNumber: 'desc' }, select: { itemNumber: true } });
+    const itemNumber = (maxItem?.itemNumber ?? 0) + 1;
     await prisma.product.create({
       data: {
         name: p.name,
@@ -45,6 +47,7 @@ async function main() {
         price: p.price,
         costPrice: p.costPrice,
         stock: p.stock,
+        itemNumber,
         image: null,
         isFeatured: "isFeatured" in p ? p.isFeatured : false,
         onSale: "onSale" in p ? p.onSale : false,
