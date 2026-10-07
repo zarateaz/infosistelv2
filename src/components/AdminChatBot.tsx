@@ -77,7 +77,7 @@ export function AdminChatBot() {
                   {m.parts.map((part, i) => {
                     if (part.type === "text") return <span key={i}>{part.text}</span>;
                     if (part.type === "tool-buscarProductoAdmin" || part.type === "tool-registrarVentaAdmin") {
-                      if (part.state === "result") {
+                      if (part.state === "output-available") {
                         if (part.type === "tool-registrarVentaAdmin") {
                           return <div key={i} className="mt-2 text-xs font-bold text-green-700">🛒 Stock descontado con éxito</div>;
                         }
