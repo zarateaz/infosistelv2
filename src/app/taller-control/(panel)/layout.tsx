@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 import { logoutAction } from "../login/actions";
 import { AdminSidebar } from "./AdminSidebar";
+import { AdminChatBot } from "@/components/AdminChatBot";
 
 const NAV_LINKS = [
   { href: "/taller-control", label: "Dashboard" },
@@ -32,7 +33,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
   const navLinks = session?.role === "superadmin" ? [...NAV_LINKS, ...SUPERADMIN_NAV_LINKS] : NAV_LINKS;
 
   return (
-    <div className="bg-aurora min-h-screen">
+    <div className="bg-aurora min-h-screen relative">
       <AdminSidebar
         navLinks={navLinks}
         username={session?.username as string | undefined}
@@ -41,6 +42,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
       <main className="px-4 py-8 md:ml-64 md:px-10 md:py-10">
         <div className="mx-auto max-w-6xl">{children}</div>
       </main>
+      <AdminChatBot />
     </div>
   );
 }
