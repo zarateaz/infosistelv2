@@ -60,7 +60,7 @@ export function ProductModal({
           </div>
         ) : product.stock <= 3 ? (
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-2 text-xs font-medium text-amber-600">
-            <span>⚡ Stock limitado: solo quedan {product.stock} unidades.</span>
+            <span>⚡ Stock limitado disponible.</span>
           </div>
         ) : null}
 

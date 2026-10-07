@@ -43,7 +43,7 @@ export function ProductCard({
           </div>
         ) : product.stock <= 3 ? (
           <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm">
-            ⚡ Solo {product.stock} disp.
+            ⚡ Stock Limitado
           </div>
         ) : product.isFeatured ? (
           <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-black text-accent-fg">
