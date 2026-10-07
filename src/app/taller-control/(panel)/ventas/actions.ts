@@ -56,6 +56,7 @@ export interface AdminSale {
   price: number;
   profit: number;
   date: Date;
+  origin: string;
   invoice: { id: string; estado: string; pdfUrl: string | null } | null;
 }
 
@@ -72,6 +73,7 @@ export async function getRecentSales(limit = 30): Promise<AdminSale[]> {
       price: true,
       profit: true,
       date: true,
+      origin: true,
       invoices: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, estado: true, pdfUrl: true } },
     },
   });
@@ -87,6 +89,7 @@ export interface DeletedSale {
   price: number;
   profit: number;
   date: Date;
+  origin: string;
   deletedAt: Date;
 }
 
@@ -94,7 +97,7 @@ export async function getDeletedSales(): Promise<DeletedSale[]> {
   const sales = await prisma.sale.findMany({
     where: { deletedAt: { not: null } },
     orderBy: { deletedAt: "desc" },
-    select: { id: true, pName: true, category: true, quantity: true, price: true, profit: true, date: true, deletedAt: true },
+    select: { id: true, pName: true, category: true, quantity: true, price: true, profit: true, date: true, origin: true, deletedAt: true },
   });
   // The `where` above guarantees deletedAt is non-null; Prisma's generated
   // type still widens it to Date | null for the column itself.

@@ -173,6 +173,7 @@ export async function createOrder(input: unknown) {
           price: s.price,
           costPrice: s.costPrice,
           profit: s.profit,
+          origin: "WEB",
           date: new Date(),
         },
       });

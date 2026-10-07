@@ -184,6 +184,7 @@ model Sale {
   price     Float
   costPrice Float     @default(0)
   profit    Float // (price - costPrice) * quantity, computed at creation time
+  origin    String    @default("FISICA") // "WEB" | "FISICA"
   date      DateTime  @default(now())
   createdAt DateTime  @default(now())
   // Soft delete — "Eliminar" in Ventas moves a sale to the Papelera instead

@@ -54,6 +54,7 @@ export default async function AdminSalesPage() {
               <th className="px-5 py-3">Cantidad</th>
               <th className="px-5 py-3">Total</th>
               <th className="px-5 py-3">Ganancia</th>
+              <th className="px-5 py-3">Origen</th>
               <th className="px-5 py-3">Fecha</th>
               <th className="px-5 py-3">Comprobante</th>
               <th className="px-5 py-3" />
@@ -69,6 +70,11 @@ export default async function AdminSalesPage() {
                 <td className="px-5 py-3.5 text-fg">x{s.quantity}</td>
                 <td className="px-5 py-3.5 text-fg">S/. {s.price.toFixed(2)}</td>
                 <td className="px-5 py-3.5 text-accent">S/. {s.profit.toFixed(2)}</td>
+                <td className="px-5 py-3.5">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${s.origin === 'WEB' ? 'bg-blue-500/10 text-blue-500' : 'bg-green-500/10 text-green-500'}`}>
+                    {s.origin === 'WEB' ? 'Página Web' : 'Tienda Física'}
+                  </span>
+                </td>
                 <td className="px-5 py-3.5 text-fg-muted">
                   {new Date(s.date).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })}
                 </td>

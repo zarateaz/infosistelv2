@@ -48,6 +48,7 @@ export async function sellOneUnit(input: unknown): Promise<{
         price: totalPrice,
         costPrice: totalCost,
         profit: totalProfit,
+        origin: "FISICA",
       },
     }),
     prisma.product.update({ where: { id: product.id }, data: { stock: { decrement: quantity } } }),
