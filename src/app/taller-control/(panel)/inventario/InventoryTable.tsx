@@ -81,7 +81,7 @@ function ProductGridCard({ p }: { p: AdminProduct }) {
         {badge}
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <p className="line-clamp-2 text-sm font-semibold text-fg">{p.name}</p>
+        <p className="line-clamp-2 text-sm font-semibold text-fg">#{p.itemNumber} - {p.name}</p>
         <p className="truncate text-[11px] font-bold uppercase tracking-wide text-fg-muted">{p.category}</p>
         <div className="mt-auto flex items-center justify-between pt-2">
           <span className="font-bold text-fg">S/. {(p.onSale && p.salePrice ? p.salePrice : p.price).toFixed(2)}</span>
@@ -241,6 +241,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
+              <th className="px-5 py-3">Nº</th>
               <th className="px-5 py-3">Producto</th>
               <th className="px-5 py-3">Categoría</th>
               <th className="px-5 py-3">Precio</th>
@@ -252,7 +253,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
             {groups.map((group) => (
               <Fragment key={group.category}>
                 <tr className="bg-accent/10">
-                  <td colSpan={5} className="px-5 py-2">
+                  <td colSpan={6} className="px-5 py-2">
                     <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-accent">
                       <CategoryIcon category={group.category} size={14} strokeWidth={2} />
                       {group.category}
@@ -262,6 +263,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
                 </tr>
                 {group.items.map((p) => (
                   <tr key={p.id} className="border-b border-border last:border-0">
+                    <td className="px-5 py-3.5 text-fg-muted font-bold">#{p.itemNumber}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-bg">
@@ -303,7 +305,7 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-14 text-center text-fg-muted">
+                <td colSpan={6} className="px-5 py-14 text-center text-fg-muted">
                   <div className="flex flex-col items-center gap-2">
                     <PackageX size={28} className="text-fg-muted/50" />
                     <p className="font-semibold">Sin resultados para “{query}”.</p>
