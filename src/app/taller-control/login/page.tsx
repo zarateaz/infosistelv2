@@ -61,6 +61,7 @@ export default function AdminLoginPage() {
                 width={1366}
                 height={166}
                 className="h-auto w-full object-contain drop-shadow-[0_0_40px_rgba(46,163,255,0.7)]"
+                unoptimized
                 priority
               />
             </div>
