@@ -144,6 +144,7 @@ export function AdminSidebar({
           width={1366}
           height={166}
           priority
+          unoptimized
           className="h-6 w-auto object-contain"
         />
         <button
@@ -165,6 +166,7 @@ export function AdminSidebar({
                 alt="Infosistel"
                 width={1366}
                 height={166}
+                unoptimized
                 className="h-6 w-auto object-contain"
               />
               <button
@@ -190,6 +192,7 @@ export function AdminSidebar({
             width={1366}
             height={166}
             priority
+            unoptimized
             className="h-7 w-auto object-contain"
           />
         </div>
