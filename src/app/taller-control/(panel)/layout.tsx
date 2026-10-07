@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: "/taller-control/servicios", label: "Servicios técnicos" },
   { href: "/taller-control/pedidos", label: "Pedidos" },
   { href: "/taller-control/ventas", label: "Ventas" },
+  { href: "/taller-control/descuentos", label: "Descuentos de Stock" },
   { href: "/taller-control/reporte-mensual", label: "Reporte Mensual" },
   { href: "/taller-control/cotizaciones", label: "Cotizaciones" },
   { href: "/taller-control/papelera", label: "Papelera" },
