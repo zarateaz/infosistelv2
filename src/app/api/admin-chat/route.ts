@@ -1,12 +1,20 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import { type UIMessage } from "ai";
+import { cookies } from "next/headers";
 import { buscarProductoAdmin, registrarVentaAdmin } from "@/lib/adminChatTools";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
+import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 
 export const maxDuration = 45;
 
 export async function POST(req: Request) {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const session = token ? await verifySessionToken(token) : null;
+  if (!session) {
+    return new Response(JSON.stringify({ error: "No autorizado." }), { status: 401 });
+  }
+
   if (!process.env.DEEPSEEK_API_KEY) {
     return new Response(
       JSON.stringify({ error: "El asistente no está configurado (falta DEEPSEEK_API_KEY)." }),
