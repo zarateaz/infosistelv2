@@ -13,15 +13,19 @@ export const buscarProductoAdmin = tool({
       .describe('Nombre del producto o código de barras (ej. "teclado", "123456789").'),
   }),
   execute: async ({ consulta }) => {
+    const num = parseInt(consulta, 10);
+    const isNum = !isNaN(num);
+
     const products = await prisma.product.findMany({
       where: {
         OR: [
           { name: { contains: consulta } },
           { barcode: { equals: consulta } },
           { category: { contains: consulta } },
+          ...(isNum ? [{ itemNumber: num }] : []),
         ],
       },
-      select: { id: true, name: true, stock: true, barcode: true, price: true },
+      select: { id: true, itemNumber: true, name: true, stock: true, barcode: true, price: true },
       take: 5,
     });
     return { encontrados: products.length, productos: products };

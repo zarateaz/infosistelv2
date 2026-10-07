@@ -52,7 +52,7 @@ function ProductGridCard({ p }: { p: AdminProduct }) {
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <p className="line-clamp-2 text-sm font-semibold text-fg">{p.name}</p>
+        <p className="line-clamp-2 text-sm font-semibold text-fg">#{p.itemNumber} - {p.name}</p>
         <p className="truncate text-[11px] font-bold uppercase tracking-wide text-fg-muted">{p.category}</p>
         <div className="mt-auto flex items-center justify-between pt-2">
           <div>
@@ -99,6 +99,7 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead>
               <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
+                <th className="px-5 py-3">Nº</th>
                 <th className="px-5 py-3">Producto</th>
                 <th className="px-5 py-3">Categoría</th>
                 <th className="px-5 py-3">Precio</th>
@@ -110,7 +111,7 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
               {groups.map((group) => (
                 <Fragment key={group.category}>
                   <tr className="bg-accent/10">
-                    <td colSpan={5} className="px-5 py-2">
+                    <td colSpan={6} className="px-5 py-2">
                       <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-accent">
                         <CategoryIcon category={group.category} size={14} strokeWidth={2} />
                         {group.category}
@@ -120,6 +121,7 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
                   </tr>
                   {group.items.map((p) => (
                     <tr key={p.id} className="border-b border-border last:border-0">
+                      <td className="px-5 py-3.5 text-fg-muted font-bold">#{p.itemNumber}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-bg">
@@ -160,7 +162,7 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
               ))}
               {products.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-fg-muted">
+                  <td colSpan={6} className="px-5 py-10 text-center text-fg-muted">
                     Todavía no hay productos. Crea el primero.
                   </td>
                 </tr>

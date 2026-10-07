@@ -8,6 +8,7 @@ import { deleteProductImageIfManaged } from "./upload-actions";
 
 export interface AdminProduct {
   id: string;
+  itemNumber: number;
   name: string;
   category: string;
   description: string;
@@ -145,7 +146,9 @@ async function insertProduct(data: z.infer<typeof productSchema>): Promise<strin
   const category = await upsertCategory(data.category);
   const { images, ...rest } = data;
   try {
-    await prisma.product.create({ data: { ...rest, category, images: serializeExtraImages(images) } });
+    const maxItem = await prisma.product.findFirst({ orderBy: { itemNumber: 'desc' }, select: { itemNumber: true } });
+    const itemNumber = (maxItem?.itemNumber ?? 0) + 1;
+    await prisma.product.create({ data: { ...rest, category, images: serializeExtraImages(images), itemNumber } });
     return null;
   } catch (err) {
     if (isUniqueConstraintError(err)) {
