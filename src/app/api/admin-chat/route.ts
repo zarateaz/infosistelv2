@@ -1,5 +1,6 @@
 import { deepseek } from "@ai-sdk/deepseek";
-import { streamText } from "ai";
+import { streamText, convertToModelMessages, stepCountIs } from "ai";
+import { type UIMessage } from "ai";
 import { buscarProductoAdmin, registrarVentaAdmin } from "@/lib/adminChatTools";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 
@@ -22,24 +23,29 @@ export async function POST(req: Request) {
     );
   }
 
-  const { messages } = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || !Array.isArray(body.messages)) {
+    return new Response(JSON.stringify({ error: "Petición inválida" }), { status: 400 });
+  }
+
+  const messages: UIMessage[] = body.messages.slice(-20);
 
   const result = streamText({
-    model: deepseek("deepseek-chat"),
+    model: deepseek("deepseek-v4-flash"),
     system: `Eres el Asistente Inteligente del Panel de Control de Infosistel.
 Tu tarea principal es ayudar a los administradores a gestionar el inventario y registrar ventas rápidamente.
 Puedes buscar productos por nombre o código de barras usando "buscarProductoAdmin".
 Puedes descontar stock usando "registrarVentaAdmin".
 Si el usuario indica que vendió un producto o te da un código de barras para descontar, usa las herramientas. Si no te especifica el origen de la venta, asume "FISICA".
 Responde de forma muy breve y directa. No des explicaciones largas. Solo confirma lo que hiciste.`,
-    messages,
+    messages: await convertToModelMessages(messages),
     tools: { buscarProductoAdmin, registrarVentaAdmin },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
     maxOutputTokens: 500,
   });
 
-  return result.toDataStreamResponse({
-    getErrorMessage: (error) => {
+  return result.toUIMessageStreamResponse({
+    onError: (error) => {
       console.error("[admin-chat] Error llamando a DeepSeek:", error);
       const message = error instanceof Error ? error.message : String(error);
       if (/401|invalid.*api.?key|authentication/i.test(message)) return "Clave inválida.";

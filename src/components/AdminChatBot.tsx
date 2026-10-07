@@ -2,28 +2,42 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { MessageCircle, X, ArrowUp, Camera } from "lucide-react";
 import { CameraScanner } from "@/app/taller-control/(panel)/productos/CameraScanner";
 
 export function AdminChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { messages, input, setInput, handleInputChange, handleSubmit, status, append } = useChat({
+  const transport = new DefaultChatTransport({
     api: "/api/admin-chat",
-    maxSteps: 5,
   });
+
+  const { messages, sendMessage, status, error } = useChat({
+    transport,
+  });
+
+  const isBusy = status === "submitted" || status === "streaming";
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, isBusy, error]);
 
   const onBarcodeDetected = (code: string) => {
     setShowScanner(false);
-    append({ role: "user", content: `Registra la venta del producto con código de barras: ${code}` });
+    sendMessage({ text: `Registra la venta del producto con código de barras: ${code}` });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isBusy) return;
+    sendMessage({ text: input });
+    setInput("");
   };
 
   return (
@@ -57,31 +71,34 @@ export function AdminChatBot() {
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                    m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"
+                    m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 whitespace-pre-wrap"
                   }`}
                 >
-                  {m.content}
-                  {m.toolInvocations?.map((toolInvocation: any) => {
-                    if (toolInvocation.state === "result") {
-                      if (toolInvocation.toolName === "buscarProductoAdmin") {
-                        return <div key={toolInvocation.toolCallId} className="mt-2 text-xs opacity-80">✅ Búsqueda completada</div>;
+                  {m.parts.map((part, i) => {
+                    if (part.type === "text") return <span key={i}>{part.text}</span>;
+                    if (part.type === "tool-buscarProductoAdmin" || part.type === "tool-registrarVentaAdmin") {
+                      if (part.state === "result") {
+                        if (part.type === "tool-registrarVentaAdmin") {
+                          return <div key={i} className="mt-2 text-xs font-bold text-green-700">🛒 Stock descontado con éxito</div>;
+                        }
+                        return <div key={i} className="mt-2 text-xs opacity-80">✅ Búsqueda completada</div>;
+                      } else {
+                        return <div key={i} className="mt-2 text-xs opacity-70 animate-pulse">Trabajando...</div>;
                       }
-                      if (toolInvocation.toolName === "registrarVentaAdmin") {
-                        return <div key={toolInvocation.toolCallId} className="mt-2 text-xs font-bold text-green-700">🛒 Stock descontado con éxito</div>;
-                      }
-                    } else {
-                      return <div key={toolInvocation.toolCallId} className="mt-2 text-xs opacity-70 animate-pulse">Trabajando...</div>;
                     }
                     return null;
                   })}
                 </div>
               </div>
             ))}
-            {status === "submitted" || status === "streaming" ? (
+            {isBusy ? (
               <div className="flex items-center gap-1.5 text-gray-400 p-2">
                 <span className="animate-pulse">Escribiendo...</span>
               </div>
             ) : null}
+            {error && (
+              <div className="text-red-500 text-xs p-2">Error: {error.message || "Algo salió mal"}</div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="flex border-t border-gray-200 bg-white p-3 gap-2">
@@ -95,13 +112,14 @@ export function AdminChatBot() {
             </button>
             <input
               value={input}
-              onChange={handleInputChange}
+              onChange={(e) => setInput(e.target.value)}
               placeholder="Ej: Descuenta 1 teclado..."
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 text-black"
+              disabled={isBusy}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 text-black disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || isBusy}
               className="rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-50"
             >
               <ArrowUp size={18} />
