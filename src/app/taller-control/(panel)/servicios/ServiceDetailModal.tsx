@@ -37,6 +37,8 @@ export function ServiceDetailModal({ service, onClose, onEdit }: { service: Admi
           <DetailItem label="Teléfono" value={service.clientPhone} />
           <DetailItem label="Técnico responsable" value={service.technicianName} />
           <DetailItem label="Tipo de equipo" value={`${service.equipmentTypeIcon} ${service.equipmentTypeName}`} />
+          {service.equipmentBrand && <DetailItem label="Marca" value={service.equipmentBrand} />}
+          {service.equipmentModel && <DetailItem label="Modelo" value={service.equipmentModel} />}
           <DetailItem label="Fecha de recepción" value={formatFecha(service.serviceDate)} />
           <DetailItem label="Fecha de entrega" value={service.deliveryDate ? formatFecha(service.deliveryDate) : "Aún no entregado"} />
           <DetailItem label="Monto total" value={formatSoles(service.amount)} />

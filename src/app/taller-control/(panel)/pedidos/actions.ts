@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { decryptPII, blindIndex } from "@/lib/crypto";
 import { digitsOnly } from "@/lib/sanitize";
 import { retryInvoiceEmission } from "@/lib/invoicing";
+import { requireSession } from "@/lib/requireSession";
+import { logAudit } from "@/lib/audit";
 
 export interface AdminOrder {
   id: string;
@@ -28,6 +30,8 @@ function safeDecryptPhone(stored: string): string {
 }
 
 export async function getAdminOrders(phoneQuery?: string): Promise<AdminOrder[]> {
+  const session = await requireSession();
+
   const where = phoneQuery
     ? { customerPhoneIndex: blindIndex(digitsOnly(phoneQuery)) }
     : {};
@@ -40,6 +44,17 @@ export async function getAdminOrders(phoneQuery?: string): Promise<AdminOrder[]>
       invoices: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
+
+  if (orders.length > 0) {
+    await logAudit({
+      action: "DATA_ACCESS",
+      adminId: session.sub,
+      username: session.username,
+      details: phoneQuery 
+        ? `Búsqueda de pedidos por teléfono: ${phoneQuery}`
+        : "Consulta general de lista de pedidos (teléfonos descifrados)",
+    });
+  }
 
   return orders.map((o) => ({
     id: o.id,

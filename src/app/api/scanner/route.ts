@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { searchProductImages } from "@/lib/imageSearch";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/scanner
@@ -109,6 +110,15 @@ export async function POST(request: NextRequest) {
   // barcodespider, image search).
   const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value ?? "");
   if (!session) {
+    return Response.json({ error: "No autorizado." }, { status: 401 });
+  }
+
+  // Brecha V3.3.1/V3.3.3: Invalidación del lado del servidor
+  const admin = await prisma.admin.findUnique({
+    where: { id: session.sub },
+    select: { tokenVersion: true },
+  });
+  if (!admin || admin.tokenVersion !== session.v) {
     return Response.json({ error: "No autorizado." }, { status: 401 });
   }
 

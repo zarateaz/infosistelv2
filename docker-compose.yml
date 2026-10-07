@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  infosistel:
+    build: .
+    container_name: infosistel-v2
+    restart: unless-stopped
+    ports:
+      # Solo exponemos internamente, nginx actúa de proxy
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/data/dev.db
+      # Las demás variables se tomarán del archivo .env que esté en el host o se pueden inyectar
+    env_file:
+      - .env
+    volumes:
+      # Montaje de la base de datos persistente
+      - /home/zarate/infosistel-v2-data:/data
+      # Montaje de los directorios de imágenes (sobrescribe la carpeta vacía del build)
+      - /home/zarate/infosistel-v2-data/uploads/products:/app/public/img/products
+      - /home/zarate/infosistel-v2-data/uploads/servicios:/app/public/img/servicios

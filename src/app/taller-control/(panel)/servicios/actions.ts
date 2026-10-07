@@ -451,6 +451,8 @@ const baseServiceSchema = z.object({
   // (see resolveEquipmentTypeId) — the form sends exactly one of the two.
   equipmentTypeId: z.string().trim().optional(),
   equipmentTypeCustomName: z.string().trim().max(60).optional(),
+  equipmentBrand: z.string().trim().max(100).optional(),
+  equipmentModel: z.string().trim().max(100).optional(),
   serviceDate: z
     .string()
     .trim()
@@ -509,6 +511,8 @@ function readServiceForm(formData: FormData) {
     description: formData.get("description") || undefined,
     equipmentTypeId: formData.get("equipmentTypeId") || undefined,
     equipmentTypeCustomName: formData.get("equipmentTypeCustomName") || undefined,
+    equipmentBrand: formData.get("equipmentBrand") || undefined,
+    equipmentModel: formData.get("equipmentModel") || undefined,
     serviceDate: formData.get("serviceDate"),
     amount: formData.get("amount"),
     technicianId: formData.get("technicianId"),
@@ -568,6 +572,8 @@ export async function createService(_prevState: ServiceFormState, formData: Form
       clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
+      equipmentBrand: parsed.data.equipmentBrand,
+      equipmentModel: parsed.data.equipmentModel,
       equipmentTypeId: equipmentTypeResult.id,
       serviceDate: parsed.data.serviceDate,
       equipmentStage: "RECIBIDO",
@@ -617,6 +623,8 @@ export async function updateService(
       clientPhone: parsed.data.clientPhone,
       title: sanitizeName(parsed.data.title, 150),
       description: parsed.data.description ?? "",
+      equipmentBrand: parsed.data.equipmentBrand,
+      equipmentModel: parsed.data.equipmentModel,
       equipmentTypeId: equipmentTypeResult.id,
       serviceDate: parsed.data.serviceDate,
       amount: Math.round(parsed.data.amount * 100) / 100,

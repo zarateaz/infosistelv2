@@ -10,12 +10,14 @@ import { decryptPII } from "@/lib/crypto";
 import { verifyTotpToken, normalizeRecoveryCode } from "@/lib/totp";
 import {
   createSessionToken,
+  verifySessionToken,
   createMfaPendingToken,
   verifyMfaPendingToken,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   MFA_PENDING_COOKIE,
 } from "@/lib/session";
+import { logAudit } from "@/lib/audit";
 
 const loginSchema = z.object({
   username: z.string().min(1).max(64),
@@ -29,8 +31,8 @@ export interface LoginState {
 
 const GENERIC_ERROR = "Usuario o contraseña incorrectos.";
 
-async function issueSession(adminId: string, username: string, role: string) {
-  const token = await createSessionToken({ sub: adminId, username, role });
+async function issueSession(adminId: string, username: string, role: string, tokenVersion: number) {
+  const token = await createSessionToken({ sub: adminId, username, role, v: tokenVersion });
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -53,6 +55,7 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
   const rl = checkRateLimit(rateLimitKey("admin-login", ip), 5, 15 * 60 * 1000, 15 * 60 * 1000);
   if (!rl.allowed) {
     const minutes = Math.max(1, Math.ceil((rl.retryAfterSeconds ?? 0) / 60));
+    await logAudit({ action: "LOGIN_RATELIMIT", username: parsed.data.username, ipAddress: ip });
     return { error: `Demasiados intentos. Intenta de nuevo en ${minutes} min.` };
   }
 
@@ -63,14 +66,19 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
     // Same cost as a real check, so a bad username isn't distinguishable
     // from a bad password by response time.
     burnPasswordCheckTime(password);
+    await logAudit({ action: "LOGIN_FAILED", username, ipAddress: ip, details: "Usuario no existe" });
     return { error: GENERIC_ERROR };
   }
 
   const passwordOk = await verifyPassword(password, admin.passwordHash);
-  if (!passwordOk) return { error: GENERIC_ERROR };
+  if (!passwordOk) {
+    await logAudit({ action: "LOGIN_FAILED", adminId: admin.id, username, ipAddress: ip, details: "Contraseña incorrecta" });
+    return { error: GENERIC_ERROR };
+  }
 
   if (!admin.totpEnabled) {
-    await issueSession(admin.id, admin.username, admin.role);
+    await logAudit({ action: "LOGIN_SUCCESS", adminId: admin.id, username, ipAddress: ip });
+    await issueSession(admin.id, admin.username, admin.role, admin.tokenVersion);
     redirect("/taller-control");
   }
 
@@ -114,8 +122,12 @@ export async function verifyMfaAction(_prevState: LoginState, formData: FormData
 
   const secret = decryptPII(admin.totpSecret);
   if (/^\d{6}$/.test(code.replace(/\s+/g, ""))) {
-    if (!verifyTotpToken(secret, code)) return { mfaRequired: true, error: "Código incorrecto." };
-    await issueSession(admin.id, admin.username, admin.role);
+    if (!verifyTotpToken(secret, code)) {
+      await logAudit({ action: "LOGIN_FAILED", adminId: admin.id, username: admin.username, ipAddress: ip, details: "MFA incorrecto" });
+      return { mfaRequired: true, error: "Código incorrecto." };
+    }
+    await logAudit({ action: "LOGIN_SUCCESS", adminId: admin.id, username: admin.username, ipAddress: ip, details: "MFA" });
+    await issueSession(admin.id, admin.username, admin.role, admin.tokenVersion);
     redirect("/taller-control");
   }
 
@@ -129,16 +141,34 @@ export async function verifyMfaAction(_prevState: LoginState, formData: FormData
       break;
     }
   }
-  if (matchedIndex === -1) return { mfaRequired: true, error: "Código incorrecto." };
+  if (matchedIndex === -1) {
+    await logAudit({ action: "LOGIN_FAILED", adminId: admin.id, username: admin.username, ipAddress: ip, details: "Código de recuperación incorrecto" });
+    return { mfaRequired: true, error: "Código incorrecto." };
+  }
 
   const remaining = storedHashes.filter((_, i) => i !== matchedIndex);
   await prisma.admin.update({ where: { id: admin.id }, data: { recoveryCodesHash: remaining.join(",") } });
-  await issueSession(admin.id, admin.username, admin.role);
+  await logAudit({ action: "LOGIN_SUCCESS", adminId: admin.id, username: admin.username, ipAddress: ip, details: "Código de recuperación usado" });
+  await issueSession(admin.id, admin.username, admin.role, admin.tokenVersion);
   redirect("/taller-control");
 }
 
 export async function logoutAction() {
   const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  if (token) {
+    const session = await verifySessionToken(token);
+    if (session) {
+      const ip = getClientIP(await headers());
+      await logAudit({ action: "LOGOUT", adminId: session.sub, username: session.username, ipAddress: ip });
+      
+      await prisma.admin.update({
+        where: { id: session.sub },
+        data: { tokenVersion: { increment: 1 } },
+      });
+    }
+  }
+
   cookieStore.delete(SESSION_COOKIE);
   cookieStore.delete(MFA_PENDING_COOKIE);
   redirect("/taller-control/login");

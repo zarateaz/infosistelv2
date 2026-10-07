@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { encryptPII, decryptPII, blindIndex } from "@/lib/crypto";
 import { digitsOnly, sanitizeName } from "@/lib/sanitize";
+import { requireSession } from "@/lib/requireSession";
+import { logAudit } from "@/lib/audit";
 
 export interface AdminRepair {
   id: string;
@@ -34,9 +36,22 @@ async function nextRepairCode(): Promise<string> {
 }
 
 export async function getAdminRepairs(dniQuery?: string): Promise<AdminRepair[]> {
+  const session = await requireSession();
+
   const where = dniQuery ? { dniIndex: blindIndex(digitsOnly(dniQuery)) } : {};
 
   const repairs = await prisma.repair.findMany({ where, orderBy: { createdAt: "desc" } });
+
+  if (repairs.length > 0) {
+    await logAudit({
+      action: "DATA_ACCESS",
+      adminId: session.sub,
+      username: session.username,
+      details: dniQuery 
+        ? `Búsqueda de reparaciones por DNI: ${dniQuery}`
+        : "Consulta general de lista de reparaciones (DNIs descifrados)",
+    });
+  }
 
   return repairs.map((r) => ({
     id: r.id,

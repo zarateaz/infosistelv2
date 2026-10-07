@@ -15,6 +15,7 @@ interface SessionPayload extends JWTPayload {
   sub: string; // Admin.id
   username: string;
   role: string; // "admin" or "superadmin" — see Admin.role
+  v: number; // tokenVersion
 }
 
 function getSecretKey() {
@@ -35,11 +36,12 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     if (
       typeof payload.sub !== "string" ||
       typeof payload.username !== "string" ||
-      typeof payload.role !== "string"
+      typeof payload.role !== "string" ||
+      typeof payload.v !== "number"
     ) {
       return null;
     }
-    return { sub: payload.sub, username: payload.username, role: payload.role };
+    return { sub: payload.sub, username: payload.username, role: payload.role, v: payload.v };
   } catch {
     // Expired, malformed, or wrong-signature token — all treated the same:
     // no session.

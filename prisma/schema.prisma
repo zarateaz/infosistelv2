@@ -145,6 +145,8 @@ model Service {
   technicianId String
   technician   Technician @relation(fields: [technicianId], references: [id], onDelete: Restrict)
 
+  equipmentBrand String?
+  equipmentModel String?
   equipmentTypeId String
   equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id], onDelete: Restrict)
 
@@ -334,6 +336,9 @@ model Admin {
   // Comma-joined "salt:hash" entries (lib/auth.ts hashPassword, reused as-is
   // — no new hash primitive), one per unused one-time recovery code.
   recoveryCodesHash String?
+
+  // Brecha V3.3.1/V3.3.3 (Hardening Fase 6+) — Invalidación de sesión del lado del servidor.
+  tokenVersion      Int      @default(0)
 }
 
 /**
@@ -388,5 +393,20 @@ model QuotationItem {
   notes       String?
 
   @@index([quotationId])
+}
+
+// Brecha V7.1.3 / V8.3.5 (Hardening Fase 6+) — Registro estructurado y persistente de eventos de seguridad
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // Ej. "LOGIN_FAILED", "LOGIN_SUCCESS", "DATA_ACCESS"
+  adminId   String?  // Puede ser nulo si el usuario no existe o falló el login
+  username  String?  // Nombre de usuario intentado o autenticado
+  ipAddress String
+  details   String?  // Detalles adicionales o contexto
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([adminId])
 }
 

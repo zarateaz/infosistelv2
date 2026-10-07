@@ -152,6 +152,16 @@ export function ServiceForm({
           )}
         </div>
 
+        <div>
+          <label className={labelClass}>Marca (Opcional)</label>
+          <input name="equipmentBrand" defaultValue={service?.equipmentBrand ?? ""} maxLength={100} placeholder="Ej. HP, Lenovo, Epson" className={inputClass} />
+        </div>
+        
+        <div>
+          <label className={labelClass}>Modelo del equipo (Opcional)</label>
+          <input name="equipmentModel" defaultValue={service?.equipmentModel ?? ""} maxLength={100} placeholder="Ej. Pavilion 15, EcoTank L3250" className={inputClass} />
+        </div>
+
         <div className="sm:col-span-2">
           <label className={labelClass}>Descripción del trabajo (opcional)</label>
           <AutoGrowInput

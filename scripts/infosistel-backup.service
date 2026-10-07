@@ -1,0 +1,9 @@
+[Unit]
+Description=Respaldo automatizado de BD Infosistel a almacenamiento externo
+After=network.target
+
+[Service]
+Type=oneshot
+User=zarate
+# Ajustar la ruta al script en el VPS real
+ExecStart=/home/zarate/infosistel-v2/scripts/backup-db.sh

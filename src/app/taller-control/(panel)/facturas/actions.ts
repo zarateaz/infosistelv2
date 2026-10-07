@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { decryptPII } from "@/lib/crypto";
 import { emitInvoice, retryInvoiceEmission } from "@/lib/invoicing";
+import { requireSession } from "@/lib/requireSession";
+import { logAudit } from "@/lib/audit";
 import { monthKey, monthRange } from "./month";
 
 export interface AdminInvoice {
@@ -38,12 +40,22 @@ function safeDecrypt(stored: string | null): string | null {
  *  si terminó ACEPTADO o en ERROR: un intento fallido igual consumió un
  *  correlativo y merece aparecer en el registro del mes. */
 export async function getAdminInvoicesForMonth(month: string): Promise<AdminInvoice[]> {
+  const session = await requireSession();
   const { start, end } = monthRange(month);
   const invoices = await prisma.invoice.findMany({
     where: { createdAt: { gte: start, lt: end } },
     orderBy: { createdAt: "desc" },
     include: { order: { select: { customerPhone: true } } },
   });
+
+  if (invoices.length > 0) {
+    await logAudit({
+      action: "DATA_ACCESS",
+      adminId: session.sub,
+      username: session.username,
+      details: `Consulta general de facturas del mes ${month} (teléfonos descifrados)`,
+    });
+  }
 
   return invoices.map((inv) => {
     const telefono = safeDecrypt(inv.clienteTelefono) ?? safeDecrypt(inv.order?.customerPhone ?? null);
