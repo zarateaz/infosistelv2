@@ -34,6 +34,7 @@ model Product {
   searchHits  Int      @default(0) // veces que este producto apareció en una búsqueda del chatbot — ver chatTools.ts buscarProductos/productosPopulares
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  stockMovements StockMovement[]
 }
 
 model Order {
@@ -414,3 +415,16 @@ model AuditLog {
   @@index([adminId])
 }
 
+
+model StockMovement {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity    Int      // positive for additions, negative for reductions
+  type        String   // "VENTA_FISICA", "VENTA_WEB", "INGRESO", "AJUSTE", etc.
+  description String?  // Optional explanation
+  date        DateTime @default(now())
+  
+  @@index([productId])
+  @@index([date])
+}

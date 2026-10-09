@@ -4,13 +4,13 @@ import { prisma } from "@/lib/prisma";
 
 export const buscarProductoAdmin = tool({
   description:
-    "Busca un producto en el inventario por nombre, categoría o código de barras. " +
-    "Úsala para encontrar el ID del producto y su stock actual antes de descontarlo.",
+    "Busca un producto en el inventario por nombre, categoría, código de barras o número de producto. " +
+    "Úsala para encontrar el ID del producto y su stock actual antes de descontarlo o aumentarlo.",
   inputSchema: z.object({
     consulta: z
       .string()
       .min(1)
-      .describe('Nombre del producto o código de barras (ej. "teclado", "123456789").'),
+      .describe('Nombre del producto, código de barras o número (ej. "teclado", "123456789", "15").'),
   }),
   execute: async ({ consulta }) => {
     const num = parseInt(consulta, 10);
@@ -55,7 +55,7 @@ export const registrarVentaAdmin = tool({
     const totalCost = unitCost * cantidad;
     const totalProfit = totalPrice - totalCost;
 
-    const [sale, updatedProduct] = await prisma.$transaction([
+    const [sale, updatedProduct, movement] = await prisma.$transaction([
       prisma.sale.create({
         data: {
           productId: product.id,
@@ -69,11 +69,51 @@ export const registrarVentaAdmin = tool({
         },
       }),
       prisma.product.update({ where: { id: product.id }, data: { stock: { decrement: cantidad } } }),
+      prisma.stockMovement.create({
+        data: {
+          productId: product.id,
+          quantity: -cantidad,
+          type: `VENTA_${origen}`,
+          description: `Venta registrada mediante chatbot`,
+        }
+      })
     ]);
 
     return { 
       exito: true, 
       mensaje: `Venta registrada correctamente. Stock descontado.`, 
+      stockRestante: updatedProduct.stock 
+    };
+  },
+});
+
+export const ajustarStockAdmin = tool({
+  description:
+    "Añade stock a un producto cuando llega nueva mercadería. " +
+    "Debes proporcionar el ID del producto y la cantidad a añadir.",
+  inputSchema: z.object({
+    productId: z.string().describe("El ID del producto a reabastecer."),
+    cantidad: z.number().int().positive().describe("Cantidad de unidades a añadir."),
+  }),
+  execute: async ({ productId, cantidad }) => {
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) return { error: "Producto no encontrado." };
+
+    const [updatedProduct, movement] = await prisma.$transaction([
+      prisma.product.update({ where: { id: product.id }, data: { stock: { increment: cantidad } } }),
+      prisma.stockMovement.create({
+        data: {
+          productId: product.id,
+          quantity: cantidad,
+          type: "INGRESO",
+          description: `Ingreso de stock mediante chatbot`,
+        }
+      })
+    ]);
+
+    return { 
+      exito: true, 
+      mensaje: `Stock añadido correctamente.`, 
       stockRestante: updatedProduct.stock 
     };
   },

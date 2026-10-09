@@ -2,7 +2,7 @@ import { deepseek } from "@ai-sdk/deepseek";
 import { streamText, convertToModelMessages, stepCountIs } from "ai";
 import { type UIMessage } from "ai";
 import { cookies } from "next/headers";
-import { buscarProductoAdmin, registrarVentaAdmin } from "@/lib/adminChatTools";
+import { buscarProductoAdmin, registrarVentaAdmin, ajustarStockAdmin } from "@/lib/adminChatTools";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 
@@ -42,12 +42,13 @@ export async function POST(req: Request) {
     model: deepseek("deepseek-v4-flash"),
     system: `Eres el Asistente Inteligente del Panel de Control de Infosistel.
 Tu tarea principal es ayudar a los administradores a gestionar el inventario y registrar ventas rápidamente.
-Puedes buscar productos por nombre o código de barras usando "buscarProductoAdmin".
+Puedes buscar productos por nombre, código de barras o número usando "buscarProductoAdmin".
 Puedes descontar stock usando "registrarVentaAdmin".
+Puedes añadir stock a un producto usando "ajustarStockAdmin".
 Si el usuario indica que vendió un producto o te da un código de barras para descontar, usa las herramientas. Si no te especifica el origen de la venta, asume "FISICA".
 Responde de forma muy breve y directa. No des explicaciones largas. Solo confirma lo que hiciste.`,
     messages: await convertToModelMessages(messages),
-    tools: { buscarProductoAdmin, registrarVentaAdmin },
+    tools: { buscarProductoAdmin, registrarVentaAdmin, ajustarStockAdmin },
     stopWhen: stepCountIs(5),
     maxOutputTokens: 500,
   });
