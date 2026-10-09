@@ -57,12 +57,13 @@ export function AdminChatBot() {
     e.preventDefault();
     if ((!input.trim() && !selectedImage) || isBusy) return;
     
-    // Si hay imagen, la enviamos usando attachments de AI SDK, sino enviamos normal
+    // Si hay imagen, la enviamos usando `files` de AI SDK v5, sino enviamos normal
     if (selectedImage) {
-      // @ts-expect-error experimental_attachments might not be in the types yet
+      const dt = new DataTransfer();
+      dt.items.add(selectedImage);
       sendMessage({
         text: input.trim() || "Procesa este producto.",
-        experimental_attachments: [selectedImage]
+        files: dt.files,
       });
       removeImage();
     } else {
