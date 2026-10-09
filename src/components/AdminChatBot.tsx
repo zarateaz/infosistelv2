@@ -107,16 +107,15 @@ export function AdminChatBot() {
                     m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 whitespace-pre-wrap"
                   }`}
                 >
-                  {/* Render attachments if any */}
-                  {/* @ts-expect-error experimental_attachments type missing */}
-                  {m.experimental_attachments?.map((attachment: { url: string }, i: number) => (
-                    <div key={`attachment-${i}`} className="mb-2">
-                      <img src={attachment.url} alt="Uploaded" className="rounded-md max-w-full max-h-[200px] object-cover" />
-                    </div>
-                  ))}
-                  
                   {m.parts.map((part, i) => {
                     if (part.type === "text") return <span key={i}>{part.text}</span>;
+                    if (part.type === "file" && part.mediaType?.startsWith("image/")) {
+                      return (
+                        <div key={i} className="mb-2">
+                          <img src={part.url} alt="Uploaded" className="rounded-md max-w-full max-h-[200px] object-cover" />
+                        </div>
+                      );
+                    }
                     if (part.type === "tool-buscarProductoAdmin" || part.type === "tool-registrarVentaAdmin" || part.type === "tool-ajustarStockAdmin") {
                       if (part.state === "output-available") {
                         if (part.type === "tool-registrarVentaAdmin") {
