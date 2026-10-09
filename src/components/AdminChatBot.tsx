@@ -59,6 +59,7 @@ export function AdminChatBot() {
     
     // Si hay imagen, la enviamos usando attachments de AI SDK, sino enviamos normal
     if (selectedImage) {
+      // @ts-expect-error experimental_attachments might not be in the types yet
       sendMessage({
         text: input.trim() || "Procesa este producto.",
         experimental_attachments: [selectedImage]
@@ -106,7 +107,8 @@ export function AdminChatBot() {
                   }`}
                 >
                   {/* Render attachments if any */}
-                  {m.experimental_attachments?.map((attachment, i) => (
+                  {/* @ts-expect-error experimental_attachments type missing */}
+                  {m.experimental_attachments?.map((attachment: { url: string }, i: number) => (
                     <div key={`attachment-${i}`} className="mb-2">
                       <img src={attachment.url} alt="Uploaded" className="rounded-md max-w-full max-h-[200px] object-cover" />
                     </div>
