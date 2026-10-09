@@ -10,8 +10,8 @@
 # which this script deletes and rebuilds every run.
 set -euo pipefail
 
-APP_DIR="/home/zarate/infosistel-v2"
-DATA_DIR="/home/zarate/infosistel-v2-data"
+APP_DIR="$HOME/infosistelv2"
+DATA_DIR="$HOME/infosistel-v2-data"
 cd "$APP_DIR"
 
 echo "=== Cargando .env ==="
