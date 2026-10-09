@@ -64,6 +64,7 @@ if [ ! -f .next/standalone/server.js ]; then
 fi
 
 echo "=== Copiando estáticos al build standalone ==="
+rm -rf .next/standalone/.next/static
 mkdir -p .next/standalone/.next
 cp -r .next/static .next/standalone/.next/static
 cp -r public/. .next/standalone/public/
