@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { MessageCircle, X, ArrowUp } from "lucide-react";
+import { MessageCircle, X, ArrowUp, Ghost } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 
 // The chat bubble renders plain text (no markdown parser, by design — no
@@ -242,13 +242,13 @@ export function ChatBot() {
       <button
         onClick={() => setIsOpen((v) => !v)}
         style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
-        className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg shadow-accent/30 transition-transform hover:scale-105 active:scale-95"
+        className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg shadow-orange-500/40 transition-transform hover:scale-105 active:scale-95"
         aria-label="Abrir asistente"
       >
         {showPulse && !isOpen && (
-          <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-accent/60" />
+          <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-orange-500/60" />
         )}
-        {isOpen ? <X size={22} /> : <MessageCircle size={22} />}
+        {isOpen ? <X size={22} /> : <Ghost size={22} className="animate-bounce" />}
       </button>
 
       {isOpen && (
@@ -264,13 +264,13 @@ export function ChatBot() {
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-border bg-bg-alt shadow-2xl sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
         >
-          <div className="flex shrink-0 items-center gap-3 bg-accent px-5 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/10">
-              <MessageCircle size={16} className="text-accent-fg" />
+          <div className="flex shrink-0 items-center gap-3 bg-gradient-to-r from-orange-500 to-purple-600 px-5 py-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/20">
+              <Ghost size={16} className="text-white" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold leading-tight text-accent-fg">Asistente Infosistel</p>
-              <p className="text-[11px] font-medium text-accent-fg/70">Responde en segundos</p>
+              <p className="text-sm font-bold leading-tight text-white">Asistente Infosistel 👻</p>
+              <p className="text-[11px] font-medium text-white/80">Responde en segundos</p>
             </div>
             <button
               onClick={() => setIsOpen(false)}
@@ -286,7 +286,7 @@ export function ChatBot() {
                 <div
                   className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                     message.role === "user"
-                      ? "rounded-br-md bg-bg-raised text-fg"
+                      ? "rounded-br-md bg-orange-100 text-orange-950 border border-orange-200"
                       : "rounded-bl-md bg-bg text-fg-muted"
                   }`}
                 >
@@ -322,7 +322,7 @@ export function ChatBot() {
                   <button
                     key={qr.label}
                     onClick={() => handleQuickReply(qr.text)}
-                    className="rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-bold text-fg transition-colors hover:bg-accent/10 hover:text-accent"
+                    className="rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-bold text-fg transition-colors hover:bg-orange-100 hover:text-orange-600 hover:border-orange-200"
                   >
                     {qr.label}
                   </button>
@@ -383,7 +383,7 @@ export function ChatBot() {
               type="submit"
               disabled={isBusy || !input.trim()}
               aria-label="Enviar"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowUp size={18} />
             </button>

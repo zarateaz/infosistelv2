@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { MessageCircle, X, ArrowUp, Camera, Image as ImageIcon } from "lucide-react";
+import { MessageCircle, X, ArrowUp, Camera, Image as ImageIcon, Ghost } from "lucide-react";
 import { CameraScanner } from "@/app/taller-control/(panel)/productos/CameraScanner";
 
 export function AdminChatBot() {
@@ -77,17 +77,17 @@ export function AdminChatBot() {
     <>
       <button
         onClick={() => setIsOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-transform hover:scale-105"
+        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-orange-600 text-white shadow-lg shadow-orange-600/30 transition-transform hover:scale-105"
       >
-        {isOpen ? <X size={22} /> : <MessageCircle size={22} />}
+        {isOpen ? <X size={22} /> : <Ghost size={22} className="animate-bounce" />}
       </button>
 
       {isOpen && (
         <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between bg-blue-600 px-4 py-3 text-white">
+          <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-orange-600 to-purple-700 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
-              <MessageCircle size={18} />
-              <span className="font-bold">Asistente IA - Inventario</span>
+              <Ghost size={18} />
+              <span className="font-bold">Asistente IA - Inventario 🎃</span>
             </div>
             <button onClick={() => setIsOpen(false)} className="hover:text-gray-200">
               <X size={18} />
@@ -104,7 +104,7 @@ export function AdminChatBot() {
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                    m.role === "user" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 whitespace-pre-wrap"
+                    m.role === "user" ? "bg-orange-600 text-white" : "bg-orange-50 text-orange-950 border border-orange-100 whitespace-pre-wrap"
                   }`}
                 >
                   {m.parts.map((part, i) => {
@@ -122,7 +122,7 @@ export function AdminChatBot() {
                           return <div key={i} className="mt-2 text-xs font-bold text-green-700">🛒 Stock descontado con éxito</div>;
                         }
                         if (part.type === "tool-ajustarStockAdmin") {
-                          return <div key={i} className="mt-2 text-xs font-bold text-blue-700">📦 Stock añadido con éxito</div>;
+                          return <div key={i} className="mt-2 text-xs font-bold text-orange-700">📦 Stock añadido con éxito</div>;
                         }
                         return <div key={i} className="mt-2 text-xs opacity-80">✅ Búsqueda completada</div>;
                       } else {
@@ -191,7 +191,7 @@ export function AdminChatBot() {
               <button
                 type="submit"
                 disabled={(!input.trim() && !selectedImage) || isBusy}
-                className="rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-50"
+                className="rounded-lg bg-orange-600 px-3 py-2 text-white disabled:opacity-50 hover:bg-orange-700"
               >
                 <ArrowUp size={18} />
               </button>
