@@ -18,7 +18,7 @@ export default async function CatalogoPage() {
   const { products, categories } = await getCatalogoData();
 
   return (
-    <main className="min-h-screen bg-slate-950 selection:bg-cyan-500 selection:text-black">
+    <main className="min-h-screen bg-white selection:bg-blue-600 selection:text-white">
       <CatalogoKiosk initialProducts={products} initialCategories={categories} />
     </main>
   );

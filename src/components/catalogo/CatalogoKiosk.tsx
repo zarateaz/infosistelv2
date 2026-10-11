@@ -25,16 +25,6 @@ import {
   Eye,
   Play,
   Pause,
-  ArrowRight,
-  Hand,
-  Laptop,
-  Mouse,
-  Keyboard,
-  Monitor,
-  Headphones,
-  HardDrive,
-  Printer,
-  ChevronRight,
   RotateCcw,
 } from "lucide-react";
 import type { CatalogoProduct, CatalogoCategory } from "@/app/catalogo/actions";
@@ -42,10 +32,9 @@ import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import { CinematicIntro } from "./CinematicIntro";
 
 /**
- * Motor Acústico Háptico Ultra Fluido (Web Audio API)
- * Diseñado específicamente para pantallas táctiles y kioscos de tienda:
- * Sonido aterciopelado tipo burbuja/gota de agua (waterdrop haptic tap),
- * libre de frecuencias chirriantes o metálicas.
+ * Motor Acústico Háptico Suave (Web Audio API)
+ * Sonido aterciopelado tipo gota de agua / burbuja táctil,
+ * limpio, profesional y agradable al tacto.
  */
 class KioskAudioEngine {
   private ctx: AudioContext | null = null;
@@ -82,14 +71,14 @@ class KioskAudioEngine {
       const filter = ctx.createBiquadFilter();
 
       filter.type = "lowpass";
-      filter.frequency.setValueAtTime(1200, now);
-      filter.Q.setValueAtTime(2.2, now);
+      filter.frequency.setValueAtTime(1400, now);
+      filter.Q.setValueAtTime(2.0, now);
 
       osc.type = "sine";
-      osc.frequency.setValueAtTime(720, now);
-      osc.frequency.exponentialRampToValueAtTime(310, now + 0.04);
+      osc.frequency.setValueAtTime(680, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.04);
 
-      gain.gain.setValueAtTime(0.03, now);
+      gain.gain.setValueAtTime(0.025, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
 
       osc.connect(filter);
@@ -98,12 +87,10 @@ class KioskAudioEngine {
 
       osc.start(now);
       osc.stop(now + 0.04);
-    } catch {
-      // Ignorar bloqueos de autoplay
-    }
+    } catch {}
   }
 
-  // Tecla del teclado virtual en pantalla (micro click táctil)
+  // Tecla del teclado virtual en pantalla
   key(enabled: boolean) {
     if (!enabled) return;
     const ctx = this.getContext();
@@ -114,8 +101,8 @@ class KioskAudioEngine {
       const gain = ctx.createGain();
 
       osc.type = "sine";
-      osc.frequency.setValueAtTime(540, now);
-      osc.frequency.exponentialRampToValueAtTime(260, now + 0.03);
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(280, now + 0.03);
 
       gain.gain.setValueAtTime(0.02, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
@@ -128,7 +115,7 @@ class KioskAudioEngine {
     } catch {}
   }
 
-  // Éxito / Agregar a cotización (acorde armónico C6 - G6 cristalino)
+  // Éxito / Agregar a cotización
   success(enabled: boolean) {
     if (!enabled) return;
     const ctx = this.getContext();
@@ -136,8 +123,8 @@ class KioskAudioEngine {
     try {
       const now = ctx.currentTime;
       const notes = [
-        { freq: 1046.5, delay: 0, dur: 0.12, vol: 0.035 },
-        { freq: 1567.98, delay: 0.05, dur: 0.16, vol: 0.04 },
+        { freq: 1046.5, delay: 0, dur: 0.12, vol: 0.03 },
+        { freq: 1567.98, delay: 0.05, dur: 0.16, vol: 0.035 },
       ];
       notes.forEach(({ freq, delay, dur, vol }) => {
         const osc = ctx.createOscillator();
@@ -154,7 +141,7 @@ class KioskAudioEngine {
     } catch {}
   }
 
-  // Abrir ventana / modal (sweep ascendente suave)
+  // Abrir ventana / modal
   open(enabled: boolean) {
     if (!enabled) return;
     const ctx = this.getContext();
@@ -164,9 +151,9 @@ class KioskAudioEngine {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(360, now);
-      osc.frequency.exponentialRampToValueAtTime(740, now + 0.07);
-      gain.gain.setValueAtTime(0.025, now);
+      osc.frequency.setValueAtTime(380, now);
+      osc.frequency.exponentialRampToValueAtTime(720, now + 0.07);
+      gain.gain.setValueAtTime(0.02, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -175,7 +162,7 @@ class KioskAudioEngine {
     } catch {}
   }
 
-  // Cerrar ventana / modal (sweep descendente sutil)
+  // Cerrar ventana / modal
   close(enabled: boolean) {
     if (!enabled) return;
     const ctx = this.getContext();
@@ -185,8 +172,8 @@ class KioskAudioEngine {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(620, now);
-      osc.frequency.exponentialRampToValueAtTime(260, now + 0.06);
+      osc.frequency.setValueAtTime(580, now);
+      osc.frequency.exponentialRampToValueAtTime(280, now + 0.06);
       gain.gain.setValueAtTime(0.02, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
       osc.connect(gain);
@@ -196,34 +183,20 @@ class KioskAudioEngine {
     } catch {}
   }
 
-  // Sonido cinemático épico para la entrada tipo trailer de video
+  // Sonido de bienvenida al entrar al catálogo
   cinematicIntro(enabled: boolean) {
     if (!enabled) return;
     const ctx = this.getContext();
     if (!ctx) return;
     try {
       const now = ctx.currentTime;
-      // Impacto sub-grave cinematográfico
-      const subOsc = ctx.createOscillator();
-      const subGain = ctx.createGain();
-      subOsc.type = "sine";
-      subOsc.frequency.setValueAtTime(115, now);
-      subOsc.frequency.exponentialRampToValueAtTime(38, now + 0.65);
-      subGain.gain.setValueAtTime(0.045, now);
-      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.65);
-      subOsc.connect(subGain);
-      subGain.connect(ctx.destination);
-      subOsc.start(now);
-      subOsc.stop(now + 0.65);
-
-      // Acorde armónico de alta fidelidad
-      const notes = [
-        { f: 523.25, d: 0.06, dur: 0.45, v: 0.02 },
-        { f: 659.25, d: 0.12, dur: 0.5, v: 0.025 },
-        { f: 783.99, d: 0.2, dur: 0.55, v: 0.03 },
-        { f: 1046.5, d: 0.28, dur: 0.65, v: 0.035 },
+      const chords = [
+        { f: 523.25, d: 0.04, dur: 0.4, v: 0.02 },
+        { f: 659.25, d: 0.1, dur: 0.45, v: 0.025 },
+        { f: 783.99, d: 0.18, dur: 0.5, v: 0.03 },
+        { f: 1046.5, d: 0.25, dur: 0.6, v: 0.035 },
       ];
-      notes.forEach(({ f, d, dur, v }) => {
+      chords.forEach(({ f, d, dur, v }) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = "sine";
@@ -263,9 +236,8 @@ export function CatalogoKiosk({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "featured" | "onsale" | "instock">("all");
 
-  // PANTALLA DE BIENVENIDA OFICIAL (Splash interactivo)
+  // Pantalla de Bienvenida
   const [showWelcome, setShowWelcome] = useState(true);
-  const [welcomeCountdown, setWelcomeCountdown] = useState(6);
 
   // Opciones de Kiosco / Pantallas
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -285,10 +257,10 @@ export function CatalogoKiosk({
   const [quoteTicketQr, setQuoteTicketQr] = useState<string>("");
   const [ticketNumber, setTicketNumber] = useState<string>("");
 
-  // Inactividad para volver a la pantalla de bienvenida / vitrina (90s)
+  // Inactividad para volver a la pantalla de bienvenida (90s)
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Saludo dinámico según la hora de Huancayo
+  // Saludo dinámico según la hora en Huancayo
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) return { text: "¡Buenos días!", icon: "☀️", sub: "Bienvenido a INFOSISTEL" };
@@ -314,23 +286,7 @@ export function CatalogoKiosk({
     return () => clearInterval(interval);
   }, []);
 
-  // Contador de entrada automática en bienvenida
-  useEffect(() => {
-    if (!showWelcome) return;
-    const timer = setInterval(() => {
-      setWelcomeCountdown((prev) => {
-        if (prev <= 1) {
-          setShowWelcome(false);
-          kioskAudio.open(soundEnabled);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [showWelcome, soundEnabled]);
-
-  // Cerrar bienvenida y entrar al catálogo con sonido cinemático
+  // Cerrar bienvenida y entrar al catálogo
   const handleEnterCatalog = useCallback(
     (targetCategory?: string) => {
       kioskAudio.cinematicIntro(soundEnabled);
@@ -353,7 +309,7 @@ export function CatalogoKiosk({
     if (showcaseProducts.length === 0) return;
     const interval = setInterval(() => {
       setHeroIndex((prev) => (prev + 1) % showcaseProducts.length);
-    }, isAutoplayActive ? 4000 : 7000);
+    }, isAutoplayActive ? 4500 : 7000);
     return () => clearInterval(interval);
   }, [showcaseProducts.length, isAutoplayActive]);
 
@@ -375,7 +331,7 @@ export function CatalogoKiosk({
     }
   }, [soundEnabled]);
 
-  // Detector de inactividad: Regresa a la bienvenida o activa vitrina
+  // Detector de inactividad
   const resetIdle = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (isAutoplayActive) {
@@ -383,10 +339,8 @@ export function CatalogoKiosk({
     }
     if (!detailProduct && !isCartOpen && !showWelcome) {
       idleTimerRef.current = setTimeout(() => {
-        // Al estar inactivo 85 segundos en la tienda, mostrar la pantalla de bienvenida interactiva
         setShowWelcome(true);
-        setWelcomeCountdown(10);
-      }, 85000);
+      }, 90000);
     }
   }, [isAutoplayActive, detailProduct, isCartOpen, showWelcome]);
 
@@ -564,22 +518,13 @@ export function CatalogoKiosk({
 
   return (
     <div
-      className={`relative flex flex-col w-full select-none bg-slate-950 text-slate-100 font-sans ${
+      className={`relative flex flex-col w-full select-none bg-white text-slate-900 font-sans ${
         isAdminPreview
-          ? "h-[850px] rounded-3xl border border-cyan-500/20 shadow-2xl overflow-hidden"
+          ? "h-[850px] rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
           : "min-h-screen"
       }`}
     >
-      {/* Fondo Aurora & Glow Kiosk Fluido */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 -left-40 w-80 sm:w-[500px] h-80 sm:h-[500px] rounded-full bg-cyan-600/15 blur-[120px]" />
-        <div className="absolute top-1/3 -right-40 w-80 sm:w-[550px] h-80 sm:h-[550px] rounded-full bg-blue-600/15 blur-[130px]" />
-        <div className="absolute -bottom-40 left-1/3 w-80 sm:w-[500px] h-80 sm:h-[500px] rounded-full bg-purple-600/15 blur-[120px]" />
-      </div>
-
-      {/* ======================================================== */}
-      {/* ENTRADA CINEMÁTICA ÉPICA (LOGO BLANCO PURO + VIDEO 60FPS) */}
-      {/* ======================================================== */}
+      {/* PANTALLA DE BIENVENIDA PROFESIONAL EN BLANCO PURO */}
       {showWelcome && (
         <CinematicIntro
           onEnter={(targetCat) => handleEnterCatalog(targetCat)}
@@ -595,14 +540,13 @@ export function CatalogoKiosk({
         />
       )}
 
-      {/* BARRA SUPERIOR DEL KIOSCO */}
-      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-950/90 px-3 sm:px-6 py-2.5 sm:py-3.5 backdrop-blur-xl gap-2">
-        {/* Logo Oficial */}
+      {/* BARRA SUPERIOR PROFESIONAL EN BLANCO PURO */}
+      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-slate-200/90 bg-white/95 px-3 sm:px-6 py-2.5 sm:py-3.5 backdrop-blur-md gap-2 shadow-xs">
+        {/* Logo Oficial de Infosistel */}
         <div className="flex items-center gap-2 sm:gap-4 shrink-0 min-w-0">
           <button
             onClick={() => {
               setShowWelcome(true);
-              setWelcomeCountdown(10);
               kioskAudio.open(soundEnabled);
             }}
             className="flex shrink-0 items-center transition-transform active:scale-95"
@@ -614,41 +558,40 @@ export function CatalogoKiosk({
               width={220}
               height={40}
               priority
-              className="h-6 xs:h-7 sm:h-9 md:h-10 w-auto max-w-[110px] xs:max-w-[135px] sm:max-w-[200px] md:max-w-none object-contain brightness-110 drop-shadow-[0_0_12px_rgba(6,182,212,0.35)]"
+              className="h-6 xs:h-7 sm:h-9 md:h-10 w-auto max-w-[110px] xs:max-w-[135px] sm:max-w-[200px] md:max-w-none object-contain"
             />
           </button>
 
-          <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-3">
-            <span className="rounded-full border border-cyan-500/40 bg-cyan-950/60 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-cyan-400">
+          <div className="hidden md:flex items-center gap-2 border-l border-slate-200 pl-3">
+            <span className="rounded-full border border-blue-200 bg-blue-50/80 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-blue-700">
               Catálogo Digital
             </span>
           </div>
         </div>
 
-        {/* Controles de Vitrina y Pantalla */}
+        {/* Controles de Tienda */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {/* Botón Saludo / Bienvenida */}
+          {/* Botón Bienvenida */}
           <button
             onClick={() => {
               setShowWelcome(true);
-              setWelcomeCountdown(10);
               kioskAudio.open(soundEnabled);
             }}
-            className="hidden sm:flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-2 text-xs font-bold text-slate-300 hover:border-cyan-500/50 hover:text-cyan-300 active:scale-95 transition-all"
+            className="hidden sm:flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-700 active:scale-95 transition-all shadow-xs"
             title="Pantalla de Bienvenida"
           >
             <span>👋 Bienvenida</span>
           </button>
 
-          {/* Reloj digital */}
+          {/* Reloj Digital */}
           {currentTime && (
-            <div className="hidden lg:flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs font-mono text-cyan-300">
-              <Clock size={14} className="text-cyan-400 animate-pulse" />
+            <div className="hidden lg:flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-mono text-slate-700">
+              <Clock size={14} className="text-blue-600 animate-pulse" />
               <span>{currentTime}</span>
             </div>
           )}
 
-          {/* Modo Vitrina Autoplay */}
+          {/* Modo Vitrina */}
           <button
             onClick={() => {
               const next = !isAutoplayActive;
@@ -657,45 +600,45 @@ export function CatalogoKiosk({
             }}
             className={`hidden md:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
               isAutoplayActive
-                ? "border-emerald-500 bg-emerald-950/60 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
-                : "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800 shadow-xs"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
             }`}
             title="Activar o pausar rotación automática"
           >
-            {isAutoplayActive ? <Pause size={14} /> : <Play size={14} />}
+            {isAutoplayActive ? <Pause size={14} className="text-emerald-700" /> : <Play size={14} />}
             <span>{isAutoplayActive ? "Vitrina Activa" : "Modo Vitrina"}</span>
           </button>
 
-          {/* Sonido Háptico Fluido */}
+          {/* Sonido Táctil */}
           <button
             onClick={() => {
               const next = !soundEnabled;
               setSoundEnabled(next);
               if (next) kioskAudio.tap(true);
             }}
-            className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl border transition-all active:scale-90 ${
+            className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl border transition-all active:scale-90 shadow-xs ${
               soundEnabled
-                ? "border-cyan-500/40 bg-cyan-950/40 text-cyan-400 hover:bg-cyan-900/50 shadow-sm"
-                : "border-slate-800 bg-slate-900 text-slate-500 hover:text-slate-300"
+                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100/60"
+                : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
             }`}
             title="Sonido táctil suave"
           >
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
 
-          {/* Botón Carrito / Cotización */}
+          {/* Botón Cotización */}
           <button
             onClick={() => {
               setIsCartOpen(true);
               kioskAudio.open(soundEnabled);
             }}
-            className="relative flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-700 bg-slate-900 text-xs font-bold text-white transition-all hover:border-cyan-500 active:scale-95 shrink-0"
+            className="relative flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-white transition-all active:scale-95 shrink-0 shadow-sm"
             title="Ver cotización de productos"
           >
-            <ShoppingBag size={16} className="text-cyan-400" />
+            <ShoppingBag size={16} className="text-blue-400" />
             <span className="hidden sm:inline">Cotización</span>
             {cartCount > 0 && (
-              <span className="flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-cyan-500 text-[9px] sm:text-[10px] font-black text-slate-950 animate-pulse">
+              <span className="flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-blue-600 text-[9px] sm:text-[10px] font-black text-white animate-pulse">
                 {cartCount}
               </span>
             )}
@@ -705,7 +648,7 @@ export function CatalogoKiosk({
           {!isAdminPreview && (
             <button
               onClick={toggleFullscreen}
-              className="flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center gap-1.5 rounded-xl sm:rounded-2xl border border-cyan-500/50 bg-gradient-to-r from-cyan-600 to-blue-600 text-xs font-bold text-white shadow-md shadow-cyan-500/25 active:scale-95 shrink-0"
+              className="flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center gap-1.5 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-sm shadow-blue-500/20 active:scale-95 shrink-0"
             >
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               <span className="hidden sm:inline">{isFullscreen ? "Salir" : "Pantalla Completa"}</span>
@@ -717,7 +660,7 @@ export function CatalogoKiosk({
               href="/catalogo"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center gap-1.5 rounded-xl sm:rounded-2xl border border-cyan-500/50 bg-gradient-to-r from-cyan-600 to-blue-600 text-xs font-bold text-white shadow-md shadow-cyan-500/25 active:scale-95 shrink-0"
+              className="flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center gap-1.5 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-sm active:scale-95 shrink-0"
             >
               <ExternalLink size={15} />
               <span className="hidden sm:inline">Abrir en Laptop</span>
@@ -727,40 +670,38 @@ export function CatalogoKiosk({
       </header>
 
       {/* CONTENIDO PRINCIPAL SCROLLABLE */}
-      <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
+      <div className="relative z-10 flex flex-1 flex-col overflow-y-auto bg-slate-50/50">
         
-        {/* BANNER SHOWCASE DESTACADO FLUIDO */}
+        {/* BANNER SHOWCASE DESTACADO PROFESIONAL */}
         {activeHero && (
-          <div className="p-3 sm:p-6 pb-1">
-            <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-500/30 bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-cyan-950/60 p-4 sm:p-6 md:p-8 shadow-xl backdrop-blur-xl transition-all duration-500">
-              <div className="absolute top-0 right-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-cyan-500/15 blur-3xl pointer-events-none" />
-
+          <div className="p-3 sm:p-6 pb-2">
+            <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 md:p-8 shadow-sm transition-all duration-500">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-center">
                 {/* Información del producto destacado */}
                 <div className="md:col-span-7 space-y-2 sm:space-y-4">
                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                    <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-950/60 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-300">
-                      <Sparkles size={11} /> {activeHero.onSale ? "Oferta Especial" : "Producto Destacado"}
+                    <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-900">
+                      <Sparkles size={11} className="text-amber-600" /> {activeHero.onSale ? "Oferta Especial" : "Producto Destacado"}
                     </span>
-                    <span className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-0.5 text-[10px] sm:text-xs font-mono text-cyan-400">
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] sm:text-xs font-mono text-slate-700">
                       INF-{activeHero.itemNumber}
                     </span>
-                    <span className="rounded-full bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-emerald-300">
+                    <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-emerald-800">
                       ● Stock en tienda ({activeHero.stock} disponibles)
                     </span>
                   </div>
 
-                  <h2 className="text-lg sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-snug line-clamp-2">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-snug line-clamp-2">
                     {activeHero.name}
                   </h2>
 
-                  <p className="text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 leading-relaxed">
                     {activeHero.description ||
                       "Garantía oficial y servicio técnico garantizado por INFOSISTEL en Huancayo."}
                   </p>
 
                   <div className="flex items-baseline gap-3 pt-0.5">
-                    <div className="text-2xl sm:text-3xl font-black text-cyan-400">
+                    <div className="text-2xl sm:text-3xl font-black text-blue-600">
                       S/{" "}
                       {(activeHero.onSale && activeHero.salePrice
                         ? activeHero.salePrice
@@ -768,7 +709,7 @@ export function CatalogoKiosk({
                       ).toFixed(2)}
                     </div>
                     {activeHero.onSale && activeHero.salePrice && (
-                      <div className="text-xs sm:text-sm text-slate-500 line-through">
+                      <div className="text-xs sm:text-sm text-slate-400 line-through">
                         S/ {activeHero.price.toFixed(2)}
                       </div>
                     )}
@@ -780,7 +721,7 @@ export function CatalogoKiosk({
                         setDetailProduct(activeHero);
                         kioskAudio.open(soundEnabled);
                       }}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md active:scale-95 transition-all"
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm shadow-blue-500/20 active:scale-95 transition-all"
                     >
                       <Eye size={16} />
                       <span>Ver Ficha & QR</span>
@@ -788,7 +729,7 @@ export function CatalogoKiosk({
 
                     <button
                       onClick={() => addToCart(activeHero)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-700 bg-slate-800/90 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-200 hover:text-white active:scale-95 transition-all"
+                      className="flex items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-800 active:scale-95 transition-all shadow-xs"
                     >
                       <Plus size={16} />
                       <span>Cotizar</span>
@@ -796,14 +737,14 @@ export function CatalogoKiosk({
                   </div>
                 </div>
 
-                {/* Foto / Ilustración grande en Hero */}
+                {/* Foto / Ilustración en pedestal blanco */}
                 <div className="md:col-span-5 flex items-center justify-center">
                   <div
                     onClick={() => {
                       setDetailProduct(activeHero);
                       kioskAudio.open(soundEnabled);
                     }}
-                    className="relative flex h-40 sm:h-56 md:h-64 w-full max-w-xs sm:max-w-sm items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-950/80 p-3 border border-slate-800/80 shadow-inner group cursor-pointer"
+                    className="relative flex h-44 sm:h-56 md:h-64 w-full max-w-xs sm:max-w-sm items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-50 p-4 border border-slate-200/80 shadow-xs group cursor-pointer"
                   >
                     {activeHero.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -813,14 +754,16 @@ export function CatalogoKiosk({
                         className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                       />
                     ) : (
-                      <div className="flex flex-col items-center justify-center text-slate-600 group-hover:text-cyan-400 transition-colors">
-                        <CategoryIcon category={activeHero.category} size={64} />
-                        <span className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-wider">
+                      <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
+                        <div className="h-16 w-16 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-center mb-2">
+                          <CategoryIcon category={activeHero.category} size={36} className="text-blue-600" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
                           {activeHero.category}
                         </span>
                       </div>
                     )}
-                    <div className="absolute bottom-2 right-2 rounded-lg bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-[10px] font-bold text-cyan-300">
+                    <div className="absolute bottom-2 right-2 rounded-lg bg-white/95 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs">
                       Toca para ampliar
                     </div>
                   </div>
@@ -830,20 +773,19 @@ export function CatalogoKiosk({
           </div>
         )}
 
-        {/* BÚSQUEDA Y CATEGORÍAS RESPONSIVE */}
+        {/* BÚSQUEDA Y CATEGORÍAS */}
         <div className="px-3 sm:px-6 py-2 sm:py-3 space-y-3">
-          
-          {/* Barra de búsqueda adaptativa */}
+          {/* Barra de Búsqueda */}
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400" />
+              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Buscar mouse, teclado, laptop, repuesto o código..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => kioskAudio.key(soundEnabled)}
-                className="w-full h-10 sm:h-12 rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900/90 pl-10 pr-9 text-sm sm:text-base font-medium text-white placeholder-slate-500 shadow-inner focus:border-cyan-500 focus:outline-none transition-colors"
+                className="w-full h-11 sm:h-12 rounded-xl sm:rounded-2xl border border-slate-200 bg-white pl-10 pr-9 text-sm sm:text-base font-medium text-slate-900 placeholder:text-slate-400 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-50 transition-all"
               />
               {searchQuery && (
                 <button
@@ -851,7 +793,7 @@ export function CatalogoKiosk({
                     kioskAudio.close(soundEnabled);
                     setSearchQuery("");
                   }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:text-slate-900"
                 >
                   <X size={14} />
                 </button>
@@ -866,10 +808,10 @@ export function CatalogoKiosk({
                 if (next) kioskAudio.open(soundEnabled);
                 else kioskAudio.close(soundEnabled);
               }}
-              className={`hidden sm:flex h-10 sm:h-12 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 text-xs font-bold transition-all active:scale-95 shrink-0 ${
+              className={`hidden sm:flex h-11 sm:h-12 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 text-xs font-bold transition-all active:scale-95 shrink-0 shadow-xs ${
                 showVirtualKeyboard
-                  ? "border-cyan-400 bg-cyan-950/80 text-cyan-300"
-                  : "border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
               <span>⌨️ Teclado</span>
@@ -878,7 +820,7 @@ export function CatalogoKiosk({
 
           {/* TECLADO EN PANTALLA TÁCTIL */}
           {showVirtualKeyboard && (
-            <div className="rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-3 sm:p-4 shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-2 duration-200">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xl animate-in slide-in-from-top-2 duration-200">
               <div className="space-y-1.5 sm:space-y-2">
                 {keyboardRows.map((row, rIdx) => (
                   <div key={rIdx} className="flex justify-center gap-1 sm:gap-2">
@@ -886,7 +828,7 @@ export function CatalogoKiosk({
                       <button
                         key={char}
                         onClick={() => handleVirtualKey(char)}
-                        className="flex h-9 w-7 sm:h-12 sm:w-12 items-center justify-center rounded-lg sm:rounded-xl border border-slate-700 bg-slate-900 text-xs sm:text-base font-bold text-white shadow-md active:scale-90 transition-transform"
+                        className="flex h-9 w-7 sm:h-12 sm:w-12 items-center justify-center rounded-lg sm:rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-base font-bold text-slate-800 shadow-xs active:scale-90 transition-transform"
                       >
                         {char}
                       </button>
@@ -897,25 +839,25 @@ export function CatalogoKiosk({
                 <div className="flex justify-center gap-1.5 pt-1">
                   <button
                     onClick={handleVirtualClear}
-                    className="flex h-9 px-3 items-center justify-center rounded-lg border border-red-500/40 bg-red-950/40 text-[11px] font-bold text-red-300 active:scale-95"
+                    className="flex h-9 px-3 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-[11px] font-bold text-red-700 active:scale-95"
                   >
                     Limpiar
                   </button>
                   <button
                     onClick={handleVirtualSpace}
-                    className="flex h-9 flex-1 max-w-xs items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-xs font-bold text-slate-300 active:scale-95"
+                    className="flex h-9 flex-1 max-w-xs items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700 active:scale-95"
                   >
                     ESPACIO
                   </button>
                   <button
                     onClick={handleVirtualBackspace}
-                    className="flex h-9 px-3 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-950/40 text-[11px] font-bold text-amber-300 active:scale-95"
+                    className="flex h-9 px-3 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-[11px] font-bold text-amber-800 active:scale-95"
                   >
                     ⌫ Borrar
                   </button>
                   <button
                     onClick={() => setShowVirtualKeyboard(false)}
-                    className="flex h-9 px-3 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-bold text-slate-400 active:scale-95"
+                    className="flex h-9 px-3 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-600 active:scale-95"
                   >
                     Cerrar
                   </button>
@@ -924,73 +866,75 @@ export function CatalogoKiosk({
             </div>
           )}
 
-          {/* FILTROS Y CATEGORÍAS FLUIDAS */}
+          {/* FILTROS Y CATEGORÍAS */}
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
-            {/* Botón TODOS */}
+            {/* TODOS */}
             <button
               onClick={() => {
                 setActiveCategory("TODOS");
                 setFilterType("all");
                 kioskAudio.tap(soundEnabled);
               }}
-              className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
                 activeCategory === "TODOS" && filterType === "all"
-                  ? "border-cyan-400 bg-cyan-950/90 text-cyan-300 shadow-sm"
-                  : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white"
+                  ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
               <span>Todos ({products.length})</span>
             </button>
 
-            {/* Filtros rápidos */}
+            {/* Destacados */}
             <button
               onClick={() => {
                 setFilterType(filterType === "featured" ? "all" : "featured");
                 kioskAudio.tap(soundEnabled);
               }}
-              className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+              className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
                 filterType === "featured"
-                  ? "border-amber-400 bg-amber-950/80 text-amber-300"
-                  : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white"
+                  ? "border-amber-400 bg-amber-500 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <Sparkles size={13} className="text-amber-400" />
+              <Sparkles size={13} className={filterType === "featured" ? "text-white" : "text-amber-500"} />
               <span>Destacados</span>
             </button>
 
+            {/* Ofertas */}
             <button
               onClick={() => {
                 setFilterType(filterType === "onsale" ? "all" : "onsale");
                 kioskAudio.tap(soundEnabled);
               }}
-              className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+              className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
                 filterType === "onsale"
-                  ? "border-red-400 bg-red-950/80 text-red-300"
-                  : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white"
+                  ? "border-red-400 bg-red-600 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <Flame size={13} className="text-red-400" />
+              <Flame size={13} className={filterType === "onsale" ? "text-white" : "text-red-500"} />
               <span>Ofertas</span>
             </button>
 
+            {/* En Stock */}
             <button
               onClick={() => {
                 setFilterType(filterType === "instock" ? "all" : "instock");
                 kioskAudio.tap(soundEnabled);
               }}
-              className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+              className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
                 filterType === "instock"
-                  ? "border-emerald-400 bg-emerald-950/80 text-emerald-300"
-                  : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white"
+                  ? "border-emerald-500 bg-emerald-600 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <PackageCheck size={13} className="text-emerald-400" />
+              <PackageCheck size={13} className={filterType === "instock" ? "text-white" : "text-emerald-600"} />
               <span>En Stock</span>
             </button>
 
-            {categories.length > 0 && <div className="h-5 w-px bg-slate-800 shrink-0 mx-1" />}
+            {categories.length > 0 && <div className="h-5 w-px bg-slate-200 shrink-0 mx-1" />}
 
-            {/* Categorías Dinámicas (Mouse, Teclados, Laptops, etc.) */}
+            {/* Categorías Dinámicas */}
             {categories.map((cat) => {
               const isSelected = activeCategory.trim().toUpperCase() === cat.name.trim().toUpperCase();
               return (
@@ -1000,15 +944,19 @@ export function CatalogoKiosk({
                     setActiveCategory(isSelected ? "TODOS" : cat.name);
                     kioskAudio.tap(soundEnabled);
                   }}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+                  className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
                     isSelected
-                      ? "border-cyan-400 bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-600/20"
-                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white"
+                      ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                   }`}
                 >
-                  <CategoryIcon category={cat.name} size={14} />
+                  <CategoryIcon category={cat.name} size={14} className={isSelected ? "text-white" : "text-blue-600"} />
                   <span>{cat.name}</span>
-                  <span className="rounded-full bg-slate-950/70 px-1.5 py-0.2 text-[9px] sm:text-[10px] text-cyan-300 font-bold">
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[9px] sm:text-[10px] font-bold ${
+                      isSelected ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
                     {cat.count}
                   </span>
                 </button>
@@ -1017,17 +965,17 @@ export function CatalogoKiosk({
           </div>
         </div>
 
-        {/* CUADRÍCULA DE PRODUCTOS FLUIDA */}
-        <div className="flex-1 p-3 sm:p-6 pt-0">
+        {/* CUADRÍCULA DE PRODUCTOS PROFESIONAL */}
+        <div className="flex-1 p-3 sm:p-6 pt-1">
           {filteredProducts.length === 0 ? (
-            <div className="flex h-64 sm:h-80 flex-col items-center justify-center text-center p-6 rounded-2xl sm:rounded-3xl border border-slate-800/80 bg-slate-900/30 my-2">
-              <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-slate-900 text-slate-500 border border-slate-800 mb-2 sm:mb-3">
+            <div className="flex h-64 sm:h-80 flex-col items-center justify-center text-center p-6 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white my-2 shadow-xs">
+              <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 border border-slate-200 mb-2 sm:mb-3">
                 <Search size={24} />
               </div>
-              <h3 className="text-base sm:text-lg font-bold text-white mb-1">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-1">
                 No se encontraron productos coincidentes
               </h3>
-              <p className="text-xs text-slate-400 max-w-sm mb-4">
+              <p className="text-xs text-slate-500 max-w-sm mb-4">
                 Prueba con otro término de búsqueda o limpia los filtros para explorar todo nuestro inventario.
               </p>
               <button
@@ -1037,7 +985,7 @@ export function CatalogoKiosk({
                   setFilterType("all");
                   kioskAudio.close(soundEnabled);
                 }}
-                className="flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-4 py-2 text-xs font-bold text-cyan-400 hover:bg-cyan-900/60"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 shadow-xs"
               >
                 <RotateCcw size={14} />
                 <span>Restablecer filtros</span>
@@ -1058,22 +1006,22 @@ export function CatalogoKiosk({
                       setDetailProduct(p);
                       kioskAudio.open(soundEnabled);
                     }}
-                    className="group relative flex flex-col justify-between overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-800/80 bg-slate-900/70 p-2.5 sm:p-4 transition-all duration-200 hover:border-cyan-500/50 hover:bg-slate-900 hover:shadow-xl hover:shadow-cyan-950/30 active:scale-[0.98] cursor-pointer"
+                    className="group relative flex flex-col justify-between overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-2.5 sm:p-4 transition-all duration-200 hover:border-blue-400 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] cursor-pointer shadow-xs"
                   >
                     {/* Header Card */}
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <span className="rounded-lg border border-slate-700/60 bg-slate-950/80 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-cyan-400 truncate max-w-[80px] sm:max-w-none">
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate max-w-[80px] sm:max-w-none">
                         {p.category}
                       </span>
                       {p.onSale && discount > 0 && (
-                        <span className="flex items-center gap-0.5 rounded-lg bg-gradient-to-r from-red-600 to-amber-600 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-black uppercase text-white shrink-0">
+                        <span className="flex items-center gap-0.5 rounded-lg bg-red-600 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-black uppercase text-white shrink-0">
                           <Flame size={10} /> -{discount}%
                         </span>
                       )}
                     </div>
 
-                    {/* Foto / Ilustración */}
-                    <div className="relative my-1.5 flex h-32 sm:h-44 w-full items-center justify-center rounded-xl sm:rounded-2xl bg-slate-950/80 p-2 overflow-hidden border border-slate-800/50">
+                    {/* Foto / Ilustración en pedestal blanco */}
+                    <div className="relative my-1.5 flex h-32 sm:h-44 w-full items-center justify-center rounded-xl sm:rounded-2xl bg-slate-50 p-2 overflow-hidden border border-slate-100">
                       {p.image ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -1082,21 +1030,23 @@ export function CatalogoKiosk({
                           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                         />
                       ) : (
-                        <div className="flex flex-col items-center justify-center text-slate-600 group-hover:text-cyan-400 transition-colors">
-                          <CategoryIcon category={p.category} size={40} />
-                          <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">
+                        <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
+                          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-center mb-1">
+                            <CategoryIcon category={p.category} size={28} className="text-blue-600" />
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-600 uppercase">
                             {p.category}
                           </span>
                         </div>
                       )}
 
-                      <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-md sm:rounded-xl bg-slate-950/90 border border-slate-800 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold">
+                      <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-md sm:rounded-xl bg-white/95 border border-slate-200 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold shadow-xs">
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            p.stock > 0 ? "bg-emerald-400 animate-pulse" : "bg-red-400"
+                            p.stock > 0 ? "bg-emerald-500 animate-pulse" : "bg-red-400"
                           }`}
                         />
-                        <span className={p.stock > 0 ? "text-emerald-300" : "text-red-400"}>
+                        <span className={p.stock > 0 ? "text-slate-800" : "text-red-600"}>
                           {p.stock > 0 ? `${p.stock} en tienda` : "Agotado"}
                         </span>
                       </div>
@@ -1104,21 +1054,21 @@ export function CatalogoKiosk({
 
                     {/* Título y Código */}
                     <div className="space-y-0.5 mb-2">
-                      <div className="text-[9px] sm:text-[10px] font-mono text-slate-500">INF-{p.itemNumber}</div>
-                      <h4 className="font-bold text-xs sm:text-sm text-white line-clamp-2 leading-snug group-hover:text-cyan-300 transition-colors">
+                      <div className="text-[9px] sm:text-[10px] font-mono text-slate-400">INF-{p.itemNumber}</div>
+                      <h4 className="font-bold text-xs sm:text-sm text-slate-900 line-clamp-2 leading-snug group-hover:text-blue-600 transition-colors">
                         {p.name}
                       </h4>
                     </div>
 
                     {/* Precios y Botón QR / Cotización */}
-                    <div className="mt-auto pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1.5">
+                    <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
                       <div>
                         {p.onSale && p.salePrice && (
-                          <div className="text-[10px] sm:text-[11px] text-slate-500 line-through">
+                          <div className="text-[10px] sm:text-[11px] text-slate-400 line-through">
                             S/ {p.price.toFixed(2)}
                           </div>
                         )}
-                        <div className="font-black text-sm sm:text-base md:text-lg text-cyan-400">
+                        <div className="font-black text-sm sm:text-base md:text-lg text-slate-950">
                           S/ {finalPrice.toFixed(2)}
                         </div>
                       </div>
@@ -1130,7 +1080,7 @@ export function CatalogoKiosk({
                             setDetailProduct(p);
                             kioskAudio.open(soundEnabled);
                           }}
-                          className="flex h-8 px-2 sm:h-9 sm:px-2.5 items-center gap-1 rounded-lg sm:rounded-xl border border-cyan-500/40 bg-cyan-950/50 text-[11px] font-bold text-cyan-300 hover:bg-cyan-900/60 active:scale-95 transition-all"
+                          className="flex h-8 px-2 sm:h-9 sm:px-2.5 items-center gap-1 rounded-lg sm:rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 active:scale-95 transition-all shadow-xs"
                           title="Escanear QR o ver ficha"
                         >
                           <QrCode size={13} />
@@ -1143,12 +1093,12 @@ export function CatalogoKiosk({
                             if (p.stock > 0) addToCart(p);
                           }}
                           disabled={p.stock <= 0}
-                          className={`flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl border transition-all active:scale-90 ${
+                          className={`flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl border transition-all active:scale-90 shadow-xs ${
                             p.stock <= 0
-                              ? "border-slate-800 bg-slate-950 text-slate-600 cursor-not-allowed"
+                              ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
                               : inCart
-                              ? "border-emerald-500 bg-emerald-950/60 text-emerald-400"
-                              : "border-slate-700 bg-slate-800 text-white hover:border-cyan-500 hover:text-cyan-300"
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                              : "border-blue-600 bg-blue-600 text-white hover:bg-blue-700"
                           }`}
                           title="Agregar a cotización"
                         >
@@ -1164,19 +1114,17 @@ export function CatalogoKiosk({
         </div>
       </div>
 
-      {/* ======================================================== */}
-      {/* MODAL FICHA TÉCNICA Y CÓDIGO QR GIGANTE                   */}
-      {/* ======================================================== */}
+      {/* MODAL FICHA TÉCNICA */}
       {detailProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-500/30 bg-slate-950 p-4 sm:p-6 md:p-8 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 md:p-8 shadow-2xl">
             {/* Botón Cerrar */}
             <button
               onClick={() => {
                 setDetailProduct(null);
                 kioskAudio.close(soundEnabled);
               }}
-              className="absolute right-4 top-4 z-10 flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-xl sm:rounded-2xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white active:scale-90 transition-transform"
+              className="absolute right-4 top-4 z-10 flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-xl sm:rounded-2xl bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 active:scale-90 transition-transform"
             >
               <X size={18} />
             </button>
@@ -1184,7 +1132,7 @@ export function CatalogoKiosk({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8 overflow-y-auto pr-1">
               {/* Imagen y Código QR */}
               <div className="space-y-3 sm:space-y-4">
-                <div className="relative flex h-48 sm:h-64 md:h-72 w-full items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 p-3 sm:p-4">
+                <div className="relative flex h-48 sm:h-64 md:h-72 w-full items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-50 border border-slate-200 p-4">
                   {detailProduct.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -1193,31 +1141,33 @@ export function CatalogoKiosk({
                       className="h-full w-full object-contain"
                     />
                   ) : (
-                    <div className="flex flex-col items-center justify-center text-slate-600">
-                      <CategoryIcon category={detailProduct.category} size={64} />
-                      <span className="text-xs font-bold text-slate-400 mt-2 uppercase">
+                    <div className="flex flex-col items-center justify-center text-slate-400">
+                      <div className="h-20 w-20 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-2">
+                        <CategoryIcon category={detailProduct.category} size={48} className="text-blue-600" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-600 uppercase">
                         {detailProduct.category}
                       </span>
                     </div>
                   )}
                 </div>
 
-                {/* Código QR llamativo para smartphone */}
-                <div className="rounded-xl sm:rounded-2xl border border-cyan-500/40 bg-cyan-950/40 p-3 sm:p-4 flex items-center gap-3 sm:gap-4 shadow-lg">
+                {/* QR para WhatsApp */}
+                <div className="rounded-xl sm:rounded-2xl border border-blue-200 bg-blue-50/60 p-3 sm:p-4 flex items-center gap-3 sm:gap-4 shadow-xs">
                   {productQrDataUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={productQrDataUrl}
                       alt="Código QR"
-                      className="h-20 w-20 sm:h-24 sm:w-24 rounded-lg sm:rounded-xl border border-slate-700 bg-white p-1 shadow-md shrink-0"
+                      className="h-20 w-20 sm:h-24 sm:w-24 rounded-lg sm:rounded-xl border border-slate-200 bg-white p-1 shadow-sm shrink-0"
                     />
                   )}
                   <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-black text-cyan-300">
+                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-black text-blue-900">
                       <QrCode size={15} />
                       <span>¡LLÉVATELO EN TU CELULAR!</span>
                     </div>
-                    <p className="text-[11px] sm:text-xs text-slate-300 leading-snug">
+                    <p className="text-[11px] sm:text-xs text-slate-600 leading-snug">
                       Apunta la cámara de tu celular a este código para abrir WhatsApp con Infosistel y pedir este producto directamente.
                     </p>
                   </div>
@@ -1228,23 +1178,23 @@ export function CatalogoKiosk({
               <div className="flex flex-col justify-between space-y-4 sm:space-y-5">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="rounded-lg border border-cyan-500/40 bg-cyan-950 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-cyan-400 uppercase">
+                    <span className="rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-slate-700 uppercase">
                       {detailProduct.category}
                     </span>
-                    <span className="text-[10px] sm:text-xs font-mono text-slate-500">
+                    <span className="text-[10px] sm:text-xs font-mono text-slate-400">
                       INF-{detailProduct.itemNumber}
                     </span>
                   </div>
 
-                  <h2 className="text-base sm:text-xl md:text-2xl font-extrabold text-white leading-snug mb-2 sm:mb-3">
+                  <h2 className="text-base sm:text-xl md:text-2xl font-extrabold text-slate-900 leading-snug mb-2 sm:mb-3">
                     {detailProduct.name}
                   </h2>
 
                   <div className="mb-3 sm:mb-4">
-                    <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
                       Descripción técnica:
                     </div>
-                    <div className="rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4 text-xs sm:text-sm text-slate-200 leading-relaxed max-h-36 sm:max-h-44 overflow-y-auto">
+                    <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4 text-xs sm:text-sm text-slate-700 leading-relaxed max-h-36 sm:max-h-44 overflow-y-auto">
                       {detailProduct.description ||
                         "Garantía oficial y soporte técnico garantizado en tienda INFOSISTEL."}
                     </div>
@@ -1253,10 +1203,10 @@ export function CatalogoKiosk({
                   <div className="flex items-center gap-1.5">
                     <div
                       className={`h-2 w-2 rounded-full ${
-                        detailProduct.stock > 0 ? "bg-emerald-400 animate-pulse" : "bg-red-500"
+                        detailProduct.stock > 0 ? "bg-emerald-500 animate-pulse" : "bg-red-500"
                       }`}
                     />
-                    <span className="text-xs font-bold text-slate-200">
+                    <span className="text-xs font-bold text-slate-700">
                       {detailProduct.stock > 0
                         ? `Stock disponible en tienda: ${detailProduct.stock} unidades`
                         : "Agotado temporalmente"}
@@ -1264,10 +1214,10 @@ export function CatalogoKiosk({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
                   <div>
-                    <div className="text-[10px] sm:text-xs text-slate-400">Precio de tienda:</div>
-                    <div className="text-xl sm:text-3xl font-black text-cyan-400">
+                    <div className="text-[10px] sm:text-xs text-slate-500">Precio en tienda:</div>
+                    <div className="text-xl sm:text-3xl font-black text-blue-600">
                       S/{" "}
                       {(detailProduct.onSale && detailProduct.salePrice
                         ? detailProduct.salePrice
@@ -1284,7 +1234,7 @@ export function CatalogoKiosk({
                       }
                     }}
                     disabled={detailProduct.stock <= 0}
-                    className="rounded-xl sm:rounded-2xl border border-cyan-500 bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 sm:px-6 sm:py-3.5 text-xs sm:text-sm font-bold text-white shadow-md active:scale-95 transition-all"
+                    className="rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-700 px-5 py-3 sm:px-6 sm:py-3.5 text-xs sm:text-sm font-bold text-white shadow-sm shadow-blue-500/20 active:scale-95 transition-all"
                   >
                     + Agregar a Cotización
                   </button>
@@ -1295,20 +1245,18 @@ export function CatalogoKiosk({
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* DRAWER LATERAL DE COTIZACIÓN                             */}
-      {/* ======================================================== */}
+      {/* DRAWER LATERAL DE COTIZACIÓN */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative flex h-full w-full max-w-md sm:max-w-lg flex-col border-l border-cyan-500/30 bg-slate-950 p-4 sm:p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 sm:pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative flex h-full w-full max-w-md sm:max-w-lg flex-col border-l border-slate-200 bg-white p-4 sm:p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 sm:pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800">
+                <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
                   <ShoppingBag size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm sm:text-base text-white">Mi Cotización</h3>
-                  <p className="text-[11px] sm:text-xs text-slate-400">
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900">Mi Cotización</h3>
+                  <p className="text-[11px] sm:text-xs text-slate-500">
                     {cart.length} productos agregados
                   </p>
                 </div>
@@ -1318,7 +1266,7 @@ export function CatalogoKiosk({
                   setIsCartOpen(false);
                   kioskAudio.close(soundEnabled);
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900"
               >
                 <X size={16} />
               </button>
@@ -1327,8 +1275,8 @@ export function CatalogoKiosk({
             <div className="flex-1 overflow-y-auto py-3 space-y-2.5">
               {cart.length === 0 ? (
                 <div className="flex h-64 flex-col items-center justify-center text-center">
-                  <ShoppingBag size={32} className="text-slate-700 mb-2" />
-                  <p className="text-xs text-slate-400">Aún no has agregado productos a tu lista.</p>
+                  <ShoppingBag size={32} className="text-slate-300 mb-2" />
+                  <p className="text-xs text-slate-500">Aún no has agregado productos a tu lista.</p>
                 </div>
               ) : (
                 cart.map((item) => {
@@ -1339,10 +1287,10 @@ export function CatalogoKiosk({
                   return (
                     <div
                       key={item.product.id}
-                      className="flex items-center justify-between gap-2.5 rounded-xl border border-slate-800 bg-slate-900/60 p-2.5"
+                      className="flex items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-xs"
                     >
                       <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-950 border border-slate-800 p-1">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 p-1">
                           {item.product.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -1351,12 +1299,12 @@ export function CatalogoKiosk({
                               className="h-full w-full object-contain"
                             />
                           ) : (
-                            <CategoryIcon category={item.product.category} size={16} />
+                            <CategoryIcon category={item.product.category} size={16} className="text-blue-600" />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-xs text-white truncate">{item.product.name}</div>
-                          <div className="text-[11px] text-cyan-400 font-semibold">
+                          <div className="font-bold text-xs text-slate-900 truncate">{item.product.name}</div>
+                          <div className="text-[11px] text-blue-700 font-semibold">
                             S/ {p.toFixed(2)}
                           </div>
                         </div>
@@ -1365,22 +1313,22 @@ export function CatalogoKiosk({
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => updateQuantity(item.product.id, -1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-800 border border-slate-700 text-slate-300 active:scale-90"
+                          className="flex h-7 w-7 items-center justify-center rounded-md bg-white border border-slate-200 text-slate-700 active:scale-90"
                         >
                           <Minus size={11} />
                         </button>
-                        <span className="font-bold text-xs text-white w-4 text-center">
+                        <span className="font-bold text-xs text-slate-900 w-4 text-center">
                           {item.quantity}
                         </span>
                         <button
                           onClick={() => updateQuantity(item.product.id, 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-900/50 border border-cyan-700 text-cyan-300 active:scale-90"
+                          className="flex h-7 w-7 items-center justify-center rounded-md bg-white border border-slate-200 text-slate-700 active:scale-90"
                         >
                           <Plus size={11} />
                         </button>
                         <button
                           onClick={() => removeFromCart(item.product.id)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md bg-red-950/40 border border-red-800/40 text-red-400 hover:text-red-300 ml-0.5 active:scale-90"
+                          className="flex h-7 w-7 items-center justify-center rounded-md bg-red-50 border border-red-200 text-red-600 hover:text-red-700 ml-0.5 active:scale-90"
                         >
                           <Trash2 size={11} />
                         </button>
@@ -1391,20 +1339,20 @@ export function CatalogoKiosk({
               )}
 
               {quoteTicketQr && (
-                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-4 text-center space-y-2.5 animate-in zoom-in-95 duration-200">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50/80 p-4 text-center space-y-2.5 animate-in zoom-in-95 duration-200">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
                     ¡Ticket para Caja Listo!
                   </div>
-                  <div className="font-mono text-lg font-black text-white">#{ticketNumber}</div>
+                  <div className="font-mono text-lg font-black text-slate-900">#{ticketNumber}</div>
                   <div className="flex justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={quoteTicketQr}
                       alt="QR Cotización"
-                      className="h-36 w-36 rounded-xl border border-slate-700 bg-white p-1.5 shadow-lg"
+                      className="h-36 w-36 rounded-xl border border-slate-200 bg-white p-1.5 shadow-md"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] text-slate-600">
                     Muestra este código al vendedor o escanéalo con tu WhatsApp para procesar tu orden.
                   </p>
                 </div>
@@ -1412,22 +1360,22 @@ export function CatalogoKiosk({
             </div>
 
             {cart.length > 0 && (
-              <div className="border-t border-slate-800 pt-3 space-y-3">
+              <div className="border-t border-slate-200 pt-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400 font-semibold text-xs">TOTAL A PAGAR:</span>
-                  <span className="font-black text-lg text-cyan-400">S/ {cartTotal.toFixed(2)}</span>
+                  <span className="text-slate-600 font-semibold text-xs">TOTAL A PAGAR:</span>
+                  <span className="font-black text-xl text-blue-600">S/ {cartTotal.toFixed(2)}</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={clearCart}
-                    className="rounded-xl border border-slate-800 bg-slate-900 py-2.5 text-xs font-bold text-slate-400 hover:text-white active:scale-95 transition-all"
+                    className="rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all shadow-xs"
                   >
                     Vaciar
                   </button>
                   <button
                     onClick={handleGenerateTicket}
-                    className="rounded-xl border border-cyan-500 bg-gradient-to-r from-cyan-600 to-blue-600 py-2.5 text-xs font-bold text-white shadow-md active:scale-95 transition-all"
+                    className="rounded-xl bg-blue-600 hover:bg-blue-700 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 active:scale-95 transition-all"
                   >
                     Generar Ticket QR
                   </button>
