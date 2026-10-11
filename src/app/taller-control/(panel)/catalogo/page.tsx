@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { Tv, Package, Sparkles, Flame, CheckCircle, Tag } from "lucide-react";
+import { Tv, Package, Sparkles, Flame, CheckCircle } from "lucide-react";
 import { getCatalogoData } from "@/app/catalogo/actions";
 import { StatCard } from "../StatCard";
 import { CatalogoAdminToolbar } from "./CatalogoAdminToolbar";

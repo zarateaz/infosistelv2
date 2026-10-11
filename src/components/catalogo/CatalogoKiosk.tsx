@@ -14,11 +14,6 @@ import {
   Sparkles,
   Flame,
   PackageCheck,
-  LayoutGrid,
-  Tv,
-  Layers,
-  ChevronLeft,
-  ChevronRight,
   Plus,
   Minus,
   Trash2,
@@ -28,12 +23,8 @@ import {
   CheckCircle2,
   ShoppingBag,
   Eye,
-  Info,
   Play,
   Pause,
-  MessageCircle,
-  HelpCircle,
-  ArrowRight
 } from "lucide-react";
 import type { CatalogoProduct, CatalogoCategory } from "@/app/catalogo/actions";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";

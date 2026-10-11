@@ -4,14 +4,11 @@ import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import {
   Tv,
-  ExternalLink,
   Copy,
   Check,
   QrCode,
-  Sparkles,
   Maximize2,
   X,
-  Share2,
   Smartphone
 } from "lucide-react";
 
