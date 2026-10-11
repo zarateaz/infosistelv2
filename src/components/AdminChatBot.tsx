@@ -5,6 +5,8 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { MessageCircle, X, ArrowUp, Camera, Image as ImageIcon, Ghost } from "lucide-react";
 import { CameraScanner } from "@/app/taller-control/(panel)/productos/CameraScanner";
+import { Cobweb, HangingSpider, BatSVG } from "@/app/taller-control/login/SpookyDecor";
+import "@/app/taller-control/login/halloween.css";
 
 export function AdminChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -77,34 +79,39 @@ export function AdminChatBot() {
     <>
       <button
         onClick={() => setIsOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-orange-600 text-white shadow-lg shadow-orange-600/30 transition-transform hover:scale-105"
+        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-cyan-400 border border-cyan-800 shadow-[0_0_15px_rgba(8,145,178,0.5)] transition-transform hover:scale-105"
       >
         {isOpen ? <X size={22} /> : <Ghost size={22} className="animate-bounce" />}
       </button>
 
       {isOpen && (
         <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-orange-600 to-purple-700 px-4 py-3 text-white">
-            <div className="flex items-center gap-2">
-              <Ghost size={18} />
-              <span className="font-bold">Asistente IA - Inventario 🎃</span>
+          <div className="flex shrink-0 items-center justify-between bg-slate-950 border-b border-cyan-900/50 px-4 py-3 text-cyan-300 relative overflow-hidden">
+            <BatSVG className="absolute -top-1 -right-2 w-12 text-slate-800/50 transform rotate-12" />
+            <BatSVG className="absolute top-2 left-20 w-8 text-slate-800/50 transform -rotate-12" />
+            <div className="flex items-center gap-2 relative z-10">
+              <Ghost size={18} className="text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" />
+              <span className="font-bold tracking-wider uppercase text-cyan-50">Cripta IA</span>
             </div>
             <button onClick={() => setIsOpen(false)} className="hover:text-gray-200">
               <X size={18} />
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 text-sm">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900 text-sm relative">
+            <Cobweb size={100} className="absolute top-0 left-0 text-cyan-900/30" />
+            <Cobweb size={80} className="absolute top-0 right-0" flip />
+            <HangingSpider length={40} size={20} className="right-4" delay={0.5} />
             {messages.length === 0 && (
-              <p className="text-gray-500 text-center">
+              <p className="text-cyan-700/80 text-center italic mt-10">
                 Escribe un producto, toma una foto o escanea su código de barras para descontar stock o añadir existencias.
               </p>
             )}
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                    m.role === "user" ? "bg-orange-600 text-white" : "bg-orange-50 text-orange-950 border border-orange-100 whitespace-pre-wrap"
+                  className={`max-w-[85%] rounded-lg px-3 py-2 relative z-10 shadow-lg ${
+                    m.role === "user" ? "bg-cyan-900 text-cyan-50 border border-cyan-700" : "bg-slate-800 text-cyan-100 border border-cyan-900 whitespace-pre-wrap"
                   }`}
                 >
                   {m.parts.map((part, i) => {
@@ -119,10 +126,10 @@ export function AdminChatBot() {
                     if (part.type === "tool-buscarProductoAdmin" || part.type === "tool-registrarVentaAdmin" || part.type === "tool-ajustarStockAdmin") {
                       if (part.state === "output-available") {
                         if (part.type === "tool-registrarVentaAdmin") {
-                          return <div key={i} className="mt-2 text-xs font-bold text-green-700">🛒 Stock descontado con éxito</div>;
+                          return <div key={i} className="mt-2 text-xs font-bold text-cyan-400">🛒 Stock descontado en las sombras</div>;
                         }
                         if (part.type === "tool-ajustarStockAdmin") {
-                          return <div key={i} className="mt-2 text-xs font-bold text-orange-700">📦 Stock añadido con éxito</div>;
+                          return <div key={i} className="mt-2 text-xs font-bold text-blue-400">📦 Stock invocado con éxito</div>;
                         }
                         return <div key={i} className="mt-2 text-xs opacity-80">✅ Búsqueda completada</div>;
                       } else {
@@ -144,7 +151,7 @@ export function AdminChatBot() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col border-t border-gray-200 bg-white p-3 gap-2">
+          <form onSubmit={handleSubmit} className="flex flex-col border-t border-cyan-900/50 bg-slate-950 p-3 gap-2 relative">
             {imagePreviewUrl && (
               <div className="relative self-start mb-2 rounded-lg border border-gray-200 p-1">
                 <img src={imagePreviewUrl} alt="Preview" className="h-16 w-16 object-cover rounded" />
@@ -168,7 +175,7 @@ export function AdminChatBot() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center rounded-lg bg-gray-100 p-2 text-gray-600 hover:bg-gray-200"
+                className="flex items-center justify-center rounded-lg bg-slate-800 p-2 text-cyan-500 hover:bg-slate-700 hover:text-cyan-300"
                 title="Subir Foto"
               >
                 <ImageIcon size={20} />
@@ -176,7 +183,7 @@ export function AdminChatBot() {
               <button
                 type="button"
                 onClick={() => setShowScanner(true)}
-                className="flex items-center justify-center rounded-lg bg-gray-100 p-2 text-gray-600 hover:bg-gray-200"
+                className="flex items-center justify-center rounded-lg bg-slate-800 p-2 text-cyan-500 hover:bg-slate-700 hover:text-cyan-300"
                 title="Escanear Código de Barras"
               >
                 <Camera size={20} />
@@ -186,12 +193,12 @@ export function AdminChatBot() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ej: Descuenta 1 teclado..."
                 disabled={isBusy}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 text-black disabled:opacity-50"
+                className="flex-1 rounded-lg border border-cyan-900 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-cyan-500 text-cyan-100 placeholder-cyan-800 disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={(!input.trim() && !selectedImage) || isBusy}
-                className="rounded-lg bg-orange-600 px-3 py-2 text-white disabled:opacity-50 hover:bg-orange-700"
+                className="rounded-lg bg-cyan-900 px-3 py-2 text-cyan-50 border border-cyan-700 disabled:opacity-50 hover:bg-cyan-800"
               >
                 <ArrowUp size={18} />
               </button>
