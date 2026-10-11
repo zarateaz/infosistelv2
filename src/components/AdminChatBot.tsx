@@ -83,7 +83,27 @@ export function AdminChatBot() {
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-3xl border border-indigo-100 bg-white/95 shadow-[0_20px_60px_-15px_rgba(79,70,229,0.25)] ring-1 ring-black/5">
+          {/* Arañas de Halloween */}
+          <div className="absolute inset-0 pointer-events-none z-[100] overflow-hidden rounded-3xl">
+            <svg className="absolute left-[15%] -top-10 w-8 h-8 text-black opacity-0 walking-spider" viewBox="0 0 60 60">
+              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
+                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
+                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
+              </g>
+              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
+              <path d="M27 34 L33 34 L30 38 L33 42 L27 42 L30 38 Z" fill="#ff5e1a" />
+              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
+            </svg>
+            <svg className="absolute right-[25%] -top-10 w-6 h-6 text-slate-800 opacity-0 walking-spider-delay" viewBox="0 0 60 60">
+              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
+                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
+                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
+              </g>
+              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
+              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
+            </svg>
+          </div>
           <div className="flex shrink-0 items-center justify-between bg-white/95 px-5 py-4 border-b border-gray-100 backdrop-blur-md">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">

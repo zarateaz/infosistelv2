@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { MessageCircle, X, ArrowUp, Sparkles } from "lucide-react";
+import "@/app/taller-control/login/halloween.css";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 
 // The chat bubble renders plain text (no markdown parser, by design — no
@@ -136,9 +137,9 @@ function buildGreeting(visitor: VisitorMemory): UIMessage {
   const lastCategory = visitor.recentCategories[0];
   const text = visitor.returning
     ? lastCategory
-      ? `¡Qué bueno tenerte de vuelta! ¿Sigues buscando algo de ${lastCategory.toLowerCase()}, o te ayudo con otra cosa?`
-      : "¡Qué bueno tenerte de vuelta! ¿En qué te ayudo hoy — catálogo, reparación o algo puntual?"
-    : "¡Hola! Soy el asistente de INFOSISTEL. Vendemos y reparamos laptops, PCs, impresoras, redes y accesorios en Huancayo. Elige una opción o cuéntame qué buscas.";
+      ? `¡Hola de nuevo! 👋 Es un honor tenerte de vuelta en INFOSISTEL. ¿Deseas seguir explorando nuestras opciones de ${lastCategory.toLowerCase()} o te gustaría que te ayude con algo completamente nuevo? Estoy a tu entera disposición.`
+      : "¡Hola de nuevo! 👋 Qué gusto verte por aquí. En INFOSISTEL estamos listos para brindarte la mejor tecnología y servicio. ¿En qué te puedo asesorar el día de hoy?"
+    : "¡Hola y muy bienvenido a INFOSISTEL! 👋 Nos enorgullece ofrecerte la mejor tecnología, equipos y servicio técnico en todo Huancayo. ¿En qué te podemos ayudar hoy? Ya sea buscar el equipo perfecto o reparar uno, estoy aquí para guiarte paso a paso de la manera más amable.";
   return { id: "infosistel-welcome", role: "assistant", parts: [{ type: "text", text }] };
 }
 
@@ -189,19 +190,10 @@ export function ChatBot() {
     try {
       localStorage.setItem(LS_RETURNING_KEY, "1");
     } catch {
-      // no crítico — en el peor caso, la próxima visita se trata como si
-      // fuera la primera.
+      // no crítico
     }
-    if (visitor.returning) {
-      const t = setTimeout(() => setShowPulse(false), 6000);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setIsOpen(true), 3500);
+    const t = setTimeout(() => setIsOpen(true), 1500);
     return () => clearTimeout(t);
-    // Solo al montar: `visitor.returning` leído aquí es a propósito el
-    // valor de ANTES de esta visita (ver useState de `visitor` arriba), no
-    // algo a lo que este efecto deba reaccionar si cambiara después.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // "Aprende" qué categorías le interesan a este visitante a partir de lo
@@ -262,8 +254,28 @@ export function ChatBot() {
         // goes back to the small floating-card layout.
         <div
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-          className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white/95 backdrop-blur-xl shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
+          className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-blue-100 bg-white/95 backdrop-blur-xl shadow-[0_20px_60px_-15px_rgba(37,99,235,0.25)] ring-1 ring-black/5 sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
         >
+          {/* Arañas de Halloween que caminan y desaparecen al abrir */}
+          <div className="absolute inset-0 pointer-events-none z-[100] overflow-hidden rounded-3xl">
+            <svg className="absolute left-[10%] -top-10 w-8 h-8 text-black opacity-0 walking-spider" viewBox="0 0 60 60">
+              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
+                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
+                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
+              </g>
+              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
+              <path d="M27 34 L33 34 L30 38 L33 42 L27 42 L30 38 Z" fill="#ff5e1a" />
+              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
+            </svg>
+            <svg className="absolute right-[20%] -top-10 w-6 h-6 text-slate-800 opacity-0 walking-spider-delay" viewBox="0 0 60 60">
+              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
+                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
+                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
+              </g>
+              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
+              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
+            </svg>
+          </div>
           <div className="flex shrink-0 items-center gap-4 bg-white px-6 py-4 border-b border-gray-100">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 shadow-inner">
               <Sparkles size={18} className="text-blue-600" />
