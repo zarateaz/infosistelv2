@@ -3,8 +3,21 @@
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { MessageCircle, X, ArrowUp, Camera, Image as ImageIcon, Sparkles } from "lucide-react";
+import { MessageCircle, X, ArrowUp, Camera, Image as ImageIcon, Ghost } from "lucide-react";
 import { CameraScanner } from "@/app/taller-control/(panel)/productos/CameraScanner";
+import { Cobweb, HangingSpider, BatSVG } from "@/app/taller-control/login/SpookyDecor";
+import "@/app/taller-control/login/halloween.css";
+
+const WitchSVG = ({ className = "" }: { className?: string }) => (
+  <svg viewBox="0 0 100 100" fill="currentColor" className={className}>
+    <path d="M10 60 L90 40 L90 45 L10 65 Z" fill="#4b5563"/>
+    <polygon points="90,40 100,25 95,55" fill="#ca8a04"/>
+    <path d="M40 50 Q30 65 45 70 L55 70 Q65 60 50 50 Z" fill="#1f2937"/>
+    <polygon points="35,50 60,45 45,15" fill="#111827"/>
+    <ellipse cx="45" cy="50" rx="18" ry="4" fill="#111827" transform="rotate(-10 45 50)"/>
+    <path d="M35 50 Q20 40 25 30 Q30 45 35 50" fill="#374151"/>
+  </svg>
+);
 
 export function AdminChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -77,56 +90,45 @@ export function AdminChatBot() {
     <>
       <button
         onClick={() => setIsOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-[0_8px_30px_rgba(79,70,229,0.4)] transition-all hover:scale-105 hover:shadow-[0_8px_30px_rgba(79,70,229,0.6)] active:scale-95"
+        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-orange-500 border border-purple-900 shadow-[0_0_20px_rgba(168,85,247,0.6)] transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(168,85,247,0.8)] active:scale-95"
       >
-        {isOpen ? <X size={22} /> : <MessageCircle size={22} />}
+        {isOpen ? <X size={22} /> : <Ghost size={22} className="animate-bounce drop-shadow-[0_0_8px_rgba(249,115,22,0.8)]" />}
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-3xl border border-indigo-100 bg-white/95 shadow-[0_20px_60px_-15px_rgba(79,70,229,0.25)] ring-1 ring-black/5">
-          {/* Arañas de Halloween */}
+        <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-3xl border border-purple-900/50 bg-slate-950 shadow-[0_0_40px_rgba(168,85,247,0.25)] ring-1 ring-black/5">
+          {/* Arañas y Bruja de Halloween */}
           <div className="absolute inset-0 pointer-events-none z-[100] overflow-hidden rounded-3xl">
-            <svg className="absolute left-[15%] -top-10 w-8 h-8 text-black opacity-0 walking-spider" viewBox="0 0 60 60">
-              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
-                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
-                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
-              </g>
-              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
-              <path d="M27 34 L33 34 L30 38 L33 42 L27 42 L30 38 Z" fill="#ff5e1a" />
-              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
-            </svg>
-            <svg className="absolute right-[25%] -top-10 w-6 h-6 text-slate-800 opacity-0 walking-spider-delay" viewBox="0 0 60 60">
-              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
-                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
-                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
-              </g>
-              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
-              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
-            </svg>
+            <WitchSVG className="absolute top-0 right-10 w-24 h-24 text-black opacity-0 witch-drop" />
+            <BatSVG className="absolute top-12 left-4 w-10 text-black/40 transform -rotate-12 hw-float" />
+            <BatSVG className="absolute top-4 right-16 w-8 text-black/40 transform rotate-12 hw-float" style={{ animationDelay: "1s" }} />
           </div>
-          <div className="flex shrink-0 items-center justify-between bg-white/95 px-5 py-4 border-b border-gray-100 backdrop-blur-md">
+          <div className="flex shrink-0 items-center justify-between bg-slate-950 px-5 py-4 border-b border-purple-900/50 relative z-10">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                <Sparkles size={16} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-900/50 text-orange-500 border border-purple-800">
+                <Ghost size={16} className="drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]" />
               </div>
-              <span className="font-extrabold text-gray-900 tracking-tight">Asistente IA</span>
+              <span className="font-extrabold text-purple-100 tracking-wider uppercase">Cripta Admin</span>
             </div>
-            <button onClick={() => setIsOpen(false)} className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+            <button onClick={() => setIsOpen(false)} className="rounded-full p-2 text-purple-400 hover:bg-purple-900 hover:text-purple-200 transition-colors">
               <X size={18} />
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50 text-sm">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-900 text-sm relative">
+            <Cobweb size={120} className="absolute top-0 left-0 text-purple-900/30" />
+            <Cobweb size={90} className="absolute top-0 right-0 text-purple-900/30" flip />
+            <HangingSpider length={50} size={24} className="right-6" delay={1.2} />
             {messages.length === 0 && (
-              <p className="text-gray-500 text-center px-4 leading-relaxed mt-4">
-                Escribe un producto, toma una foto o escanea su código de barras para gestionar tu stock de manera inteligente.
+              <p className="text-purple-500/80 text-center px-4 leading-relaxed mt-10 italic">
+                Escribe un producto, toma una foto o escanea su código de barras para invocar tu stock desde el más allá.
               </p>
             )}
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed shadow-sm ${
-                    m.role === "user" ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-md shadow-blue-500/20" : "bg-white border border-gray-100 text-gray-700 rounded-bl-md"
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed shadow-lg relative z-10 ${
+                    m.role === "user" ? "bg-purple-900 text-purple-50 border border-purple-700 rounded-br-md shadow-purple-900/40" : "bg-slate-800 border border-purple-900/50 text-purple-200 rounded-bl-md"
                   }`}
                 >
                   {m.parts.map((part, i) => {
@@ -141,10 +143,10 @@ export function AdminChatBot() {
                     if (part.type === "tool-buscarProductoAdmin" || part.type === "tool-registrarVentaAdmin" || part.type === "tool-ajustarStockAdmin") {
                       if (part.state === "output-available") {
                         if (part.type === "tool-registrarVentaAdmin") {
-                          return <div key={i} className="mt-2 text-xs font-bold text-green-700">🛒 Stock descontado con éxito</div>;
+                          return <div key={i} className="mt-2 text-xs font-bold text-orange-500">🛒 Stock descontado en las sombras</div>;
                         }
                         if (part.type === "tool-ajustarStockAdmin") {
-                          return <div key={i} className="mt-2 text-xs font-bold text-blue-700">📦 Stock añadido con éxito</div>;
+                          return <div key={i} className="mt-2 text-xs font-bold text-purple-400">📦 Stock invocado con éxito</div>;
                         }
                         return <div key={i} className="mt-2 text-xs opacity-80">✅ Búsqueda completada</div>;
                       } else {
@@ -166,7 +168,7 @@ export function AdminChatBot() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col border-t border-gray-100 bg-white/95 p-4 gap-3 backdrop-blur-md">
+          <form onSubmit={handleSubmit} className="flex flex-col border-t border-purple-900/50 bg-slate-950 p-4 gap-3 relative z-10">
             {imagePreviewUrl && (
               <div className="relative self-start mb-2 rounded-lg border border-gray-200 p-1">
                 <img src={imagePreviewUrl} alt="Preview" className="h-16 w-16 object-cover rounded" />
@@ -190,7 +192,7 @@ export function AdminChatBot() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center rounded-lg bg-gray-100 p-2 text-gray-600 hover:bg-gray-200"
+                className="flex items-center justify-center rounded-xl bg-slate-800 p-2 text-purple-400 hover:bg-slate-700 hover:text-purple-300 transition-colors"
                 title="Subir Foto"
               >
                 <ImageIcon size={20} />
@@ -198,7 +200,7 @@ export function AdminChatBot() {
               <button
                 type="button"
                 onClick={() => setShowScanner(true)}
-                className="flex items-center justify-center rounded-lg bg-gray-100 p-2 text-gray-600 hover:bg-gray-200"
+                className="flex items-center justify-center rounded-xl bg-slate-800 p-2 text-purple-400 hover:bg-slate-700 hover:text-purple-300 transition-colors"
                 title="Escanear Código de Barras"
               >
                 <Camera size={20} />
@@ -208,12 +210,12 @@ export function AdminChatBot() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ej: Descuenta 1 teclado..."
                 disabled={isBusy}
-                className="flex-1 rounded-2xl border border-transparent bg-gray-100 px-4 py-2.5 text-sm outline-none transition-all placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50"
+                className="flex-1 rounded-2xl border border-transparent bg-slate-900 px-4 py-2.5 text-sm text-purple-100 outline-none transition-all placeholder:text-purple-800 focus:border-purple-600 focus:bg-slate-800 focus:ring-4 focus:ring-purple-900/50 disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={(!input.trim() && !selectedImage) || isBusy}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-700 text-white transition-all hover:scale-105 hover:bg-purple-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_0_10px_rgba(126,34,206,0.5)]"
               >
                 <ArrowUp size={18} />
               </button>
