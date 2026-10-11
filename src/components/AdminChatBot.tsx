@@ -8,16 +8,6 @@ import { CameraScanner } from "@/app/taller-control/(panel)/productos/CameraScan
 import { Cobweb, HangingSpider, BatSVG } from "@/app/taller-control/login/SpookyDecor";
 import "@/app/taller-control/login/halloween.css";
 
-const WitchSVG = ({ className = "" }: { className?: string }) => (
-  <svg viewBox="0 0 100 100" fill="currentColor" className={className}>
-    <path d="M10 60 L90 40 L90 45 L10 65 Z" fill="#4b5563"/>
-    <polygon points="90,40 100,25 95,55" fill="#ca8a04"/>
-    <path d="M40 50 Q30 65 45 70 L55 70 Q65 60 50 50 Z" fill="#1f2937"/>
-    <polygon points="35,50 60,45 45,15" fill="#111827"/>
-    <ellipse cx="45" cy="50" rx="18" ry="4" fill="#111827" transform="rotate(-10 45 50)"/>
-    <path d="M35 50 Q20 40 25 30 Q30 45 35 50" fill="#374151"/>
-  </svg>
-);
 
 export function AdminChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -99,7 +89,8 @@ export function AdminChatBot() {
         <div className="fixed bottom-24 right-6 z-[100] flex h-[550px] w-[400px] flex-col overflow-hidden rounded-3xl border border-purple-900/50 bg-slate-950 shadow-[0_0_40px_rgba(168,85,247,0.25)] ring-1 ring-black/5">
           {/* Arañas y Bruja de Halloween */}
           <div className="absolute inset-0 pointer-events-none z-[100] overflow-hidden rounded-3xl">
-            <WitchSVG className="absolute top-0 right-10 w-24 h-24 text-black opacity-0 witch-drop" />
+            <svg className="absolute left-[10%] -top-10 w-8 h-8 text-black opacity-0 walking-spider" viewBox="0 0 60 60"><g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none"><path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" /><path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" /></g><ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" /><path d="M27 34 L33 34 L30 38 L33 42 L27 42 L30 38 Z" fill="#ff5e1a" /><circle cx="30" cy="24" r="6.5" fill="currentColor" /></svg>
+            <svg className="absolute right-[20%] -top-10 w-6 h-6 text-slate-800 opacity-0 walking-spider-delay" viewBox="0 0 60 60"><g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none"><path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" /><path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" /></g><ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" /><path d="M27 34 L33 34 L30 38 L33 42 L27 42 L30 38 Z" fill="#ff5e1a" /><circle cx="30" cy="24" r="6.5" fill="currentColor" /></svg>
             <BatSVG className="absolute top-12 left-4 w-10 text-black/40 transform -rotate-12 hw-float" />
             <BatSVG className="absolute top-4 right-16 w-8 text-black/40 transform rotate-12 hw-float" style={{ animationDelay: "1s" }} />
           </div>
@@ -115,7 +106,7 @@ export function AdminChatBot() {
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-900 text-sm relative">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-5 space-y-5 bg-slate-900 text-sm relative">
             <Cobweb size={120} className="absolute top-0 left-0 text-purple-900/30" />
             <Cobweb size={90} className="absolute top-0 right-0 text-purple-900/30" flip />
             <HangingSpider length={50} size={24} className="right-6" delay={1.2} />
