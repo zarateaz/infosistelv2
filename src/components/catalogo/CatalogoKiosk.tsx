@@ -527,7 +527,7 @@ export function CatalogoKiosk({
       {/* PANTALLA DE BIENVENIDA PROFESIONAL EN BLANCO PURO */}
       {showWelcome && (
         <CinematicIntro
-          onEnter={(targetCat) => handleEnterCatalog(targetCat)}
+          onEnter={handleEnterCatalog}
           soundEnabled={soundEnabled}
           onToggleSound={() => {
             const next = !soundEnabled;
