@@ -124,9 +124,20 @@ export function HangingSpider({
   );
 }
 
-export function BatSVG({ className = "" }: { className?: string }) {
+export function BatSVG({
+  className = "",
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
-    <svg viewBox="0 0 100 100" fill="currentColor" className={`pointer-events-none ${className}`}>
+    <svg
+      viewBox="0 0 100 100"
+      fill="currentColor"
+      className={`pointer-events-none ${className}`}
+      style={style}
+    >
       <path d="M 50 45 Q 60 40 75 45 Q 90 20 95 30 Q 80 50 90 70 Q 75 60 65 70 Q 55 55 50 65 Q 45 55 35 70 Q 25 60 10 70 Q 20 50 5 30 Q 10 20 25 45 Q 40 40 50 45 Z" />
     </svg>
   );
