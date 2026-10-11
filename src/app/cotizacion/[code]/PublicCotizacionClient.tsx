@@ -130,11 +130,16 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
               <p className="text-xs text-fg-muted mt-1">
                 RUC: {COMPANY_RUC} · Huancayo, Junín · WhatsApp: (+51) 964 648 202
               </p>
-              <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/20 px-3.5 py-1 text-xs font-semibold text-accent">
+              <div className="mt-2.5 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-accent/10 border border-accent/20 px-3.5 py-1 text-xs font-semibold text-accent">
                 <span>🌐 ¡Visítanos en nuestra web:</span>
-                <Link href="/" className="underline hover:opacity-80 font-bold">
-                  infosistel.pe
-                </Link>
+                <a
+                  href="https://www.infosistel.com.pe/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:opacity-80 font-bold"
+                >
+                  https://www.infosistel.com.pe/
+                </a>
                 <span>! Cotizaciones y compras online 24/7</span>
               </div>
             </div>

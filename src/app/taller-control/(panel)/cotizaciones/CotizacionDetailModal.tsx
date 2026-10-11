@@ -72,7 +72,7 @@ export function CotizacionDetailModal({
   };
 
   const handleSendWhatsApp = async () => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://infosistel.pe";
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://www.infosistel.com.pe";
     const link = await buildWhatsAppQuotationLink(quotation, origin);
     window.open(link, "_blank");
   };
@@ -351,7 +351,7 @@ export function CotizacionDetailModal({
               </div>
               <div>
                 <p>• Tel / WhatsApp: +51 964 648 202</p>
-                <p>• Web oficial: infosistel.pe · Lun-Sáb 9am-7pm</p>
+                <p>• Web oficial: <a href="https://www.infosistel.com.pe/" target="_blank" rel="noopener noreferrer" className="hover:underline text-brand-primary font-medium">https://www.infosistel.com.pe/</a> · Lun-Sáb 9am-7pm</p>
               </div>
             </div>
           </div>

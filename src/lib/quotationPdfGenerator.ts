@@ -258,15 +258,15 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.roundedRect(webPillX, webPillY, webPillWidth, webPillHeight, 1.5, 1.5, "FD");
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.3);
   doc.setTextColor(10, 95, 219);
   doc.text(
-    "¡Visítanos en nuestra página web: infosistel.pe! Cotiza y compra online 24/7",
+    "¡Visítanos en nuestra web: https://www.infosistel.com.pe/! Cotiza 24/7",
     webPillX + webPillWidth / 2,
     webPillY + 4.2,
     { align: "center" }
   );
-  doc.link(webPillX, webPillY, webPillWidth, webPillHeight, { url: "https://infosistel.pe" });
+  doc.link(webPillX, webPillY, webPillWidth, webPillHeight, { url: "https://www.infosistel.com.pe/" });
 
   // Right Header Box (Quotation Details Card)
   const headerBoxWidth = 72;
@@ -581,25 +581,24 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFontSize(6.5);
   doc.setTextColor(...brandPrimary);
   doc.text(
-    "¡Visítanos en nuestra web www.infosistel.pe! Explora todo nuestro catálogo tecnológico y cotiza online.",
+    "¡Visítanos en https://www.infosistel.com.pe/! Explora nuestro catálogo tecnológico y cotiza online.",
     visitBoxWidth / 2 + 14,
     visitBoxY + 23.2,
     { align: "center" }
   );
-  doc.link(15, visitBoxY + 19.5, visitBoxWidth - 2, 5.2, { url: "https://infosistel.pe" });
+  doc.link(15, visitBoxY + 19.5, visitBoxWidth - 2, 5.2, { url: "https://www.infosistel.com.pe/" });
 
   // Page Numbers and Footer
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
     doc.setTextColor(...mutedGray);
-    doc.text(
-      "Infosistel · Informática · Sistemas · Telecomunicaciones · Visítanos en infosistel.pe",
-      14,
-      pageHeight - 6
-    );
+    const footerText =
+      "Infosistel · Informática · Sistemas · Telecomunicaciones · Visítanos en https://www.infosistel.com.pe/";
+    doc.text(footerText, 14, pageHeight - 6);
+    doc.link(14, pageHeight - 9, 140, 5, { url: "https://www.infosistel.com.pe/" });
     doc.text(`Página ${i} de ${totalPages}`, pageWidth - 14, pageHeight - 6, { align: "right" });
   }
 

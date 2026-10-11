@@ -118,7 +118,8 @@ export function generateMonthlySalesReportPDF(data: MonthlyReportExportData) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text("TECNOLOGÍA · SERVICIO TÉCNICO · REPUESTOS", 14, 18);
-  doc.text("Contacto: 964 648 202 · infosistel.pe", 14, 23);
+  doc.text("Contacto: 964 648 202 · https://www.infosistel.com.pe/", 14, 23);
+  doc.link(14, 19.5, 95, 5, { url: "https://www.infosistel.com.pe/" });
 
   // Document Title on Right
   doc.setFont("helvetica", "bold");

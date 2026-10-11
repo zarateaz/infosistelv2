@@ -412,7 +412,7 @@ export async function searchCatalogProducts(query: string): Promise<CatalogProdu
 
 export async function buildWhatsAppQuotationLink(
   quotation: QuotationRecord,
-  baseUrl: string = "https://infosistel.pe"
+  baseUrl: string = "https://www.infosistel.com.pe"
 ): Promise<string> {
   const phone = quotation.clientPhone ? quotation.clientPhone.replace(/\D/g, "") : "";
   const targetPhone = phone.length >= 9 ? (phone.startsWith("51") ? phone : `51${phone}`) : "";

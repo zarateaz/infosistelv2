@@ -99,7 +99,7 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
   };
 
   const handleWhatsApp = async (q: QuotationRecord) => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://infosistel.pe";
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://www.infosistel.com.pe";
     const link = await buildWhatsAppQuotationLink(q, origin);
     window.open(link, "_blank");
   };

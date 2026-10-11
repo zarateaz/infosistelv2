@@ -8,7 +8,7 @@ export const COMPANY_NAME = "INFOSISTEL E.I.R.L.";
 export const COMPANY_BUSINESS_NAME = "INFORMATICA, SISTEMAS Y TELECOMUNICACIONES E.I.R.L.";
 export const COMPANY_EMAIL = "ecaballero@infosistel.com.pe";
 export const COMPANY_PHONE = "+51 964 648 202";
-export const COMPANY_WEB = "infosistel.pe";
+export const COMPANY_WEB = "https://www.infosistel.com.pe/";
 
 export const COMPANY_BANK_ACCOUNTS = [
   {
