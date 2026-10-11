@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import type { CatalogoProduct, CatalogoCategory } from "@/app/catalogo/actions";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
+import { CinematicIntro } from "./CinematicIntro";
 
 /**
  * Motor Acústico Háptico Ultra Fluido (Web Audio API)
@@ -194,6 +195,48 @@ class KioskAudioEngine {
       osc.stop(now + 0.06);
     } catch {}
   }
+
+  // Sonido cinemático épico para la entrada tipo trailer de video
+  cinematicIntro(enabled: boolean) {
+    if (!enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // Impacto sub-grave cinematográfico
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = "sine";
+      subOsc.frequency.setValueAtTime(115, now);
+      subOsc.frequency.exponentialRampToValueAtTime(38, now + 0.65);
+      subGain.gain.setValueAtTime(0.045, now);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.65);
+      subOsc.connect(subGain);
+      subGain.connect(ctx.destination);
+      subOsc.start(now);
+      subOsc.stop(now + 0.65);
+
+      // Acorde armónico de alta fidelidad
+      const notes = [
+        { f: 523.25, d: 0.06, dur: 0.45, v: 0.02 },
+        { f: 659.25, d: 0.12, dur: 0.5, v: 0.025 },
+        { f: 783.99, d: 0.2, dur: 0.55, v: 0.03 },
+        { f: 1046.5, d: 0.28, dur: 0.65, v: 0.035 },
+      ];
+      notes.forEach(({ f, d, dur, v }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(f, now + d);
+        gain.gain.setValueAtTime(v, now + d);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + d + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + d);
+        osc.stop(now + d + dur);
+      });
+    } catch {}
+  }
 }
 
 const kioskAudio = new KioskAudioEngine();
@@ -287,10 +330,10 @@ export function CatalogoKiosk({
     return () => clearInterval(timer);
   }, [showWelcome, soundEnabled]);
 
-  // Cerrar bienvenida y entrar al catálogo
+  // Cerrar bienvenida y entrar al catálogo con sonido cinemático
   const handleEnterCatalog = useCallback(
     (targetCategory?: string) => {
-      kioskAudio.success(soundEnabled);
+      kioskAudio.cinematicIntro(soundEnabled);
       if (targetCategory) {
         setActiveCategory(targetCategory);
       }
@@ -535,86 +578,21 @@ export function CatalogoKiosk({
       </div>
 
       {/* ======================================================== */}
-      {/* PANTALLA DE BIENVENIDA OFICIAL (ANIMADA Y FLUIDA)         */}
+      {/* ENTRADA CINEMÁTICA ÉPICA (LOGO BLANCO PURO + VIDEO 60FPS) */}
       {/* ======================================================== */}
       {showWelcome && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-2xl p-4 sm:p-8 animate-in fade-in duration-300">
-          <div className="relative flex flex-col items-center justify-center max-w-4xl w-full text-center space-y-6 sm:space-y-8 py-6">
-            
-            {/* Halo de luz de fondo */}
-            <div className="absolute h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-cyan-500/20 blur-[100px] -z-10 animate-pulse" />
-
-            {/* Logo Oficial de Infosistel con resplandor */}
-            <div className="relative group cursor-pointer" onClick={() => handleEnterCatalog()}>
-              <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-cyan-500/30 via-blue-500/20 to-purple-500/30 blur-xl opacity-75 group-hover:opacity-100 transition-opacity" />
-              <Image
-                src="/brand/infosistel-logo-v3.png"
-                alt="INFOSISTEL"
-                width={380}
-                height={70}
-                priority
-                className="relative h-12 xs:h-14 sm:h-16 md:h-20 w-auto object-contain brightness-110 drop-shadow-[0_0_25px_rgba(6,182,212,0.45)] transform group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
-
-            {/* Saludo dinámico */}
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/40 bg-cyan-950/60 px-4 py-1.5 text-xs sm:text-sm font-bold text-cyan-300 shadow-lg shadow-cyan-950/50">
-                <span>{greeting.icon}</span>
-                <span>{greeting.text}</span>
-                <span className="hidden sm:inline">· {greeting.sub}</span>
-              </div>
-              <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-tight">
-                Catálogo Digital <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">Interactivo</span>
-              </h1>
-              <p className="text-xs sm:text-base text-slate-300 max-w-xl mx-auto leading-relaxed">
-                Descubre en tiempo real nuestras laptops, teclados, mouses, monitores y repuestos con precios oficiales y stock garantizado.
-              </p>
-            </div>
-
-            {/* Accesos rápidos a categorías destacadas (Mouses, Teclados, Laptops, etc.) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5 w-full max-w-2xl pt-1">
-              {[
-                { name: "MOUSE", label: "Mouses & Ópticos", icon: Mouse, desc: "Gamer y oficina" },
-                { name: "TECLADOS", label: "Teclados", icon: Keyboard, desc: "Mecánicos y combos" },
-                { name: "LAPTOPS", label: "Laptops & PCs", icon: Laptop, desc: "Portátiles de alto nivel" },
-                { name: "MONITORES", label: "Monitores", icon: Monitor, desc: "IPS, 165Hz y FHD" },
-              ].map((item) => (
-                <button
-                  key={item.name}
-                  onClick={() => handleEnterCatalog(item.name)}
-                  className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl border border-slate-800 bg-slate-900/80 hover:border-cyan-500 hover:bg-slate-900 transition-all active:scale-95 group shadow-md"
-                >
-                  <item.icon size={26} className="text-cyan-400 group-hover:scale-110 transition-transform mb-1.5" />
-                  <span className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-300">{item.label}</span>
-                  <span className="text-[10px] text-slate-400">{item.desc}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Botón principal de entrada con cuenta regresiva */}
-            <div className="flex flex-col items-center gap-3 w-full max-w-md pt-2">
-              <button
-                onClick={() => handleEnterCatalog()}
-                className="w-full flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 px-6 py-4 text-sm sm:text-base font-black text-white shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 active:scale-95 transition-all group"
-              >
-                <Hand size={20} className="animate-bounce" />
-                <span>TOCAR PARA EXPLORAR CATÁLOGO</span>
-                <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <div className="h-1.5 w-24 bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-cyan-400 transition-all duration-1000 ease-linear rounded-full"
-                    style={{ width: `${(welcomeCountdown / 6) * 100}%` }}
-                  />
-                </div>
-                <span>Entrada automática en {welcomeCountdown}s</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CinematicIntro
+          onEnter={(targetCat) => handleEnterCatalog(targetCat)}
+          soundEnabled={soundEnabled}
+          onToggleSound={() => {
+            const next = !soundEnabled;
+            setSoundEnabled(next);
+            if (next) kioskAudio.tap(true);
+          }}
+          greetingText={greeting.text}
+          greetingIcon={greeting.icon}
+          autoEnterSeconds={8}
+        />
       )}
 
       {/* BARRA SUPERIOR DEL KIOSCO */}
