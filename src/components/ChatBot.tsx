@@ -130,16 +130,21 @@ function rememberCategories(seen: string[]) {
   }
 }
 
-// Mensaje sembrado en el cliente, sin llamar a DeepSeek: el chatbot debe
-// saludar y presentarse apenas alguien entra a la web, no recién cuando
-// escribe algo. Cambia de tono si ya reconoce al visitante.
+function getTimeGreeting(): string {
+  if (typeof window === "undefined") return "¡Hola!";
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "¡Buenos días! ☀️";
+  if (hour >= 12 && hour < 19) return "¡Buenas tardes! 🌤️";
+  return "¡Buenas noches! 🌙";
+}
+
+// Mensaje sembrado en el cliente con saludo según la hora del día en Huancayo/Perú
 function buildGreeting(visitor: VisitorMemory): UIMessage {
+  const timeGreeting = getTimeGreeting();
   const lastCategory = visitor.recentCategories[0];
-  const text = visitor.returning
-    ? lastCategory
-      ? `¡Hola de nuevo! 👋 Es un honor tenerte de vuelta en INFOSISTEL. ¿Deseas seguir explorando nuestras opciones de ${lastCategory.toLowerCase()} o te gustaría que te ayude con algo completamente nuevo? Estoy a tu entera disposición.`
-      : "¡Hola de nuevo! 👋 Qué gusto verte por aquí. En INFOSISTEL estamos listos para brindarte la mejor tecnología y servicio. ¿En qué te puedo asesorar el día de hoy?"
-    : "¡Hola y muy bienvenido a INFOSISTEL! 👋 Nos enorgullece ofrecerte la mejor tecnología, equipos y servicio técnico en todo Huancayo. ¿En qué te podemos ayudar hoy? Ya sea buscar el equipo perfecto o reparar uno, estoy aquí para guiarte paso a paso de la manera más amable.";
+  const text = visitor.returning && lastCategory
+    ? `${timeGreeting} Qué gusto saludarte. Bienvenido nuevamente a INFOSISTEL. 👋 ¿Deseas seguir revisando opciones de ${lastCategory.toLowerCase()} o necesitas asesoría con algún otro equipo o servicio técnico? Estoy a tu entera disposición.`
+    : `${timeGreeting} Te doy una cordial bienvenida a INFOSISTEL. 👋 Estamos listos para ayudarte con lo mejor en tecnología, repuestos y servicio técnico garantizado en Huancayo. ¿Buscas algún producto del catálogo o necesitas ayuda con una reparación? Cuéntame y te oriento al instante.`;
   return { id: "infosistel-welcome", role: "assistant", parts: [{ type: "text", text }] };
 }
 
