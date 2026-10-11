@@ -3,10 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { MessageCircle, X, ArrowUp, Ghost } from "lucide-react";
+import { MessageCircle, X, ArrowUp, Sparkles } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
-import { Cobweb, HangingSpider, BatSVG } from "@/app/taller-control/login/SpookyDecor";
-import "@/app/taller-control/login/halloween.css";
 
 // The chat bubble renders plain text (no markdown parser, by design — no
 // new dependency for a handful of short messages). The system prompt asks
@@ -244,13 +242,13 @@ export function ChatBot() {
       <button
         onClick={() => setIsOpen((v) => !v)}
         style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
-        className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-cyan-400 border border-cyan-800 shadow-[0_0_15px_rgba(8,145,178,0.5)] transition-transform hover:scale-105 active:scale-95"
+        className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-[0_8px_30px_rgba(79,70,229,0.3)] transition-all hover:scale-105 hover:shadow-[0_8px_30px_rgba(79,70,229,0.5)] active:scale-95"
         aria-label="Abrir asistente"
       >
         {showPulse && !isOpen && (
-          <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-cyan-500/40" />
+          <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-blue-500/60" />
         )}
-        {isOpen ? <X size={22} /> : <Ghost size={22} className="animate-bounce drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" />}
+        {isOpen ? <X size={22} /> : <Sparkles size={22} />}
       </button>
 
       {isOpen && (
@@ -264,38 +262,32 @@ export function ChatBot() {
         // goes back to the small floating-card layout.
         <div
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-          className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-cyan-900 bg-slate-900 shadow-[0_0_30px_rgba(8,145,178,0.3)] sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
+          className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white/95 backdrop-blur-xl shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
         >
-          <div className="flex shrink-0 items-center gap-3 bg-slate-950 border-b border-cyan-900/50 px-5 py-4 relative overflow-hidden">
-            <BatSVG className="absolute -top-1 -right-2 w-12 text-slate-800/50 transform rotate-12" />
-            <BatSVG className="absolute top-2 left-20 w-8 text-slate-800/50 transform -rotate-12" />
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-900/30 relative z-10 border border-cyan-800/50">
-              <Ghost size={16} className="text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" />
+          <div className="flex shrink-0 items-center gap-4 bg-white px-6 py-4 border-b border-gray-100">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 shadow-inner">
+              <Sparkles size={18} className="text-blue-600" />
             </div>
-            <div className="min-w-0 flex-1 relative z-10">
-              <p className="text-sm font-bold tracking-wider uppercase leading-tight text-cyan-50">Cripta Infosistel</p>
-              <p className="text-[11px] font-medium text-cyan-400/80">Te responde desde el más allá</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-extrabold tracking-tight text-gray-900">Asistente Infosistel</p>
+              <p className="text-xs font-medium text-gray-500">Respuestas en segundos</p>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1 text-accent-fg/70 transition-colors hover:text-accent-fg"
+              className="p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 rounded-full"
             >
               <X size={18} />
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 relative">
-            <Cobweb size={100} className="absolute top-0 left-0 text-cyan-900/30" />
-            <Cobweb size={80} className="absolute top-0 right-0" flip />
-            <HangingSpider length={40} size={20} className="right-4" delay={0.5} />
-            
+          <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-5 bg-slate-50/50">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed relative z-10 shadow-lg ${
+                  className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
                     message.role === "user"
-                      ? "rounded-br-md bg-cyan-900 text-cyan-50 border border-cyan-700"
-                      : "rounded-bl-md bg-slate-800 text-cyan-100 border border-cyan-900"
+                      ? "rounded-br-md bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-blue-500/20"
+                      : "rounded-bl-md bg-white border border-gray-100 text-gray-700"
                   }`}
                 >
                   {message.parts.map((part, i) => {
@@ -330,7 +322,7 @@ export function ChatBot() {
                   <button
                     key={qr.label}
                     onClick={() => handleQuickReply(qr.text)}
-                    className="rounded-full border border-cyan-900 bg-slate-800 px-3 py-1.5 text-xs font-bold text-cyan-400 transition-colors hover:bg-cyan-900 hover:text-cyan-100 hover:border-cyan-700 relative z-10"
+                    className="rounded-full border border-gray-200 bg-white shadow-sm px-4 py-2 text-xs font-bold text-gray-600 transition-all hover:border-blue-500 hover:text-blue-600 hover:shadow"
                   >
                     {qr.label}
                   </button>
@@ -339,12 +331,12 @@ export function ChatBot() {
             )}
 
             {isBusy && (
-              <div className="flex justify-start relative z-10">
-                <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-slate-800 border border-cyan-900 px-4 py-3 shadow-lg">
+              <div className="flex justify-start">
+                <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-white border border-gray-100 shadow-sm px-5 py-4">
                   {[0, 1, 2].map((i) => (
                     <span
                       key={i}
-                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-600"
+                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400"
                       style={{ animationDelay: `${i * 150}ms` }}
                     />
                   ))}
@@ -373,11 +365,11 @@ export function ChatBot() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex shrink-0 items-center gap-2 border-t border-cyan-900/50 bg-slate-950 p-3 relative">
+          <form onSubmit={handleSubmit} className="flex shrink-0 items-center gap-3 border-t border-gray-100 bg-white/95 p-4 backdrop-blur-md">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Invoca tu pregunta..."
+              placeholder="Escribe tu pregunta..."
               disabled={isBusy}
               maxLength={MAX_MESSAGE_CHARS}
               // 16px (text-base), not text-sm (14px) — below 16px, iOS
@@ -385,13 +377,13 @@ export function ChatBot() {
               // small phone screen shoves the input out from under the
               // keyboard. Purely a mobile-correctness fix, invisible on
               // desktop.
-              className="flex-1 rounded-full border border-cyan-900 bg-slate-900 px-4 py-2.5 text-base text-cyan-100 outline-none placeholder:text-cyan-800/70 focus:border-cyan-500 disabled:opacity-60"
+              className="flex-1 rounded-2xl bg-gray-100 border border-transparent px-4 py-3 text-base text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={isBusy || !input.trim()}
               aria-label="Enviar"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-700 bg-cyan-900 text-cyan-50 transition-transform hover:scale-105 hover:bg-cyan-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-500/30 transition-all hover:scale-105 hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowUp size={18} />
             </button>
