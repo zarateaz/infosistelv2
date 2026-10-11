@@ -25,60 +25,178 @@ import {
   Eye,
   Play,
   Pause,
+  ArrowRight,
+  Hand,
+  Laptop,
+  Mouse,
+  Keyboard,
+  Monitor,
+  Headphones,
+  HardDrive,
+  Printer,
+  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import type { CatalogoProduct, CatalogoCategory } from "@/app/catalogo/actions";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 
-// Síntesis de sonido táctil mediante Web Audio API
-function playHapticSound(enabled: boolean, type: "tap" | "success" | "key" | "open" | "close" = "tap") {
-  if (!enabled || typeof window === "undefined") return;
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+/**
+ * Motor Acústico Háptico Ultra Fluido (Web Audio API)
+ * Diseñado específicamente para pantallas táctiles y kioscos de tienda:
+ * Sonido aterciopelado tipo burbuja/gota de agua (waterdrop haptic tap),
+ * libre de frecuencias chirriantes o metálicas.
+ */
+class KioskAudioEngine {
+  private ctx: AudioContext | null = null;
 
-    if (type === "tap" || type === "key") {
+  private getContext(): AudioContext | null {
+    if (typeof window === "undefined") return null;
+    try {
+      if (!this.ctx) {
+        const AudioCtxClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtxClass) {
+          this.ctx = new AudioCtxClass();
+        }
+      }
+      if (this.ctx && this.ctx.state === "suspended") {
+        this.ctx.resume().catch(() => {});
+      }
+      return this.ctx;
+    } catch {
+      return null;
+    }
+  }
+
+  // Toque suave táctil (Waterdrop / Bubble Tap)
+  tap(enabled: boolean) {
+    if (!enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(1200, now);
+      filter.Q.setValueAtTime(2.2, now);
+
       osc.type = "sine";
-      osc.frequency.setValueAtTime(type === "key" ? 540 : 640, now);
-      osc.frequency.exponentialRampToValueAtTime(320, now + 0.04);
-      gain.gain.setValueAtTime(0.06, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      osc.frequency.setValueAtTime(720, now);
+      osc.frequency.exponentialRampToValueAtTime(310, now + 0.04);
+
+      gain.gain.setValueAtTime(0.03, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
       osc.start(now);
       osc.stop(now + 0.04);
-    } else if (type === "success") {
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
-    } else if (type === "open") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(320, now);
-      osc.frequency.exponentialRampToValueAtTime(640, now + 0.07);
-      gain.gain.setValueAtTime(0.07, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-      osc.start(now);
-      osc.stop(now + 0.07);
-    } else if (type === "close") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(640, now);
-      osc.frequency.exponentialRampToValueAtTime(320, now + 0.07);
-      gain.gain.setValueAtTime(0.05, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-      osc.start(now);
-      osc.stop(now + 0.07);
+    } catch {
+      // Ignorar bloqueos de autoplay
     }
-  } catch {
-    // Silencio si no hay interacción previa
+  }
+
+  // Tecla del teclado virtual en pantalla (micro click táctil)
+  key(enabled: boolean) {
+    if (!enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(540, now);
+      osc.frequency.exponentialRampToValueAtTime(260, now + 0.03);
+
+      gain.gain.setValueAtTime(0.02, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.03);
+    } catch {}
+  }
+
+  // Éxito / Agregar a cotización (acorde armónico C6 - G6 cristalino)
+  success(enabled: boolean) {
+    if (!enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const notes = [
+        { freq: 1046.5, delay: 0, dur: 0.12, vol: 0.035 },
+        { freq: 1567.98, delay: 0.05, dur: 0.16, vol: 0.04 },
+      ];
+      notes.forEach(({ freq, delay, dur, vol }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + delay);
+        gain.gain.setValueAtTime(vol, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + dur);
+      });
+    } catch {}
+  }
+
+  // Abrir ventana / modal (sweep ascendente suave)
+  open(enabled: boolean) {
+    if (!enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(360, now);
+      osc.frequency.exponentialRampToValueAtTime(740, now + 0.07);
+      gain.gain.setValueAtTime(0.025, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    } catch {}
+  }
+
+  // Cerrar ventana / modal (sweep descendente sutil)
+  close(enabled: boolean) {
+    if (!enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(620, now);
+      osc.frequency.exponentialRampToValueAtTime(260, now + 0.06);
+      gain.gain.setValueAtTime(0.02, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    } catch {}
   }
 }
+
+const kioskAudio = new KioskAudioEngine();
 
 interface CartItem {
   product: CatalogoProduct;
@@ -102,6 +220,10 @@ export function CatalogoKiosk({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "featured" | "onsale" | "instock">("all");
 
+  // PANTALLA DE BIENVENIDA OFICIAL (Splash interactivo)
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [welcomeCountdown, setWelcomeCountdown] = useState(6);
+
   // Opciones de Kiosco / Pantallas
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -120,8 +242,16 @@ export function CatalogoKiosk({
   const [quoteTicketQr, setQuoteTicketQr] = useState<string>("");
   const [ticketNumber, setTicketNumber] = useState<string>("");
 
-  // Inactividad para modo presentación (80s)
+  // Inactividad para volver a la pantalla de bienvenida / vitrina (90s)
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Saludo dinámico según la hora de Huancayo
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return { text: "¡Buenos días!", icon: "☀️", sub: "Bienvenido a INFOSISTEL" };
+    if (hour >= 12 && hour < 19) return { text: "¡Buenas tardes!", icon: "⛅", sub: "Bienvenido a INFOSISTEL" };
+    return { text: "¡Buenas noches!", icon: "🌙", sub: "Bienvenido a INFOSISTEL" };
+  }, []);
 
   // Reloj digital para la tienda
   useEffect(() => {
@@ -140,6 +270,34 @@ export function CatalogoKiosk({
     const interval = setInterval(updateClock, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Contador de entrada automática en bienvenida
+  useEffect(() => {
+    if (!showWelcome) return;
+    const timer = setInterval(() => {
+      setWelcomeCountdown((prev) => {
+        if (prev <= 1) {
+          setShowWelcome(false);
+          kioskAudio.open(soundEnabled);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [showWelcome, soundEnabled]);
+
+  // Cerrar bienvenida y entrar al catálogo
+  const handleEnterCatalog = useCallback(
+    (targetCategory?: string) => {
+      kioskAudio.success(soundEnabled);
+      if (targetCategory) {
+        setActiveCategory(targetCategory);
+      }
+      setShowWelcome(false);
+    },
+    [soundEnabled]
+  );
 
   // Productos destacados o en oferta para el banner de vitrina
   const showcaseProducts = useMemo(() => {
@@ -166,7 +324,7 @@ export function CatalogoKiosk({
   }, []);
 
   const toggleFullscreen = useCallback(() => {
-    playHapticSound(soundEnabled, "tap");
+    kioskAudio.tap(soundEnabled);
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
     } else {
@@ -174,18 +332,20 @@ export function CatalogoKiosk({
     }
   }, [soundEnabled]);
 
-  // Detector de inactividad
+  // Detector de inactividad: Regresa a la bienvenida o activa vitrina
   const resetIdle = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (isAutoplayActive) {
       setIsAutoplayActive(false);
     }
-    if (!detailProduct && !isCartOpen) {
+    if (!detailProduct && !isCartOpen && !showWelcome) {
       idleTimerRef.current = setTimeout(() => {
-        setIsAutoplayActive(true);
-      }, 80000);
+        // Al estar inactivo 85 segundos en la tienda, mostrar la pantalla de bienvenida interactiva
+        setShowWelcome(true);
+        setWelcomeCountdown(10);
+      }, 85000);
     }
-  }, [isAutoplayActive, detailProduct, isCartOpen]);
+  }, [isAutoplayActive, detailProduct, isCartOpen, showWelcome]);
 
   useEffect(() => {
     const events = ["mousedown", "mousemove", "touchstart", "touchmove", "keydown"];
@@ -203,8 +363,9 @@ export function CatalogoKiosk({
       setProductQrDataUrl("");
       return;
     }
-    const finalPrice = detailProduct.onSale && detailProduct.salePrice ? detailProduct.salePrice : detailProduct.price;
-    const waText = `Hola Infosistel, vi en la pantalla de su tienda el producto: ${detailProduct.name} (Código: INF-${detailProduct.itemNumber}) por S/ ${finalPrice.toFixed(2)}. ¿Tienen stock disponible?`;
+    const finalPrice =
+      detailProduct.onSale && detailProduct.salePrice ? detailProduct.salePrice : detailProduct.price;
+    const waText = `Hola INFOSISTEL, vi en la pantalla de su tienda el producto: ${detailProduct.name} (Código: INF-${detailProduct.itemNumber}) por S/ ${finalPrice.toFixed(2)}. ¿Tienen stock disponible?`;
     const waUrl = `https://wa.me/51964648202?text=${encodeURIComponent(waText)}`;
 
     QRCode.toDataURL(waUrl, {
@@ -220,7 +381,10 @@ export function CatalogoKiosk({
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       // Categoría
-      if (activeCategory !== "TODOS" && p.category.trim().toUpperCase() !== activeCategory.trim().toUpperCase()) {
+      if (
+        activeCategory !== "TODOS" &&
+        p.category.trim().toUpperCase() !== activeCategory.trim().toUpperCase()
+      ) {
         return false;
       }
       // Filtros
@@ -242,9 +406,9 @@ export function CatalogoKiosk({
     });
   }, [products, activeCategory, filterType, searchQuery]);
 
-  // Cotización / Carrito
+  // Carrito / Cotización
   const addToCart = (product: CatalogoProduct) => {
-    playHapticSound(soundEnabled, "success");
+    kioskAudio.success(soundEnabled);
     setCart((prev) => {
       const exists = prev.find((item) => item.product.id === product.id);
       if (exists) {
@@ -258,7 +422,7 @@ export function CatalogoKiosk({
   };
 
   const updateQuantity = (productId: string, delta: number) => {
-    playHapticSound(soundEnabled, "key");
+    kioskAudio.key(soundEnabled);
     setCart((prev) => {
       return prev
         .map((item) => {
@@ -275,12 +439,12 @@ export function CatalogoKiosk({
   };
 
   const removeFromCart = (productId: string) => {
-    playHapticSound(soundEnabled, "close");
+    kioskAudio.close(soundEnabled);
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
   const clearCart = () => {
-    playHapticSound(soundEnabled, "close");
+    kioskAudio.close(soundEnabled);
     setCart([]);
     setQuoteTicketQr("");
     setTicketNumber("");
@@ -288,7 +452,8 @@ export function CatalogoKiosk({
 
   const cartTotal = useMemo(() => {
     return cart.reduce((acc, item) => {
-      const price = item.product.onSale && item.product.salePrice ? item.product.salePrice : item.product.price;
+      const price =
+        item.product.onSale && item.product.salePrice ? item.product.salePrice : item.product.price;
       return acc + price * item.quantity;
     }, 0);
   }, [cart]);
@@ -300,7 +465,7 @@ export function CatalogoKiosk({
   // Generar Ticket QR
   const handleGenerateTicket = async () => {
     if (cart.length === 0) return;
-    playHapticSound(soundEnabled, "success");
+    kioskAudio.success(soundEnabled);
     const num = `TK-${Math.floor(1000 + Math.random() * 9000)}`;
     setTicketNumber(num);
 
@@ -311,7 +476,7 @@ export function CatalogoKiosk({
       })
       .join("\n");
 
-    const message = `📋 COTIZACIÓN INFOSISTEL (#${num})\n\n${itemsSummary}\n\n💰 TOTAL: S/ ${cartTotal.toFixed(2)}\n\n(Generado desde la pantalla del catálogo)`;
+    const message = `📋 COTIZACIÓN INFOSISTEL (#${num})\n\n${itemsSummary}\n\n💰 TOTAL: S/ ${cartTotal.toFixed(2)}\n\n(Generado desde el catálogo en tienda)`;
     const waUrl = `https://wa.me/51964648202?text=${encodeURIComponent(message)}`;
 
     try {
@@ -321,9 +486,7 @@ export function CatalogoKiosk({
         color: { dark: "#0f172a", light: "#ffffff" },
       });
       setQuoteTicketQr(qr);
-    } catch {
-      // Silencioso
-    }
+    } catch {}
   };
 
   // Teclado virtual táctil
@@ -335,43 +498,138 @@ export function CatalogoKiosk({
   ];
 
   const handleVirtualKey = (key: string) => {
-    playHapticSound(soundEnabled, "key");
+    kioskAudio.key(soundEnabled);
     setSearchQuery((prev) => prev + key);
   };
 
   const handleVirtualBackspace = () => {
-    playHapticSound(soundEnabled, "key");
+    kioskAudio.key(soundEnabled);
     setSearchQuery((prev) => prev.slice(0, -1));
   };
 
   const handleVirtualSpace = () => {
-    playHapticSound(soundEnabled, "key");
+    kioskAudio.key(soundEnabled);
     setSearchQuery((prev) => prev + " ");
   };
 
   const handleVirtualClear = () => {
-    playHapticSound(soundEnabled, "close");
+    kioskAudio.close(soundEnabled);
     setSearchQuery("");
   };
 
   const activeHero = showcaseProducts[heroIndex] || products[0];
 
   return (
-    <div className={`relative flex flex-col w-full select-none bg-slate-950 text-slate-100 font-sans ${isAdminPreview ? "h-[850px] rounded-3xl border border-cyan-500/20 shadow-2xl overflow-hidden" : "min-h-screen"}`}>
-      
-      {/* Fondo Aurora & Glow Kiosk */}
+    <div
+      className={`relative flex flex-col w-full select-none bg-slate-950 text-slate-100 font-sans ${
+        isAdminPreview
+          ? "h-[850px] rounded-3xl border border-cyan-500/20 shadow-2xl overflow-hidden"
+          : "min-h-screen"
+      }`}
+    >
+      {/* Fondo Aurora & Glow Kiosk Fluido */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 -left-40 w-72 sm:w-96 h-72 sm:h-96 rounded-full bg-cyan-600/15 blur-[100px] sm:blur-[120px]" />
-        <div className="absolute top-1/3 -right-40 w-80 sm:w-[450px] h-80 sm:h-[450px] rounded-full bg-purple-600/15 blur-[110px] sm:blur-[140px]" />
-        <div className="absolute -bottom-40 left-1/3 w-72 sm:w-96 h-72 sm:h-96 rounded-full bg-blue-600/15 blur-[100px] sm:blur-[120px]" />
+        <div className="absolute -top-40 -left-40 w-80 sm:w-[500px] h-80 sm:h-[500px] rounded-full bg-cyan-600/15 blur-[120px]" />
+        <div className="absolute top-1/3 -right-40 w-80 sm:w-[550px] h-80 sm:h-[550px] rounded-full bg-blue-600/15 blur-[130px]" />
+        <div className="absolute -bottom-40 left-1/3 w-80 sm:w-[500px] h-80 sm:h-[500px] rounded-full bg-purple-600/15 blur-[120px]" />
       </div>
 
-      {/* BARRA SUPERIOR RESPONSIVE 100% */}
-      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-950/90 px-3 sm:px-6 py-2.5 sm:py-4 backdrop-blur-xl gap-2">
-        
-        {/* Logo Oficial adaptado para móvil y desktop */}
+      {/* ======================================================== */}
+      {/* PANTALLA DE BIENVENIDA OFICIAL (ANIMADA Y FLUIDA)         */}
+      {/* ======================================================== */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-2xl p-4 sm:p-8 animate-in fade-in duration-300">
+          <div className="relative flex flex-col items-center justify-center max-w-4xl w-full text-center space-y-6 sm:space-y-8 py-6">
+            
+            {/* Halo de luz de fondo */}
+            <div className="absolute h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-cyan-500/20 blur-[100px] -z-10 animate-pulse" />
+
+            {/* Logo Oficial de Infosistel con resplandor */}
+            <div className="relative group cursor-pointer" onClick={() => handleEnterCatalog()}>
+              <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-cyan-500/30 via-blue-500/20 to-purple-500/30 blur-xl opacity-75 group-hover:opacity-100 transition-opacity" />
+              <Image
+                src="/brand/infosistel-logo-v3.png"
+                alt="INFOSISTEL"
+                width={380}
+                height={70}
+                priority
+                className="relative h-12 xs:h-14 sm:h-16 md:h-20 w-auto object-contain brightness-110 drop-shadow-[0_0_25px_rgba(6,182,212,0.45)] transform group-hover:scale-105 transition-transform duration-300"
+              />
+            </div>
+
+            {/* Saludo dinámico */}
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/40 bg-cyan-950/60 px-4 py-1.5 text-xs sm:text-sm font-bold text-cyan-300 shadow-lg shadow-cyan-950/50">
+                <span>{greeting.icon}</span>
+                <span>{greeting.text}</span>
+                <span className="hidden sm:inline">· {greeting.sub}</span>
+              </div>
+              <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-tight">
+                Catálogo Digital <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">Interactivo</span>
+              </h1>
+              <p className="text-xs sm:text-base text-slate-300 max-w-xl mx-auto leading-relaxed">
+                Descubre en tiempo real nuestras laptops, teclados, mouses, monitores y repuestos con precios oficiales y stock garantizado.
+              </p>
+            </div>
+
+            {/* Accesos rápidos a categorías destacadas (Mouses, Teclados, Laptops, etc.) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5 w-full max-w-2xl pt-1">
+              {[
+                { name: "MOUSE", label: "Mouses & Ópticos", icon: Mouse, desc: "Gamer y oficina" },
+                { name: "TECLADOS", label: "Teclados", icon: Keyboard, desc: "Mecánicos y combos" },
+                { name: "LAPTOPS", label: "Laptops & PCs", icon: Laptop, desc: "Portátiles de alto nivel" },
+                { name: "MONITORES", label: "Monitores", icon: Monitor, desc: "IPS, 165Hz y FHD" },
+              ].map((item) => (
+                <button
+                  key={item.name}
+                  onClick={() => handleEnterCatalog(item.name)}
+                  className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl border border-slate-800 bg-slate-900/80 hover:border-cyan-500 hover:bg-slate-900 transition-all active:scale-95 group shadow-md"
+                >
+                  <item.icon size={26} className="text-cyan-400 group-hover:scale-110 transition-transform mb-1.5" />
+                  <span className="text-xs sm:text-sm font-bold text-white group-hover:text-cyan-300">{item.label}</span>
+                  <span className="text-[10px] text-slate-400">{item.desc}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Botón principal de entrada con cuenta regresiva */}
+            <div className="flex flex-col items-center gap-3 w-full max-w-md pt-2">
+              <button
+                onClick={() => handleEnterCatalog()}
+                className="w-full flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 px-6 py-4 text-sm sm:text-base font-black text-white shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 active:scale-95 transition-all group"
+              >
+                <Hand size={20} className="animate-bounce" />
+                <span>TOCAR PARA EXPLORAR CATÁLOGO</span>
+                <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <div className="h-1.5 w-24 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-cyan-400 transition-all duration-1000 ease-linear rounded-full"
+                    style={{ width: `${(welcomeCountdown / 6) * 100}%` }}
+                  />
+                </div>
+                <span>Entrada automática en {welcomeCountdown}s</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BARRA SUPERIOR DEL KIOSCO */}
+      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-950/90 px-3 sm:px-6 py-2.5 sm:py-3.5 backdrop-blur-xl gap-2">
+        {/* Logo Oficial */}
         <div className="flex items-center gap-2 sm:gap-4 shrink-0 min-w-0">
-          <Link href="/" className="flex shrink-0 items-center">
+          <button
+            onClick={() => {
+              setShowWelcome(true);
+              setWelcomeCountdown(10);
+              kioskAudio.open(soundEnabled);
+            }}
+            className="flex shrink-0 items-center transition-transform active:scale-95"
+            title="Volver a la Bienvenida"
+          >
             <Image
               src="/brand/infosistel-logo-v3.png"
               alt="Infosistel"
@@ -380,7 +638,7 @@ export function CatalogoKiosk({
               priority
               className="h-6 xs:h-7 sm:h-9 md:h-10 w-auto max-w-[110px] xs:max-w-[135px] sm:max-w-[200px] md:max-w-none object-contain brightness-110 drop-shadow-[0_0_12px_rgba(6,182,212,0.35)]"
             />
-          </Link>
+          </button>
 
           <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-3">
             <span className="rounded-full border border-cyan-500/40 bg-cyan-950/60 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-cyan-400">
@@ -389,10 +647,22 @@ export function CatalogoKiosk({
           </div>
         </div>
 
-        {/* Controles de Vitrina y Pantalla (compactos en móvil) */}
+        {/* Controles de Vitrina y Pantalla */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          
-          {/* Reloj (solo en pantallas grandes) */}
+          {/* Botón Saludo / Bienvenida */}
+          <button
+            onClick={() => {
+              setShowWelcome(true);
+              setWelcomeCountdown(10);
+              kioskAudio.open(soundEnabled);
+            }}
+            className="hidden sm:flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-2 text-xs font-bold text-slate-300 hover:border-cyan-500/50 hover:text-cyan-300 active:scale-95 transition-all"
+            title="Pantalla de Bienvenida"
+          >
+            <span>👋 Bienvenida</span>
+          </button>
+
+          {/* Reloj digital */}
           {currentTime && (
             <div className="hidden lg:flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs font-mono text-cyan-300">
               <Clock size={14} className="text-cyan-400 animate-pulse" />
@@ -400,46 +670,46 @@ export function CatalogoKiosk({
             </div>
           )}
 
-          {/* Botón Vitrina (solo en tablets/laptops) */}
+          {/* Modo Vitrina Autoplay */}
           <button
             onClick={() => {
               const next = !isAutoplayActive;
               setIsAutoplayActive(next);
-              playHapticSound(soundEnabled, "tap");
+              kioskAudio.tap(soundEnabled);
             }}
             className={`hidden md:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
               isAutoplayActive
                 ? "border-emerald-500 bg-emerald-950/60 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
                 : "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700"
             }`}
-            title="Activar o pausar rotación automática para clientes"
+            title="Activar o pausar rotación automática"
           >
             {isAutoplayActive ? <Pause size={14} /> : <Play size={14} />}
             <span>{isAutoplayActive ? "Vitrina Activa" : "Modo Vitrina"}</span>
           </button>
 
-          {/* Botón Sonido */}
+          {/* Sonido Háptico Fluido */}
           <button
             onClick={() => {
               const next = !soundEnabled;
               setSoundEnabled(next);
-              playHapticSound(next, "tap");
+              if (next) kioskAudio.tap(true);
             }}
             className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl border transition-all active:scale-90 ${
               soundEnabled
-                ? "border-cyan-500/40 bg-cyan-950/40 text-cyan-400 hover:bg-cyan-900/50"
+                ? "border-cyan-500/40 bg-cyan-950/40 text-cyan-400 hover:bg-cyan-900/50 shadow-sm"
                 : "border-slate-800 bg-slate-900 text-slate-500 hover:text-slate-300"
             }`}
-            title="Sonido táctil"
+            title="Sonido táctil suave"
           >
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
 
-          {/* Botón Cotización */}
+          {/* Botón Carrito / Cotización */}
           <button
             onClick={() => {
               setIsCartOpen(true);
-              playHapticSound(soundEnabled, "open");
+              kioskAudio.open(soundEnabled);
             }}
             className="relative flex h-9 px-2.5 sm:h-10 sm:px-3.5 items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-700 bg-slate-900 text-xs font-bold text-white transition-all hover:border-cyan-500 active:scale-95 shrink-0"
             title="Ver cotización de productos"
@@ -447,13 +717,13 @@ export function CatalogoKiosk({
             <ShoppingBag size={16} className="text-cyan-400" />
             <span className="hidden sm:inline">Cotización</span>
             {cartCount > 0 && (
-              <span className="flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-cyan-500 text-[9px] sm:text-[10px] font-black text-slate-950">
+              <span className="flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-cyan-500 text-[9px] sm:text-[10px] font-black text-slate-950 animate-pulse">
                 {cartCount}
               </span>
             )}
           </button>
 
-          {/* Botón Pantalla Completa */}
+          {/* Pantalla Completa */}
           {!isAdminPreview && (
             <button
               onClick={toggleFullscreen}
@@ -481,24 +751,24 @@ export function CatalogoKiosk({
       {/* CONTENIDO PRINCIPAL SCROLLABLE */}
       <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
         
-        {/* BANNER SHOWCASE DESTACADO (ADAPTADO A MÓVIL Y DESKTOP) */}
+        {/* BANNER SHOWCASE DESTACADO FLUIDO */}
         {activeHero && (
           <div className="p-3 sm:p-6 pb-1">
-            <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-500/30 bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-cyan-950/60 p-4 sm:p-6 md:p-8 shadow-xl backdrop-blur-xl">
+            <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-500/30 bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-cyan-950/60 p-4 sm:p-6 md:p-8 shadow-xl backdrop-blur-xl transition-all duration-500">
               <div className="absolute top-0 right-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-cyan-500/15 blur-3xl pointer-events-none" />
-              
+
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-center">
-                {/* Información */}
+                {/* Información del producto destacado */}
                 <div className="md:col-span-7 space-y-2 sm:space-y-4">
                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                     <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-950/60 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-300">
-                      <Sparkles size={11} /> {activeHero.onSale ? "Oferta" : "Destacado"}
+                      <Sparkles size={11} /> {activeHero.onSale ? "Oferta Especial" : "Producto Destacado"}
                     </span>
                     <span className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-0.5 text-[10px] sm:text-xs font-mono text-cyan-400">
                       INF-{activeHero.itemNumber}
                     </span>
                     <span className="rounded-full bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-emerald-300">
-                      ● Stock en tienda
+                      ● Stock en tienda ({activeHero.stock} disponibles)
                     </span>
                   </div>
 
@@ -507,12 +777,17 @@ export function CatalogoKiosk({
                   </h2>
 
                   <p className="text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed">
-                    {activeHero.description || "Garantía oficial y servicio técnico garantizado por INFOSISTEL."}
+                    {activeHero.description ||
+                      "Garantía oficial y servicio técnico garantizado por INFOSISTEL en Huancayo."}
                   </p>
 
                   <div className="flex items-baseline gap-3 pt-0.5">
                     <div className="text-2xl sm:text-3xl font-black text-cyan-400">
-                      S/ {(activeHero.onSale && activeHero.salePrice ? activeHero.salePrice : activeHero.price).toFixed(2)}
+                      S/{" "}
+                      {(activeHero.onSale && activeHero.salePrice
+                        ? activeHero.salePrice
+                        : activeHero.price
+                      ).toFixed(2)}
                     </div>
                     {activeHero.onSale && activeHero.salePrice && (
                       <div className="text-xs sm:text-sm text-slate-500 line-through">
@@ -525,9 +800,9 @@ export function CatalogoKiosk({
                     <button
                       onClick={() => {
                         setDetailProduct(activeHero);
-                        playHapticSound(soundEnabled, "open");
+                        kioskAudio.open(soundEnabled);
                       }}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md active:scale-95"
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md active:scale-95 transition-all"
                     >
                       <Eye size={16} />
                       <span>Ver Ficha & QR</span>
@@ -535,7 +810,7 @@ export function CatalogoKiosk({
 
                     <button
                       onClick={() => addToCart(activeHero)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-700 bg-slate-800/90 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-200 hover:text-white active:scale-95"
+                      className="flex items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-700 bg-slate-800/90 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-200 hover:text-white active:scale-95 transition-all"
                     >
                       <Plus size={16} />
                       <span>Cotizar</span>
@@ -543,12 +818,12 @@ export function CatalogoKiosk({
                   </div>
                 </div>
 
-                {/* Foto grande en Hero */}
+                {/* Foto / Ilustración grande en Hero */}
                 <div className="md:col-span-5 flex items-center justify-center">
                   <div
                     onClick={() => {
                       setDetailProduct(activeHero);
-                      playHapticSound(soundEnabled, "open");
+                      kioskAudio.open(soundEnabled);
                     }}
                     className="relative flex h-40 sm:h-56 md:h-64 w-full max-w-xs sm:max-w-sm items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-950/80 p-3 border border-slate-800/80 shadow-inner group cursor-pointer"
                   >
@@ -560,7 +835,12 @@ export function CatalogoKiosk({
                         className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                       />
                     ) : (
-                      <CategoryIcon category={activeHero.category} size={64} className="text-slate-600" />
+                      <div className="flex flex-col items-center justify-center text-slate-600 group-hover:text-cyan-400 transition-colors">
+                        <CategoryIcon category={activeHero.category} size={64} />
+                        <span className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-wider">
+                          {activeHero.category}
+                        </span>
+                      </div>
                     )}
                     <div className="absolute bottom-2 right-2 rounded-lg bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-[10px] font-bold text-cyan-300">
                       Toca para ampliar
@@ -581,16 +861,16 @@ export function CatalogoKiosk({
               <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400" />
               <input
                 type="text"
-                placeholder="Buscar repuesto, equipo, accesorio o código..."
+                placeholder="Buscar mouse, teclado, laptop, repuesto o código..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => playHapticSound(soundEnabled, "key")}
-                className="w-full h-10 sm:h-12 rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900/90 pl-10 pr-9 text-sm sm:text-base font-medium text-white placeholder-slate-500 shadow-inner focus:border-cyan-500 focus:outline-none"
+                onFocus={() => kioskAudio.key(soundEnabled)}
+                className="w-full h-10 sm:h-12 rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900/90 pl-10 pr-9 text-sm sm:text-base font-medium text-white placeholder-slate-500 shadow-inner focus:border-cyan-500 focus:outline-none transition-colors"
               />
               {searchQuery && (
                 <button
                   onClick={() => {
-                    playHapticSound(soundEnabled, "close");
+                    kioskAudio.close(soundEnabled);
                     setSearchQuery("");
                   }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:text-white"
@@ -600,12 +880,13 @@ export function CatalogoKiosk({
               )}
             </div>
 
-            {/* Botón Teclado en Pantalla (solo en tablet / desktop) */}
+            {/* Botón Teclado en Pantalla */}
             <button
               onClick={() => {
                 const next = !showVirtualKeyboard;
                 setShowVirtualKeyboard(next);
-                playHapticSound(soundEnabled, next ? "open" : "close");
+                if (next) kioskAudio.open(soundEnabled);
+                else kioskAudio.close(soundEnabled);
               }}
               className={`hidden sm:flex h-10 sm:h-12 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 text-xs font-bold transition-all active:scale-95 shrink-0 ${
                 showVirtualKeyboard
@@ -617,9 +898,9 @@ export function CatalogoKiosk({
             </button>
           </div>
 
-          {/* TECLADO EN PANTALLA (Plegable) */}
+          {/* TECLADO EN PANTALLA TÁCTIL */}
           {showVirtualKeyboard && (
-            <div className="rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-3 sm:p-4 shadow-2xl backdrop-blur-xl">
+            <div className="rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-3 sm:p-4 shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-2 duration-200">
               <div className="space-y-1.5 sm:space-y-2">
                 {keyboardRows.map((row, rIdx) => (
                   <div key={rIdx} className="flex justify-center gap-1 sm:gap-2">
@@ -627,7 +908,7 @@ export function CatalogoKiosk({
                       <button
                         key={char}
                         onClick={() => handleVirtualKey(char)}
-                        className="flex h-9 w-7 sm:h-12 sm:w-12 items-center justify-center rounded-lg sm:rounded-xl border border-slate-700 bg-slate-900 text-xs sm:text-base font-bold text-white shadow-md active:scale-90"
+                        className="flex h-9 w-7 sm:h-12 sm:w-12 items-center justify-center rounded-lg sm:rounded-xl border border-slate-700 bg-slate-900 text-xs sm:text-base font-bold text-white shadow-md active:scale-90 transition-transform"
                       >
                         {char}
                       </button>
@@ -665,13 +946,14 @@ export function CatalogoKiosk({
             </div>
           )}
 
-          {/* FILTROS Y CATEGORÍAS */}
+          {/* FILTROS Y CATEGORÍAS FLUIDAS */}
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
+            {/* Botón TODOS */}
             <button
               onClick={() => {
                 setActiveCategory("TODOS");
                 setFilterType("all");
-                playHapticSound(soundEnabled, "tap");
+                kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
                 activeCategory === "TODOS" && filterType === "all"
@@ -682,10 +964,11 @@ export function CatalogoKiosk({
               <span>Todos ({products.length})</span>
             </button>
 
+            {/* Filtros rápidos */}
             <button
               onClick={() => {
                 setFilterType(filterType === "featured" ? "all" : "featured");
-                playHapticSound(soundEnabled, "tap");
+                kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
                 filterType === "featured"
@@ -700,7 +983,7 @@ export function CatalogoKiosk({
             <button
               onClick={() => {
                 setFilterType(filterType === "onsale" ? "all" : "onsale");
-                playHapticSound(soundEnabled, "tap");
+                kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
                 filterType === "onsale"
@@ -715,7 +998,7 @@ export function CatalogoKiosk({
             <button
               onClick={() => {
                 setFilterType(filterType === "instock" ? "all" : "instock");
-                playHapticSound(soundEnabled, "tap");
+                kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
                 filterType === "instock"
@@ -729,6 +1012,7 @@ export function CatalogoKiosk({
 
             {categories.length > 0 && <div className="h-5 w-px bg-slate-800 shrink-0 mx-1" />}
 
+            {/* Categorías Dinámicas (Mouse, Teclados, Laptops, etc.) */}
             {categories.map((cat) => {
               const isSelected = activeCategory.trim().toUpperCase() === cat.name.trim().toUpperCase();
               return (
@@ -736,17 +1020,17 @@ export function CatalogoKiosk({
                   key={cat.id}
                   onClick={() => {
                     setActiveCategory(isSelected ? "TODOS" : cat.name);
-                    playHapticSound(soundEnabled, "tap");
+                    kioskAudio.tap(soundEnabled);
                   }}
                   className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
                     isSelected
-                      ? "border-cyan-400 bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-sm"
+                      ? "border-cyan-400 bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-600/20"
                       : "border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white"
                   }`}
                 >
                   <CategoryIcon category={cat.name} size={14} />
                   <span>{cat.name}</span>
-                  <span className="rounded-full bg-slate-950/70 px-1.5 py-0.2 text-[9px] sm:text-[10px] text-cyan-300">
+                  <span className="rounded-full bg-slate-950/70 px-1.5 py-0.2 text-[9px] sm:text-[10px] text-cyan-300 font-bold">
                     {cat.count}
                   </span>
                 </button>
@@ -755,7 +1039,7 @@ export function CatalogoKiosk({
           </div>
         </div>
 
-        {/* CUADRÍCULA DE PRODUCTOS (2 COLUMNAS EN MÓVIL) */}
+        {/* CUADRÍCULA DE PRODUCTOS FLUIDA */}
         <div className="flex-1 p-3 sm:p-6 pt-0">
           {filteredProducts.length === 0 ? (
             <div className="flex h-64 sm:h-80 flex-col items-center justify-center text-center p-6 rounded-2xl sm:rounded-3xl border border-slate-800/80 bg-slate-900/30 my-2">
@@ -763,32 +1047,30 @@ export function CatalogoKiosk({
                 <Search size={24} />
               </div>
               <h3 className="text-base sm:text-lg font-bold text-white mb-1">
-                {products.length === 0 ? "No hay productos registrados" : "No se encontraron productos"}
+                No se encontraron productos coincidentes
               </h3>
               <p className="text-xs text-slate-400 max-w-sm mb-4">
-                {products.length === 0
-                  ? "Agrega productos desde el Panel de Administración de INFOSISTEL para verlos en este catálogo."
-                  : "Prueba con otro término o restablece los filtros para ver todo el catálogo."}
+                Prueba con otro término de búsqueda o limpia los filtros para explorar todo nuestro inventario.
               </p>
-              {products.length > 0 && (
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setActiveCategory("TODOS");
-                    setFilterType("all");
-                    playHapticSound(soundEnabled, "close");
-                  }}
-                  className="rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-4 py-2 text-xs font-bold text-cyan-400 hover:bg-cyan-900/60"
-                >
-                  Ver todos los productos
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setActiveCategory("TODOS");
+                  setFilterType("all");
+                  kioskAudio.close(soundEnabled);
+                }}
+                className="flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-4 py-2 text-xs font-bold text-cyan-400 hover:bg-cyan-900/60"
+              >
+                <RotateCcw size={14} />
+                <span>Restablecer filtros</span>
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4 md:gap-5">
               {filteredProducts.map((p) => {
                 const finalPrice = p.onSale && p.salePrice ? p.salePrice : p.price;
-                const discount = p.onSale && p.salePrice ? Math.round(((p.price - p.salePrice) / p.price) * 100) : 0;
+                const discount =
+                  p.onSale && p.salePrice ? Math.round(((p.price - p.salePrice) / p.price) * 100) : 0;
                 const inCart = cart.find((i) => i.product.id === p.id);
 
                 return (
@@ -796,9 +1078,9 @@ export function CatalogoKiosk({
                     key={p.id}
                     onClick={() => {
                       setDetailProduct(p);
-                      playHapticSound(soundEnabled, "open");
+                      kioskAudio.open(soundEnabled);
                     }}
-                    className="group relative flex flex-col justify-between overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-800/80 bg-slate-900/70 p-2.5 sm:p-4 transition-all hover:border-cyan-500/50 hover:bg-slate-900 hover:shadow-lg active:scale-[0.98] cursor-pointer"
+                    className="group relative flex flex-col justify-between overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-800/80 bg-slate-900/70 p-2.5 sm:p-4 transition-all duration-200 hover:border-cyan-500/50 hover:bg-slate-900 hover:shadow-xl hover:shadow-cyan-950/30 active:scale-[0.98] cursor-pointer"
                   >
                     {/* Header Card */}
                     <div className="flex items-center justify-between gap-1 mb-1.5">
@@ -812,7 +1094,7 @@ export function CatalogoKiosk({
                       )}
                     </div>
 
-                    {/* Foto */}
+                    {/* Foto / Ilustración */}
                     <div className="relative my-1.5 flex h-32 sm:h-44 w-full items-center justify-center rounded-xl sm:rounded-2xl bg-slate-950/80 p-2 overflow-hidden border border-slate-800/50">
                       {p.image ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -822,20 +1104,27 @@ export function CatalogoKiosk({
                           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                         />
                       ) : (
-                        <div className="flex flex-col items-center justify-center text-slate-600">
-                          <CategoryIcon category={p.category} size={36} />
+                        <div className="flex flex-col items-center justify-center text-slate-600 group-hover:text-cyan-400 transition-colors">
+                          <CategoryIcon category={p.category} size={40} />
+                          <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">
+                            {p.category}
+                          </span>
                         </div>
                       )}
 
                       <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-md sm:rounded-xl bg-slate-950/90 border border-slate-800 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold">
-                        <span className={`h-1.5 w-1.5 rounded-full ${p.stock > 0 ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            p.stock > 0 ? "bg-emerald-400 animate-pulse" : "bg-red-400"
+                          }`}
+                        />
                         <span className={p.stock > 0 ? "text-emerald-300" : "text-red-400"}>
                           {p.stock > 0 ? `${p.stock} en tienda` : "Agotado"}
                         </span>
                       </div>
                     </div>
 
-                    {/* Título */}
+                    {/* Título y Código */}
                     <div className="space-y-0.5 mb-2">
                       <div className="text-[9px] sm:text-[10px] font-mono text-slate-500">INF-{p.itemNumber}</div>
                       <h4 className="font-bold text-xs sm:text-sm text-white line-clamp-2 leading-snug group-hover:text-cyan-300 transition-colors">
@@ -843,7 +1132,7 @@ export function CatalogoKiosk({
                       </h4>
                     </div>
 
-                    {/* Precios y Botón QR */}
+                    {/* Precios y Botón QR / Cotización */}
                     <div className="mt-auto pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1.5">
                       <div>
                         {p.onSale && p.salePrice && (
@@ -861,9 +1150,9 @@ export function CatalogoKiosk({
                           onClick={(e) => {
                             e.stopPropagation();
                             setDetailProduct(p);
-                            playHapticSound(soundEnabled, "open");
+                            kioskAudio.open(soundEnabled);
                           }}
-                          className="flex h-8 px-2 sm:h-9 sm:px-2.5 items-center gap-1 rounded-lg sm:rounded-xl border border-cyan-500/40 bg-cyan-950/50 text-[11px] font-bold text-cyan-300 hover:bg-cyan-900/60"
+                          className="flex h-8 px-2 sm:h-9 sm:px-2.5 items-center gap-1 rounded-lg sm:rounded-xl border border-cyan-500/40 bg-cyan-950/50 text-[11px] font-bold text-cyan-300 hover:bg-cyan-900/60 active:scale-95 transition-all"
                           title="Escanear QR o ver ficha"
                         >
                           <QrCode size={13} />
@@ -897,24 +1186,24 @@ export function CatalogoKiosk({
         </div>
       </div>
 
-      {/* MODAL FICHA TÉCNICA Y CÓDIGO QR GIGANTE PARA EL CELULAR */}
+      {/* ======================================================== */}
+      {/* MODAL FICHA TÉCNICA Y CÓDIGO QR GIGANTE                   */}
+      {/* ======================================================== */}
       {detailProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-200">
           <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-500/30 bg-slate-950 p-4 sm:p-6 md:p-8 shadow-2xl">
-            
             {/* Botón Cerrar */}
             <button
               onClick={() => {
                 setDetailProduct(null);
-                playHapticSound(soundEnabled, "close");
+                kioskAudio.close(soundEnabled);
               }}
-              className="absolute right-4 top-4 z-10 flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-xl sm:rounded-2xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white active:scale-90"
+              className="absolute right-4 top-4 z-10 flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-xl sm:rounded-2xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white active:scale-90 transition-transform"
             >
               <X size={18} />
             </button>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8 overflow-y-auto pr-1">
-              
               {/* Imagen y Código QR */}
               <div className="space-y-3 sm:space-y-4">
                 <div className="relative flex h-48 sm:h-64 md:h-72 w-full items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 p-3 sm:p-4">
@@ -926,7 +1215,12 @@ export function CatalogoKiosk({
                       className="h-full w-full object-contain"
                     />
                   ) : (
-                    <CategoryIcon category={detailProduct.category} size={64} className="text-slate-600" />
+                    <div className="flex flex-col items-center justify-center text-slate-600">
+                      <CategoryIcon category={detailProduct.category} size={64} />
+                      <span className="text-xs font-bold text-slate-400 mt-2 uppercase">
+                        {detailProduct.category}
+                      </span>
+                    </div>
                   )}
                 </div>
 
@@ -946,7 +1240,7 @@ export function CatalogoKiosk({
                       <span>¡LLÉVATELO EN TU CELULAR!</span>
                     </div>
                     <p className="text-[11px] sm:text-xs text-slate-300 leading-snug">
-                      Apunta la cámara de tu smartphone a este código para abrir WhatsApp con Infosistel y solicitar este producto.
+                      Apunta la cámara de tu celular a este código para abrir WhatsApp con Infosistel y pedir este producto directamente.
                     </p>
                   </div>
                 </div>
@@ -959,7 +1253,9 @@ export function CatalogoKiosk({
                     <span className="rounded-lg border border-cyan-500/40 bg-cyan-950 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-cyan-400 uppercase">
                       {detailProduct.category}
                     </span>
-                    <span className="text-[10px] sm:text-xs font-mono text-slate-500">INF-{detailProduct.itemNumber}</span>
+                    <span className="text-[10px] sm:text-xs font-mono text-slate-500">
+                      INF-{detailProduct.itemNumber}
+                    </span>
                   </div>
 
                   <h2 className="text-base sm:text-xl md:text-2xl font-extrabold text-white leading-snug mb-2 sm:mb-3">
@@ -968,26 +1264,37 @@ export function CatalogoKiosk({
 
                   <div className="mb-3 sm:mb-4">
                     <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-                      Descripción:
+                      Descripción técnica:
                     </div>
-                    <div className="rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4 text-xs sm:text-sm text-slate-200 leading-relaxed max-h-32 sm:max-h-40 overflow-y-auto">
-                      {detailProduct.description || "Garantía oficial y soporte técnico garantizado en tienda INFOSISTEL."}
+                    <div className="rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4 text-xs sm:text-sm text-slate-200 leading-relaxed max-h-36 sm:max-h-44 overflow-y-auto">
+                      {detailProduct.description ||
+                        "Garantía oficial y soporte técnico garantizado en tienda INFOSISTEL."}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <div className={`h-2 w-2 rounded-full ${detailProduct.stock > 0 ? "bg-emerald-400 animate-pulse" : "bg-red-500"}`} />
+                    <div
+                      className={`h-2 w-2 rounded-full ${
+                        detailProduct.stock > 0 ? "bg-emerald-400 animate-pulse" : "bg-red-500"
+                      }`}
+                    />
                     <span className="text-xs font-bold text-slate-200">
-                      {detailProduct.stock > 0 ? `Stock en tienda: ${detailProduct.stock} unidades` : "Agotado"}
+                      {detailProduct.stock > 0
+                        ? `Stock disponible en tienda: ${detailProduct.stock} unidades`
+                        : "Agotado temporalmente"}
                     </span>
                   </div>
                 </div>
 
                 <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
                   <div>
-                    <div className="text-[10px] sm:text-xs text-slate-400">Precio:</div>
+                    <div className="text-[10px] sm:text-xs text-slate-400">Precio de tienda:</div>
                     <div className="text-xl sm:text-3xl font-black text-cyan-400">
-                      S/ {(detailProduct.onSale && detailProduct.salePrice ? detailProduct.salePrice : detailProduct.price).toFixed(2)}
+                      S/{" "}
+                      {(detailProduct.onSale && detailProduct.salePrice
+                        ? detailProduct.salePrice
+                        : detailProduct.price
+                      ).toFixed(2)}
                     </div>
                   </div>
 
@@ -999,9 +1306,9 @@ export function CatalogoKiosk({
                       }
                     }}
                     disabled={detailProduct.stock <= 0}
-                    className="rounded-xl sm:rounded-2xl border border-cyan-500 bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 sm:px-6 sm:py-3.5 text-xs sm:text-sm font-bold text-white shadow-md active:scale-95"
+                    className="rounded-xl sm:rounded-2xl border border-cyan-500 bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2.5 sm:px-6 sm:py-3.5 text-xs sm:text-sm font-bold text-white shadow-md active:scale-95 transition-all"
                   >
-                    + Cotizar
+                    + Agregar a Cotización
                   </button>
                 </div>
               </div>
@@ -1010,11 +1317,12 @@ export function CatalogoKiosk({
         </div>
       )}
 
-      {/* DRAWER DE COTIZACIÓN */}
+      {/* ======================================================== */}
+      {/* DRAWER LATERAL DE COTIZACIÓN                             */}
+      {/* ======================================================== */}
       {isCartOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="relative flex h-full w-full max-w-md sm:max-w-lg flex-col border-l border-cyan-500/30 bg-slate-950 p-4 sm:p-6 shadow-2xl">
-            
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 sm:pb-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800">
@@ -1022,13 +1330,15 @@ export function CatalogoKiosk({
                 </div>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base text-white">Mi Cotización</h3>
-                  <p className="text-[11px] sm:text-xs text-slate-400">{cart.length} productos agregados</p>
+                  <p className="text-[11px] sm:text-xs text-slate-400">
+                    {cart.length} productos agregados
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => {
                   setIsCartOpen(false);
-                  playHapticSound(soundEnabled, "close");
+                  kioskAudio.close(soundEnabled);
                 }}
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
               >
@@ -1044,7 +1354,10 @@ export function CatalogoKiosk({
                 </div>
               ) : (
                 cart.map((item) => {
-                  const p = item.product.onSale && item.product.salePrice ? item.product.salePrice : item.product.price;
+                  const p =
+                    item.product.onSale && item.product.salePrice
+                      ? item.product.salePrice
+                      : item.product.price;
                   return (
                     <div
                       key={item.product.id}
@@ -1054,14 +1367,20 @@ export function CatalogoKiosk({
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-950 border border-slate-800 p-1">
                           {item.product.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={item.product.image} alt={item.product.name} className="h-full w-full object-contain" />
+                            <img
+                              src={item.product.image}
+                              alt={item.product.name}
+                              className="h-full w-full object-contain"
+                            />
                           ) : (
                             <CategoryIcon category={item.product.category} size={16} />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="font-bold text-xs text-white truncate">{item.product.name}</div>
-                          <div className="text-[11px] text-cyan-400 font-semibold">S/ {p.toFixed(2)}</div>
+                          <div className="text-[11px] text-cyan-400 font-semibold">
+                            S/ {p.toFixed(2)}
+                          </div>
                         </div>
                       </div>
 
@@ -1072,7 +1391,9 @@ export function CatalogoKiosk({
                         >
                           <Minus size={11} />
                         </button>
-                        <span className="font-bold text-xs text-white w-4 text-center">{item.quantity}</span>
+                        <span className="font-bold text-xs text-white w-4 text-center">
+                          {item.quantity}
+                        </span>
                         <button
                           onClick={() => updateQuantity(item.product.id, 1)}
                           className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-900/50 border border-cyan-700 text-cyan-300 active:scale-90"
@@ -1092,17 +1413,21 @@ export function CatalogoKiosk({
               )}
 
               {quoteTicketQr && (
-                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-4 text-center space-y-2.5">
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-4 text-center space-y-2.5 animate-in zoom-in-95 duration-200">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
                     ¡Ticket para Caja Listo!
                   </div>
                   <div className="font-mono text-lg font-black text-white">#{ticketNumber}</div>
                   <div className="flex justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={quoteTicketQr} alt="QR Cotización" className="h-36 w-36 rounded-xl border border-slate-700 bg-white p-1.5 shadow-lg" />
+                    <img
+                      src={quoteTicketQr}
+                      alt="QR Cotización"
+                      className="h-36 w-36 rounded-xl border border-slate-700 bg-white p-1.5 shadow-lg"
+                    />
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Muestra este código al vendedor o escanéalo con tu WhatsApp.
+                    Muestra este código al vendedor o escanéalo con tu WhatsApp para procesar tu orden.
                   </p>
                 </div>
               )}
@@ -1111,22 +1436,22 @@ export function CatalogoKiosk({
             {cart.length > 0 && (
               <div className="border-t border-slate-800 pt-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400 font-semibold text-xs">TOTAL:</span>
+                  <span className="text-slate-400 font-semibold text-xs">TOTAL A PAGAR:</span>
                   <span className="font-black text-lg text-cyan-400">S/ {cartTotal.toFixed(2)}</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={clearCart}
-                    className="rounded-xl border border-slate-800 bg-slate-900 py-2.5 text-xs font-bold text-slate-400 hover:text-white"
+                    className="rounded-xl border border-slate-800 bg-slate-900 py-2.5 text-xs font-bold text-slate-400 hover:text-white active:scale-95 transition-all"
                   >
                     Vaciar
                   </button>
                   <button
                     onClick={handleGenerateTicket}
-                    className="rounded-xl border border-cyan-500 bg-gradient-to-r from-cyan-600 to-blue-600 py-2.5 text-xs font-bold text-white shadow-md active:scale-95"
+                    className="rounded-xl border border-cyan-500 bg-gradient-to-r from-cyan-600 to-blue-600 py-2.5 text-xs font-bold text-white shadow-md active:scale-95 transition-all"
                   >
-                    Generar QR
+                    Generar Ticket QR
                   </button>
                 </div>
               </div>

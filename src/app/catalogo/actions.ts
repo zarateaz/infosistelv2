@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { STARTER_SHOWCASE_PRODUCTS, getStarterCategories } from "./starterCatalog";
 
 export interface CatalogoProduct {
   id: string;
@@ -52,6 +53,15 @@ export async function getCatalogoData(): Promise<{
       select: { id: true, name: true },
     }),
   ]);
+
+  // Si aún no hay productos registrados en la base de datos,
+  // proveer la estructura completa de vitrina interactiva (Mouses, Teclados, Laptops, etc.)
+  if (products.length === 0) {
+    return {
+      products: STARTER_SHOWCASE_PRODUCTS,
+      categories: getStarterCategories(),
+    };
+  }
 
   // Contar productos por categoría (normalizando a mayúsculas para evitar desajustes)
   const categoryCounts: Record<string, number> = {};
