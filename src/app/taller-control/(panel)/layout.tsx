@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: "/taller-control/servicios", label: "Servicios técnicos" },
   { href: "/taller-control/pedidos", label: "Pedidos" },
   { href: "/taller-control/ventas", label: "Ventas" },
+  { href: "/taller-control/catalogo", label: "Catálogo Kiosco Táctil" },
   { href: "/taller-control/descuentos", label: "Descuentos de Stock" },
   { href: "/taller-control/seguimiento-stock", label: "Seguimiento de Stock" },
   { href: "/taller-control/reporte-mensual", label: "Reporte Mensual" },

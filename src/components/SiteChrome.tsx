@@ -14,9 +14,9 @@ import { WhatsAppButton } from "@/components/WhatsAppButton";
  */
 export function SiteChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAdmin = pathname?.startsWith("/taller-control");
+  const isKioskOrAdmin = pathname?.startsWith("/taller-control") || pathname?.startsWith("/catalogo");
 
-  if (isAdmin) return <>{children}</>;
+  if (isKioskOrAdmin) return <>{children}</>;
 
   return (
     <>
