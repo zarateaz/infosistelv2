@@ -6,7 +6,9 @@ import Link from "next/link";
 import { ArrowLeft, Eye, EyeOff, Lock, ShieldCheck } from "lucide-react";
 import { loginAction, verifyMfaAction, type LoginState } from "./actions";
 import { CuriousEyes } from "./CuriousEyes";
-import { GalaxyBackground } from "./GalaxyBackground";
+import { HalloweenBackground } from "./HalloweenBackground";
+import { Cobweb, HangingSpider } from "./SpookyDecor";
+import "./halloween.css";
 
 const initialState: LoginState = {};
 
@@ -34,53 +36,60 @@ export default function AdminLoginPage() {
   const isPending = step === "mfa" ? isMfaPending : isLoginPending;
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#04070f] px-6 py-12">
-      <GalaxyBackground />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#05020a] px-6 py-12">
+      <HalloweenBackground />
+      {/* Corner cobwebs */}
+      <Cobweb className="absolute -left-10 -top-10 opacity-70" size={300} />
+      <Cobweb className="absolute -right-10 -top-10 opacity-70" size={300} flip />
+      
       {/* Vignette: subtle dark wash behind the card for legibility while keeping the outer cosmos vibrant */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(3,6,17,0.45)_0%,transparent_65%,rgba(3,6,17,0.6)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(10,4,20,0.55)_0%,transparent_65%,rgba(5,2,10,0.8)_100%)]" />
 
-      <div className="relative z-10 w-full max-w-4xl">
+      <div className="relative z-10 w-full max-w-4xl hw-float">
         <Link
           href="/"
-          className="group mb-5 inline-flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors hover:text-white"
+          className="group mb-5 inline-flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors hover:text-orange-400"
         >
           <ArrowLeft size={14} className="transition-transform group-hover:-translate-x-1" />
-          Volver al inicio
+          Huir al inicio
         </Link>
 
-        <div className="relative grid overflow-hidden rounded-3xl border border-cyan-500/20 bg-[#060c1c]/75 shadow-[0_0_80px_-15px_rgba(46,163,255,0.3),0_30px_90px_rgba(0,0,0,0.85)] backdrop-blur-2xl ring-1 ring-white/10 md:grid-cols-2">
+        <div className="hw-card relative grid overflow-hidden rounded-3xl border border-orange-500/20 bg-[#130722]/85 shadow-[0_0_80px_-15px_rgba(255,110,20,0.3),0_30px_90px_rgba(0,0,0,0.85)] backdrop-blur-2xl ring-1 ring-orange-500/10 md:grid-cols-2">
+          {/* Decorative spider dropping in */}
+          <HangingSpider className="left-12 -top-2 z-20" length={140} delay={1.5} />
           {/* Decorative brand panel */}
-          <div className="relative hidden flex-col items-center justify-center overflow-hidden border-r border-cyan-500/10 bg-gradient-to-br from-cyan-950/20 via-transparent to-blue-950/25 px-10 py-16 md:flex">
-            <div className="pointer-events-none absolute h-80 w-80 rounded-full bg-[radial-gradient(ellipse,rgba(46,163,255,0.18)_0%,transparent_70%)] blur-2xl" />
-            <div className="pointer-events-none absolute -bottom-10 -left-10 h-60 w-60 rounded-full bg-[radial-gradient(ellipse,rgba(6,182,212,0.15)_0%,transparent_70%)] blur-3xl" />
+          <div className="relative hidden flex-col items-center justify-center overflow-hidden border-r border-orange-500/10 bg-gradient-to-br from-purple-950/30 via-transparent to-orange-950/20 px-10 py-16 md:flex">
+            <Cobweb className="absolute -bottom-12 -left-12 opacity-40" size={200} flipY />
+            <div className="pointer-events-none absolute h-80 w-80 rounded-full bg-[radial-gradient(ellipse,rgba(168,85,247,0.15)_0%,transparent_70%)] blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-10 -left-10 h-60 w-60 rounded-full bg-[radial-gradient(ellipse,rgba(255,110,20,0.12)_0%,transparent_70%)] blur-3xl" />
 
-            <div className="relative w-full max-w-[260px] transition-transform duration-500 hover:scale-[1.02]">
+            <div className="relative w-full max-w-[260px] transition-transform duration-500 hover:scale-[1.02] drop-shadow-[0_0_15px_rgba(255,110,20,0.5)]">
               <Image
                 src="/brand/infosistel-logo-v3.png"
                 alt="Infosistel"
                 width={1366}
                 height={166}
-                className="h-auto w-full object-contain drop-shadow-[0_0_40px_rgba(46,163,255,0.7)]"
+                className="h-auto w-full object-contain"
                 unoptimized
                 priority
               />
             </div>
             
-            <div className="relative mt-6 flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-950/30 px-4 py-1.5 backdrop-blur-md">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#38bdf8] animate-pulse" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
-                Panel administrativo
+            <div className="relative mt-6 flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-950/40 px-4 py-1.5 backdrop-blur-md shadow-[0_0_15px_rgba(255,110,20,0.2)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_#ff7a18] animate-pulse" />
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-200">
+                Cripta Administrativa
               </p>
             </div>
           </div>
 
           {/* Form panel */}
-          <div className="relative flex flex-col justify-center overflow-hidden bg-gradient-to-b from-[#091226]/85 via-[#060c1d]/90 to-[#040814]/95 px-8 py-12 sm:px-12 backdrop-blur-3xl">
+          <div className="relative flex flex-col justify-center overflow-hidden bg-gradient-to-b from-[#1c0b2b]/90 via-[#11051c]/95 to-[#0a0210]/95 px-8 py-12 sm:px-12 backdrop-blur-3xl">
             {/* Ambient cosmic glows */}
-            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-blue-600/10 blur-3xl" />
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-orange-500/10 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-purple-600/10 blur-3xl" />
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-950/50 text-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.25)] md:hidden">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-orange-500/30 bg-orange-950/50 text-orange-400 shadow-[0_0_20px_rgba(255,110,20,0.25)] md:hidden">
               <Lock size={20} strokeWidth={1.75} />
             </div>
 
@@ -88,25 +97,25 @@ export default function AdminLoginPage() {
               <CuriousEyes closed={passwordFocused && !showPassword} />
             </div>
 
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              {step === "mfa" ? "Verificación en dos pasos" : "Bienvenido de nuevo"}
+            <h1 className="font-display hw-flicker text-3xl font-bold tracking-tight text-orange-50 sm:text-4xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+              {step === "mfa" ? "Conjuro de verificación" : "Bienvenido al Más Allá"}
             </h1>
-            <p className="mt-1.5 text-sm text-slate-400">
+            <p className="mt-1.5 text-sm text-purple-200/70">
               {step === "mfa"
-                ? "Ingresa el código de 6 dígitos de tu aplicación de autenticación."
-                : "Ingresa tus credenciales para acceder a la consola."}
+                ? "Ingresa el código de 6 dígitos del pergamino mágico de tu aplicación de autenticación."
+                : "Invoca tus credenciales para acceder a la cripta."}
             </p>
 
             {step === "mfa" ? (
               <form action={formAction} className="mt-7 space-y-4">
                 <div>
-                  <label htmlFor="code" className="block text-xs font-medium text-slate-300">
+                  <label htmlFor="code" className="block text-xs font-medium text-purple-200/80">
                     Código de seguridad
                   </label>
                   <div className="relative mt-2">
                     <ShieldCheck
                       size={18}
-                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400"
+                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-orange-500"
                     />
                     <input
                       id="code"
@@ -117,14 +126,14 @@ export default function AdminLoginPage() {
                       autoFocus
                       required
                       placeholder="123456"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 pl-11 text-sm tracking-widest text-white placeholder-slate-500 outline-none transition-all duration-200 focus:border-cyan-400/70 focus:bg-cyan-950/20 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] focus:ring-1 focus:ring-cyan-400/40"
+                      className="w-full rounded-xl border border-purple-500/20 bg-purple-950/20 px-4 py-3 pl-11 text-sm tracking-widest text-white placeholder-purple-300/40 outline-none transition-all duration-200 focus:border-orange-500/70 focus:bg-orange-950/20 focus:shadow-[0_0_20px_rgba(255,110,20,0.25)] focus:ring-1 focus:ring-orange-500/40"
                     />
                   </div>
                 </div>
 
                 {state.error && (
                   <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-2.5 text-xs font-medium text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)]">
-                    <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+                    <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
                     <p>{state.error}</p>
                   </div>
                 )}
@@ -132,7 +141,7 @@ export default function AdminLoginPage() {
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="group relative mt-2 w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 py-3 text-sm font-semibold text-white shadow-[0_0_30px_rgba(6,182,212,0.35)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(6,182,212,0.55)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
+                  className="group relative mt-2 w-full overflow-hidden rounded-xl bg-gradient-to-r from-purple-700 via-orange-600 to-purple-700 py-3 text-sm font-semibold text-white shadow-[0_0_30px_rgba(255,110,20,0.35)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(255,110,20,0.6)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
                 >
                   <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full" />
                   <span className="relative flex items-center justify-center gap-2">
@@ -142,7 +151,7 @@ export default function AdminLoginPage() {
                         <span>Verificando...</span>
                       </>
                     ) : (
-                      <span>Confirmar acceso</span>
+                      <span>Romper el sello</span>
                     )}
                   </span>
                 </button>
@@ -150,16 +159,16 @@ export default function AdminLoginPage() {
                 <button
                   type="button"
                   onClick={() => setStep("password")}
-                  className="w-full text-center text-xs font-semibold uppercase tracking-wider text-slate-400 transition-colors hover:text-white"
+                  className="w-full text-center text-xs font-semibold uppercase tracking-wider text-purple-300/60 transition-colors hover:text-orange-400"
                 >
-                  ← Volver al login
+                  ← Volver a las sombras
                 </button>
               </form>
             ) : (
               <form action={formAction} className="mt-7 space-y-4">
                 <div>
-                  <label htmlFor="username" className="block text-xs font-medium text-slate-300">
-                    Usuario
+                  <label htmlFor="username" className="block text-xs font-medium text-purple-200/80">
+                    Alma (Usuario)
                   </label>
                   <div className="relative mt-2">
                     <input
@@ -168,15 +177,15 @@ export default function AdminLoginPage() {
                       type="text"
                       autoComplete="username"
                       required
-                      placeholder="Ingresa tu usuario"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-all duration-200 focus:border-cyan-400/70 focus:bg-cyan-950/20 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] focus:ring-1 focus:ring-cyan-400/40"
+                      placeholder="Ingresa tu nombre"
+                      className="w-full rounded-xl border border-purple-500/20 bg-purple-950/20 px-4 py-3 text-sm text-white placeholder-purple-300/40 outline-none transition-all duration-200 focus:border-orange-500/70 focus:bg-orange-950/20 focus:shadow-[0_0_20px_rgba(255,110,20,0.25)] focus:ring-1 focus:ring-orange-500/40"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-xs font-medium text-slate-300">
-                    Contraseña
+                  <label htmlFor="password" className="block text-xs font-medium text-purple-200/80">
+                    Palabra secreta (Contraseña)
                   </label>
                   <div className="relative mt-2">
                     <input
@@ -188,13 +197,13 @@ export default function AdminLoginPage() {
                       placeholder="••••••••••••"
                       onFocus={() => setPasswordFocused(true)}
                       onBlur={() => setPasswordFocused(false)}
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 pr-11 text-sm text-white placeholder-slate-500 outline-none transition-all duration-200 focus:border-cyan-400/70 focus:bg-cyan-950/20 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] focus:ring-1 focus:ring-cyan-400/40"
+                      className="w-full rounded-xl border border-purple-500/20 bg-purple-950/20 px-4 py-3 pr-11 text-sm text-white placeholder-purple-300/40 outline-none transition-all duration-200 focus:border-orange-500/70 focus:bg-orange-950/20 focus:shadow-[0_0_20px_rgba(255,110,20,0.25)] focus:ring-1 focus:ring-orange-500/40"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-cyan-300"
+                      aria-label={showPassword ? "Ocultar" : "Mostrar"}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-purple-300/60 transition-colors hover:text-orange-400"
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -203,7 +212,7 @@ export default function AdminLoginPage() {
 
                 {state.error && (
                   <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-2.5 text-xs font-medium text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)]">
-                    <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+                    <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
                     <p>{state.error}</p>
                   </div>
                 )}
@@ -211,17 +220,18 @@ export default function AdminLoginPage() {
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="group relative mt-2 w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(6,182,212,0.35)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(6,182,212,0.55)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
+                  className="group relative mt-2 w-full overflow-hidden rounded-xl bg-gradient-to-r from-purple-700 via-orange-600 to-purple-700 py-3.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(255,110,20,0.35)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(255,110,20,0.6)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
                 >
                   <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full" />
+                  <div className="hw-drip pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-b from-red-600/80 to-transparent" />
                   <span className="relative flex items-center justify-center gap-2">
                     {isPending ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        <span>Verificando credenciales...</span>
+                        <span>Descifrando pergamino...</span>
                       </>
                     ) : (
-                      <span>Ingresar a la consola</span>
+                      <span>Abrir el portal</span>
                     )}
                   </span>
                 </button>
