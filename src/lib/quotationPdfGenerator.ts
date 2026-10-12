@@ -201,6 +201,65 @@ function addDays(dateVal: Date | string, days: number): string {
   return addQuotationDays(dateVal, days);
 }
 
+/**
+ * Normalizes and sanitizes text for jsPDF using standard Type 1 fonts (Helvetica).
+ * Standard WinAnsiEncoding in PDF does not support characters outside Latin-1/WinAnsi
+ * (such as unicode double prime ″, single prime ′, typographic quotes, mathematical minus, etc.).
+ * When jsPDF encounters characters > 255 without an embedded font, it triggers UTF-16BE
+ * encoding with null bytes (\x00), which causes PDF viewers to render double letter spacing
+ * and cut off or hide specifications like "SSD 512GB / 15.6\"".
+ */
+export function normalizePdfText(text: string | null | undefined): string {
+  if (!text) return "";
+  let s = String(text);
+
+  // 1. Line endings and invisible spaces
+  s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, ""); // Zero-width spaces
+  s = s.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " "); // Unicode & non-breaking spaces
+
+  // 2. Primes and quotes (e.g., screen sizes 15.6″, 14″)
+  s = s.replace(/[\u2033\u2036\u02DD\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"');
+  s = s.replace(/[\u2032\u2035\u2018\u2019\u201A\u201B\u00B4\u0060]/g, "'");
+  s = s.replace(/[\u2034\u2037]/g, "'''");
+
+  // 3. Dashes and minus signs
+  s = s.replace(/[\u2010-\u2015\u2212]/g, "-");
+
+  // 4. Bullets and symbols
+  s = s.replace(/[\u2022\u25CF\u25CB\u25AA\u25AB]/g, "-");
+  s = s.replace(/\u2026/g, "...");
+  s = s.replace(/[\u2192\u21D2]/g, "->");
+  s = s.replace(/[\u2190\u21D0]/g, "<-");
+  s = s.replace(/[\u2264]/g, "<=");
+  s = s.replace(/[\u2265]/g, ">=");
+  s = s.replace(/[\u2260]/g, "!=");
+  s = s.replace(/[\u2713\u2714]/g, "[OK]");
+  s = s.replace(/[\u2717\u2718]/g, "[X]");
+
+  // 5. Normalization to NFC (preserves standard Spanish letters á, é, í, ó, ú, ñ, Ñ, ü, Ü, ¿, ¡, °)
+  s = s.normalize("NFC");
+
+  // 6. Safe character filter for Type1 WinAnsi
+  const safeHighCodes = new Set([8364, 8482]); // €, ™
+  let clean = "";
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code === 10 || (code >= 32 && code <= 126)) {
+      clean += s[i];
+    } else if (code >= 160 && code <= 255) {
+      clean += s[i];
+    } else if (safeHighCodes.has(code)) {
+      clean += s[i];
+    } else {
+      clean += " ";
+    }
+  }
+
+  return clean;
+}
+
+
 // Convert number to Spanish words for Peruvian commercial documents
 function numberToSpanishWords(amount: number, currency: string): string {
   const units = ["", "UN", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"];
@@ -380,7 +439,7 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(...brandDark);
-  doc.text(data.code, headerBoxX + headerBoxWidth / 2, headerBoxY + 12.5, { align: "center" });
+  doc.text(normalizePdfText(data.code), headerBoxX + headerBoxWidth / 2, headerBoxY + 12.5, { align: "center" });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
@@ -407,17 +466,17 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   doc.setTextColor(...brandDark);
   doc.text("CLIENTE / RAZÓN SOCIAL:", 18, clientBoxY + 5.5);
   doc.setFont("helvetica", "normal");
-  doc.text(data.clientName || "Cliente Varios", 57, clientBoxY + 5.5);
+  doc.text(normalizePdfText(data.clientName || "Cliente Varios"), 57, clientBoxY + 5.5);
 
   doc.setFont("helvetica", "bold");
-  doc.text(`${data.clientDocType || "DOC"}:`, 18, clientBoxY + 11);
+  doc.text(`${normalizePdfText(data.clientDocType || "DOC")}:`, 18, clientBoxY + 11);
   doc.setFont("helvetica", "normal");
-  doc.text(data.clientDocNum || "Sin documento", 57, clientBoxY + 11);
+  doc.text(normalizePdfText(data.clientDocNum || "Sin documento"), 57, clientBoxY + 11);
 
   doc.setFont("helvetica", "bold");
   doc.text("DIRECCIÓN:", 18, clientBoxY + 16.5);
   doc.setFont("helvetica", "normal");
-  const addressText = data.clientAddress || "Huancayo";
+  const addressText = normalizePdfText(data.clientAddress || "Huancayo");
   const addressLines = doc.splitTextToSize(addressText, 54);
   doc.text(addressLines, 57, clientBoxY + 16.5);
 
@@ -426,28 +485,28 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFont("helvetica", "bold");
   doc.text("ATENCIÓN:", rightColX, clientBoxY + 5.5);
   doc.setFont("helvetica", "normal");
-  const attentionText = data.attentionTo || data.clientName || "-";
+  const attentionText = normalizePdfText(data.attentionTo || data.clientName || "-");
   doc.text(doc.splitTextToSize(attentionText, 50), rightColX + 22, clientBoxY + 5.5);
 
   doc.setFont("helvetica", "bold");
   doc.text("TELÉFONO:", rightColX, clientBoxY + 11);
   doc.setFont("helvetica", "normal");
-  doc.text(data.clientPhone || "-", rightColX + 22, clientBoxY + 11);
+  doc.text(normalizePdfText(data.clientPhone || "-"), rightColX + 22, clientBoxY + 11);
 
   doc.setFont("helvetica", "bold");
   doc.text("CORREO:", rightColX, clientBoxY + 16.5);
   doc.setFont("helvetica", "normal");
-  doc.text(data.clientEmail || "-", rightColX + 22, clientBoxY + 16.5);
+  doc.text(normalizePdfText(data.clientEmail || "-"), rightColX + 22, clientBoxY + 16.5);
 
   // Items Table
   const tableRows = data.items.map((it, idx) => {
-    let desc = it.description;
+    let desc = normalizePdfText(it.description);
     if (it.brand || it.model) {
-      const extra = [it.brand, it.model].filter(Boolean).join(" - ");
+      const extra = [normalizePdfText(it.brand), normalizePdfText(it.model)].filter(Boolean).join(" - ");
       desc += `\nMarca/Modelo: ${extra}`;
     }
     if (it.notes) {
-      desc += `\nNota: ${it.notes}`;
+      desc += `\nNota: ${normalizePdfText(it.notes)}`;
     }
     return [
       (idx + 1).toString(),
@@ -472,15 +531,15 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
     bodyStyles: {
       fontSize: 7.5,
       textColor: [30, 41, 59],
-      cellPadding: 2.5,
+      cellPadding: 2.2,
       overflow: "linebreak",
     },
     columnStyles: {
       0: { cellWidth: 8, halign: "center" },
-      1: { cellWidth: 15, halign: "center", fontStyle: "bold" },
-      2: { cellWidth: 110, overflow: "linebreak" },
-      3: { cellWidth: 24, halign: "right" },
-      4: { cellWidth: 25, halign: "right", fontStyle: "bold" },
+      1: { cellWidth: 13, halign: "center", fontStyle: "bold" },
+      2: { cellWidth: 115, overflow: "linebreak" },
+      3: { cellWidth: 23, halign: "right" },
+      4: { cellWidth: 23, halign: "right", fontStyle: "bold" },
     },
     margin: { left: 14, right: 14, bottom: 25 },
   });
@@ -561,7 +620,7 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   if (data.notes && data.notes.trim()) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.2);
-    noteLines = doc.splitTextToSize(`• Obs: ${data.notes.trim()}`, innerTextWidth);
+    noteLines = doc.splitTextToSize(`• Obs: ${normalizePdfText(data.notes.trim())}`, innerTextWidth);
   }
 
   // Dynamic box height based on actual notes content
@@ -589,9 +648,9 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFontSize(6.5);
   doc.setTextColor(...brandDark);
   doc.text(`• Validez de oferta: ${data.validDays} días cal. (o hasta agotar stock)`, 18, infoBoxesY + 9.5);
-  doc.text(`• Plazo de entrega: ${data.deliveryTime || "Inmediata / según stock"}`, 18, infoBoxesY + 14);
-  doc.text(`• Forma de pago: ${data.paymentMethod || "Contado / Depósito / Transferencia"}`, 18, infoBoxesY + 18.5);
-  doc.text(`• Garantía: ${data.warranty || "12 meses de garantía oficial Infosistel"}`, 18, infoBoxesY + 23);
+  doc.text(`• Plazo de entrega: ${normalizePdfText(data.deliveryTime || "Inmediata / según stock")}`, 18, infoBoxesY + 14);
+  doc.text(`• Forma de pago: ${normalizePdfText(data.paymentMethod || "Contado / Depósito / Transferencia")}`, 18, infoBoxesY + 18.5);
+  doc.text(`• Garantía: ${normalizePdfText(data.warranty || "12 meses de garantía oficial Infosistel")}`, 18, infoBoxesY + 23);
 
   if (noteLines.length > 0) {
     doc.setFontSize(6.2);
@@ -762,8 +821,9 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
         doc.setFontSize(6);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(...mutedGray);
-        const displayClient =
-          data.clientName.length > 28 ? data.clientName.slice(0, 26) + "..." : data.clientName;
+        const displayClient = normalizePdfText(
+          data.clientName.length > 28 ? data.clientName.slice(0, 26) + "..." : data.clientName
+        );
         doc.text(`Cliente: ${displayClient}`, annexBoxX + 33, 21, { align: "center" });
 
         // Decorative Banner
