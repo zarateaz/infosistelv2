@@ -304,10 +304,16 @@ export function ProductForm({
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={isPending || imageUploading}
+            disabled={isPending || imageUploading || !!duplicateWarning?.isDuplicate}
             className="rounded-full bg-accent px-7 py-3 text-sm font-bold text-accent-fg transition-opacity disabled:opacity-60"
           >
-            {isPending ? "Guardando..." : imageUploading ? "Subiendo imagen..." : "Guardar"}
+            {duplicateWarning?.isDuplicate
+              ? "Producto ya en inventario"
+              : isPending
+              ? "Guardando..."
+              : imageUploading
+              ? "Subiendo imagen..."
+              : "Guardar"}
           </button>
           <button
             type="button"
