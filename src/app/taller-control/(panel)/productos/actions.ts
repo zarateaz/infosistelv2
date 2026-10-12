@@ -148,7 +148,7 @@ function serializeExtraImages(images?: string[]): string | null {
  * - reemplaza signos de puntuación por espacios
  * - colapsa espacios continuos y quita bordes
  */
-export function normalizeProductKey(str: string): string {
+function normalizeProductKey(str: string): string {
   return str
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
