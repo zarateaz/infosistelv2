@@ -34,20 +34,16 @@ export function ProductCard({
         )}
 
         {product.stock === 0 ? (
-          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm">
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-neutral-900/85 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
             Agotado
-          </div>
-        ) : product.stock === 1 ? (
-          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-gradient-to-r from-red-600 to-amber-500 px-2.5 py-0.5 text-[9px] font-black uppercase text-white shadow-md animate-pulse">
-            🔥 ¡Última unidad!
-          </div>
-        ) : product.stock <= 3 ? (
-          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm">
-            ⚡ Stock Limitado
           </div>
         ) : product.isFeatured ? (
           <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-black text-accent-fg">
             <Star size={9} fill="currentColor" /> TOP
+          </div>
+        ) : product.onSale ? (
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm">
+            Oferta
           </div>
         ) : null}
 

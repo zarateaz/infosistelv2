@@ -50,19 +50,11 @@ export function ProductModal({
         <h2 className="mb-3 text-2xl font-black leading-tight text-fg">{product.name}</h2>
         <p className="mb-5 text-sm leading-relaxed text-fg-muted">{product.description}</p>
 
-        {product.stock === 0 ? (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-bold text-red-500">
-            <span>⛔ Este producto se encuentra actualmente agotado.</span>
+        {product.stock === 0 && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs font-bold text-red-500">
+            <span>⛔ Este producto se encuentra temporalmente agotado.</span>
           </div>
-        ) : product.stock === 1 ? (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-xs font-bold text-amber-500 animate-pulse">
-            <span>⚠️ ¡Última unidad disponible en stock! Aprovecha antes de que se agote.</span>
-          </div>
-        ) : product.stock <= 3 ? (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-2 text-xs font-medium text-amber-600">
-            <span>⚡ Stock limitado disponible.</span>
-          </div>
-        ) : null}
+        )}
 
         <div className="flex items-center justify-between border-t border-border pt-5">
           <div>
