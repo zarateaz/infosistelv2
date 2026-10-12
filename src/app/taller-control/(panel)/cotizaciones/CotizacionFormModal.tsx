@@ -29,6 +29,7 @@ import {
 } from "./actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
 import { getPeruTodayString, toDateInputValue } from "@/lib/quotationDates";
+import { QuotationPhotosField } from "./QuotationPhotosField";
 
 interface CotizacionFormModalProps {
   isOpen: boolean;
@@ -60,6 +61,7 @@ export function CotizacionFormModal({
   const [paymentMethod, setPaymentMethod] = useState("Contado contra entrega / Transferencia");
   const [warranty, setWarranty] = useState("12 meses de garantía oficial Infosistel");
   const [notes, setNotes] = useState("");
+  const [images, setImages] = useState<string[]>([]);
 
   const [items, setItems] = useState<QuotationItemData[]>([
     {
@@ -105,6 +107,16 @@ export function CotizacionFormModal({
       setPaymentMethod(quotationToEdit.paymentMethod || "Contado contra entrega / Transferencia");
       setWarranty(quotationToEdit.warranty || "12 meses de garantía oficial Infosistel");
       setNotes(quotationToEdit.notes || "");
+      if (quotationToEdit.images) {
+        try {
+          const parsed = JSON.parse(quotationToEdit.images);
+          setImages(Array.isArray(parsed) ? parsed : []);
+        } catch {
+          setImages([]);
+        }
+      } else {
+        setImages([]);
+      }
       setItems(
         quotationToEdit.items.length > 0
           ? quotationToEdit.items
@@ -139,6 +151,7 @@ export function CotizacionFormModal({
       setPaymentMethod("Contado contra entrega / Transferencia");
       setWarranty("12 meses de garantía oficial Infosistel");
       setNotes("");
+      setImages([]);
       setItems([
         {
           description: "",
@@ -270,6 +283,7 @@ export function CotizacionFormModal({
       paymentMethod: paymentMethod.trim() || null,
       warranty: warranty.trim() || null,
       notes: notes.trim() || null,
+      images: images.length > 0 ? images : undefined,
       items: items.map((it) => ({
         productId: it.productId || null,
         description: it.description.trim(),
@@ -297,6 +311,16 @@ export function CotizacionFormModal({
       }
 
       if (andDownloadPdf) {
+        let pdfImages: string[] = images;
+        if (res.quotation.images) {
+          try {
+            const parsed = JSON.parse(res.quotation.images);
+            if (Array.isArray(parsed)) pdfImages = parsed;
+          } catch {
+            // keep images
+          }
+        }
+
         generateQuotationPDF({
           code: res.quotation.code,
           clientName: res.quotation.clientName,
@@ -319,6 +343,7 @@ export function CotizacionFormModal({
           warranty: res.quotation.warranty,
           notes: res.quotation.notes,
           items: res.quotation.items,
+          images: pdfImages,
         });
       }
 
@@ -559,7 +584,7 @@ export function CotizacionFormModal({
 
                   <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-12">
                     {/* Description & Search */}
-                    <div className="relative sm:col-span-6">
+                    <div className="relative sm:col-span-5">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
                           Descripción del producto o servicio *
@@ -581,12 +606,12 @@ export function CotizacionFormModal({
                         </button>
                       </div>
 
-                      <input
-                        type="text"
-                        placeholder="Ej. Laptop HP Core i7 16GB RAM o Mantenimiento General"
+                      <textarea
+                        rows={2}
+                        placeholder="Ej. PORTATIL LENOVO V15 G5 / I3-1315U / 8GB DDR5 / SSD 512GB (soporta texto multilínea completo)"
                         value={it.description}
                         onChange={(e) => handleItemChange(idx, "description", e.target.value)}
-                        className="admin-field mt-1 w-full rounded-xl px-3 py-2 text-xs font-medium text-fg"
+                        className="admin-field mt-1 w-full rounded-xl px-3 py-2 text-xs font-medium text-fg resize-y"
                       />
 
                       {/* Dropdown for catalog search */}
@@ -634,18 +659,32 @@ export function CotizacionFormModal({
                       )}
                     </div>
 
-                    {/* Brand / Model */}
-                    <div className="sm:col-span-2">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
-                        Marca / Modelo
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="HP / Pavilion"
-                        value={it.brand || ""}
-                        onChange={(e) => handleItemChange(idx, "brand", e.target.value)}
-                        className="admin-field mt-1 w-full rounded-xl px-3 py-2 text-xs text-fg"
-                      />
+                    {/* Brand & Model */}
+                    <div className="grid grid-cols-2 gap-1.5 sm:col-span-3">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+                          Marca
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="LENOVO"
+                          value={it.brand || ""}
+                          onChange={(e) => handleItemChange(idx, "brand", e.target.value)}
+                          className="admin-field mt-1 w-full rounded-xl px-2.5 py-2 text-xs text-fg"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+                          Modelo
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="V15 G5"
+                          value={it.model || ""}
+                          onChange={(e) => handleItemChange(idx, "model", e.target.value)}
+                          className="admin-field mt-1 w-full rounded-xl px-2.5 py-2 text-xs text-fg"
+                        />
+                      </div>
                     </div>
 
                     {/* Quantity */}
@@ -658,7 +697,7 @@ export function CotizacionFormModal({
                         min="1"
                         value={it.quantity}
                         onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
-                        className="admin-field mt-1 w-full rounded-xl px-2.5 py-2 text-center text-xs font-bold text-fg"
+                        className="admin-field mt-1 w-full rounded-xl px-2 py-2 text-center text-xs font-bold text-fg"
                       />
                     </div>
 
@@ -673,7 +712,7 @@ export function CotizacionFormModal({
                         min="0"
                         value={it.unitPrice}
                         onChange={(e) => handleItemChange(idx, "unitPrice", e.target.value)}
-                        className="admin-field mt-1 w-full rounded-xl px-2.5 py-2 text-right text-xs font-bold text-fg"
+                        className="admin-field mt-1 w-full rounded-xl px-2 py-2 text-right text-xs font-bold text-fg"
                       />
                     </div>
 
@@ -685,6 +724,17 @@ export function CotizacionFormModal({
                       <div className="mt-1 flex h-[34px] items-center justify-end px-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                         {currSymbol} {it.total.toFixed(2)}
                       </div>
+                    </div>
+
+                    {/* Item Notes / Specifics */}
+                    <div className="sm:col-span-12">
+                      <input
+                        type="text"
+                        placeholder="Detalles / notas adicionales de este ítem (Opcional, se incluye en el PDF)"
+                        value={it.notes || ""}
+                        onChange={(e) => handleItemChange(idx, "notes", e.target.value)}
+                        className="admin-field w-full rounded-xl px-3 py-1.5 text-[11px] text-fg/80"
+                      />
                     </div>
                   </div>
                 </div>
@@ -802,6 +852,9 @@ export function CotizacionFormModal({
               </div>
             </div>
           </div>
+
+          {/* Section 5: Fotos y Anexos Visuales */}
+          <QuotationPhotosField images={images} onChange={setImages} />
         </div>
 
         {/* Footer Actions */}

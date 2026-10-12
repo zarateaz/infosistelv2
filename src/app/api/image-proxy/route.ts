@@ -42,19 +42,34 @@ export async function GET(request: NextRequest) {
     // a real chunk of the DuckDuckGo candidates. A same-origin Referer is
     // the standard trick to pass that check on most sites (not all —
     // some also gate on cookies/session, which this can't replicate).
-    const upstream = await fetch(parsed, {
+    let upstream = await fetch(parsed, {
       signal: AbortSignal.timeout(6000),
       headers: {
         "user-agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        // Explicitly asks for formats ALLOWED_TYPES actually supports —
-        // an avif-first Accept header (the real Chrome default) makes some
-        // CDNs content-negotiate to AVIF, which isn't in ALLOWED_TYPES and
-        // would get rejected below for no good reason.
         accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
         referer: `${parsed.origin}/`,
       },
     });
+
+    const fallback = request.nextUrl.searchParams.get("fallback");
+    if ((!upstream.ok || !upstream.body) && fallback && fallback.startsWith("https://")) {
+      try {
+        const fallbackUrl = new URL(fallback);
+        const fbRes = await fetch(fallbackUrl, {
+          signal: AbortSignal.timeout(6000),
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
+          },
+        });
+        if (fbRes.ok && fbRes.body) {
+          upstream = fbRes;
+        }
+      } catch {}
+    }
+
     if (!upstream.ok || !upstream.body) {
       console.error(`[image-proxy] upstream fetch failed: HTTP ${upstream.status} for ${parsed.origin}`);
       return new Response("No se pudo obtener la imagen.", { status: 502 });

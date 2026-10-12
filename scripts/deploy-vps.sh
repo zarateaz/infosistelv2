@@ -38,7 +38,7 @@ if [[ "$DATABASE_URL" != file:/* ]]; then
 fi
 
 echo "=== Preparando directorio de datos persistentes ==="
-mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios"
+mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones"
 DB_PATH="${DATABASE_URL#file:}"
 if [ -f "$DB_PATH" ]; then
   STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -85,6 +85,10 @@ echo "=== Enlazando fotos de servicio técnico persistentes ==="
 # (404) y además se pierde en el siguiente redeploy. Reportado directamente.
 rm -rf .next/standalone/public/img/servicios
 ln -s "$DATA_DIR/uploads/servicios" .next/standalone/public/img/servicios
+
+echo "=== Enlazando fotos de cotizaciones persistentes ==="
+rm -rf .next/standalone/public/img/cotizaciones
+ln -s "$DATA_DIR/uploads/cotizaciones" .next/standalone/public/img/cotizaciones
 
 echo "=== PM2 ==="
 npx pm2 delete infosistel-v2 2>/dev/null || true

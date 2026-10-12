@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon, Sparkles } from "lucide-react";
-import { lookupBarcode, recognizeProductImage } from "./scan-actions";
+import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon, Sparkles, Search } from "lucide-react";
+import { lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
 
@@ -137,6 +137,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
   const [downloadingSelection, setDownloadingSelection] = useState(false);
   const [picksApplied, setPicksApplied] = useState(false);
+  const [manualSearchQuery, setManualSearchQuery] = useState("");
+  const [isSearchingManual, setIsSearchingManual] = useState(false);
 
   async function runBarcodeLookup(code: string) {
     const clean = code.trim();
@@ -161,6 +163,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     const { imageUrl, imageOptions: candidates, ...suggestion } = result.suggestion ?? {};
     onFill({ barcode: clean, ...suggestion });
     setBarcodeStatus(result.suggestion ? { kind: "found" } : { kind: "not-found" });
+    if (suggestion.name) setManualSearchQuery(suggestion.name);
     if (candidates && candidates.length > 0) setImageOptions(candidates);
 
     // Best-effort: the product listing sometimes has its own photo — fetch
@@ -240,6 +243,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       }
       onFill({ name: result.name, description: result.description, category: result.category });
       setImageStatus({ kind: "done" });
+      if (result.name) setManualSearchQuery(result.name);
       if (result.imageOptions && result.imageOptions.length > 0) setImageOptions(result.imageOptions);
     } catch {
       setImageStatus({
@@ -354,11 +358,6 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           Datos leídos de la foto y completados abajo — revísalos antes de guardar.
         </p>
       )}
-      {imageStatus.kind === "done" && imageOptions.length === 0 && (
-        <p className="mt-1 text-xs text-fg-muted">
-          No se encontraron fotos sugeridas en internet para este producto — puedes subir una a mano abajo.
-        </p>
-      )}
       {imageStatus.kind === "existing" && (
         <p className="mt-3 text-sm text-fg-muted">
           Ya existe en el catálogo:{" "}
@@ -370,9 +369,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       {imageStatus.kind === "error" && (
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>
       )}
-
       {imageOptions.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-4 rounded-2xl border border-border/70 bg-bg/50 p-4">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-muted">
             <ImageIcon size={13} />
             Elige hasta {MAX_PICKS} fotos encontradas en internet para este producto (la primera
@@ -384,7 +382,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
               const selected = order !== -1;
               return (
                 <button
-                  key={i}
+                  key={url}
                   type="button"
                   onClick={() => toggleSelection(url)}
                   disabled={downloadingSelection}
@@ -397,8 +395,9 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
                     src={previewUrl(url)}
                     alt={`Opción ${i + 1}`}
                     className="h-full w-full object-contain bg-white p-1"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
+                    onError={() => {
+                      setImageOptions((prev) => prev.filter((u) => u !== url));
+                      setSelectedUrls((prev) => prev.filter((u) => u !== url));
                     }}
                   />
                   {selected && (
@@ -429,6 +428,84 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
               Fotos aplicadas abajo.
             </p>
           )}
+
+          {/* Buscador interactivo para refinar o cambiar fotos en el acto */}
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const q = manualSearchQuery.trim();
+              if (!q || isSearchingManual) return;
+              setIsSearchingManual(true);
+              const found = await searchImagesManually(q);
+              setIsSearchingManual(false);
+              if (found.length > 0) {
+                setImageOptions(found);
+                setSelectedUrls([]);
+                setPicksApplied(false);
+              }
+            }}
+            className="mt-3 flex items-center gap-2 border-t border-border/40 pt-3"
+          >
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+              <input
+                value={manualSearchQuery}
+                onChange={(e) => setManualSearchQuery(e.target.value)}
+                placeholder="¿Buscar fotos de otro modelo específico? Ej: UGREEN 70450 o UGREEN US320..."
+                className="w-full rounded-xl border border-border bg-bg py-1.5 pl-8 pr-3 text-xs text-fg outline-none focus:border-accent"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSearchingManual || !manualSearchQuery.trim()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-bold text-fg transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+            >
+              {isSearchingManual ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+              {isSearchingManual ? "Buscando…" : "Buscar fotos"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {imageStatus.kind === "done" && imageOptions.length === 0 && (
+        <div className="mt-3 rounded-2xl border border-border/70 bg-bg/50 p-4">
+          <p className="text-xs text-fg-muted mb-2">
+            No se encontraron fotos automáticas — escribe el modelo exacto o nombre para buscar en internet:
+          </p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const q = manualSearchQuery.trim();
+              if (!q || isSearchingManual) return;
+              setIsSearchingManual(true);
+              const found = await searchImagesManually(q);
+              setIsSearchingManual(false);
+              if (found.length > 0) {
+                setImageOptions(found);
+                setSelectedUrls([]);
+                setPicksApplied(false);
+              }
+            }}
+            className="flex items-center gap-2"
+          >
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+              <input
+                value={manualSearchQuery}
+                onChange={(e) => setManualSearchQuery(e.target.value)}
+                placeholder="Ej: UGREEN 70450 US320 USB-C HDMI..."
+                className="w-full rounded-xl border border-border bg-bg py-1.5 pl-8 pr-3 text-xs text-fg outline-none focus:border-accent"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSearchingManual || !manualSearchQuery.trim()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-bold text-fg transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+            >
+              {isSearchingManual ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+              {isSearchingManual ? "Buscando…" : "Buscar fotos"}
+            </button>
+          </form>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -14,6 +15,9 @@ import {
   MapPin,
   Phone,
   Mail,
+  ImageIcon,
+  ZoomIn,
+  X,
 } from "lucide-react";
 import type { QuotationRecord } from "@/app/taller-control/(panel)/cotizaciones/actions";
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
@@ -26,6 +30,18 @@ import {
 } from "@/lib/quotationDates";
 
 export function PublicCotizacionClient({ quotation }: { quotation: QuotationRecord }) {
+  const [selectedPhotoZoom, setSelectedPhotoZoom] = useState<string | null>(null);
+
+  let parsedImages: string[] = [];
+  if (quotation.images) {
+    try {
+      const p = JSON.parse(quotation.images);
+      if (Array.isArray(p)) parsedImages = p;
+    } catch {
+      parsedImages = [];
+    }
+  }
+
   const currSymbol = quotation.currency === "USD" ? "$" : "S/.";
 
   const handleDownloadPDF = () => {
@@ -51,6 +67,7 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
       warranty: quotation.warranty,
       notes: quotation.notes,
       items: quotation.items,
+      images: parsedImages,
     });
   };
 
@@ -211,13 +228,13 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
                     <td className="px-4 py-3 text-center font-bold text-fg-muted">{idx + 1}</td>
                     <td className="px-4 py-3 text-center font-bold text-fg">{it.quantity}</td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-fg text-sm">{it.description}</p>
+                      <p className="font-semibold text-fg text-sm whitespace-pre-line">{it.description}</p>
                       {(it.brand || it.model) && (
                         <p className="text-[11px] text-fg-muted">
                           {[it.brand, it.model].filter(Boolean).join(" · ")}
                         </p>
                       )}
-                      {it.notes && <p className="text-[11px] text-accent/80 mt-0.5">{it.notes}</p>}
+                      {it.notes && <p className="text-[11px] text-accent/80 mt-0.5 whitespace-pre-line">{it.notes}</p>}
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-fg">
                       {currSymbol} {it.unitPrice.toFixed(2)}
@@ -283,9 +300,12 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
                 {quotation.warranty || "12 meses de garantía oficial Infosistel"}
               </p>
               {quotation.notes && (
-                <p className="text-fg-muted">
-                  • <strong className="text-fg">Observaciones:</strong> {quotation.notes}
-                </p>
+                <div className="pt-1 border-t border-border/50">
+                  <p className="text-fg-muted">
+                    • <strong className="text-fg">Observaciones:</strong>
+                  </p>
+                  <p className="whitespace-pre-line text-fg/90 pl-3 pt-0.5">{quotation.notes}</p>
+                </div>
               )}
             </div>
 
@@ -313,6 +333,43 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
               </div>
             </div>
           </div>
+
+          {/* Attached Photos / Anexo Fotográfico */}
+          {parsedImages.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-border bg-bg-alt/40 p-5 text-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-display font-bold uppercase tracking-wider text-accent text-[11px] flex items-center gap-1.5">
+                  <ImageIcon size={14} />
+                  <span>Referencias Visuales y Fotos Adjuntas ({parsedImages.length})</span>
+                </h4>
+                <span className="text-[11px] text-fg-muted font-medium">Click en una imagen para ampliar</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                {parsedImages.map((imgUrl, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedPhotoZoom(imgUrl)}
+                    className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-border bg-bg transition-all hover:scale-[1.03] hover:border-accent hover:shadow-lg"
+                  >
+                    <img
+                      src={imgUrl}
+                      alt={`Foto adjunta ${idx + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center">
+                      <span className="rounded-full bg-black/60 p-1.5 text-white">
+                        <ZoomIn size={14} />
+                      </span>
+                    </div>
+                    <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                      Foto #{idx + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Visítanos en Huancayo */}
           <div className="mt-4 rounded-2xl border border-border bg-bg-alt/40 p-5 text-xs">
@@ -385,6 +442,32 @@ export function PublicCotizacionClient({ quotation }: { quotation: QuotationReco
           </div>
         </div>
       </main>
+
+      {/* Lightbox Zoom Modal */}
+      {selectedPhotoZoom && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-in fade-in"
+          onClick={() => setSelectedPhotoZoom(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl border border-white/20 bg-black/50 p-2 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedPhotoZoom(null)}
+              className="absolute top-4 right-4 z-10 rounded-full bg-black/70 p-2 text-white hover:bg-black transition-colors"
+            >
+              <X size={18} />
+            </button>
+            <img
+              src={selectedPhotoZoom}
+              alt="Vista ampliada"
+              className="max-h-[85vh] max-w-[85vw] rounded-xl object-contain shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

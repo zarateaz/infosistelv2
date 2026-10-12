@@ -60,6 +60,97 @@ export interface QuotationPdfData {
   warranty?: string | null;
   notes?: string | null;
   items: QuotationPdfItem[];
+  images?: string[];
+}
+
+/**
+ * Loads an image from URL or data-URL and prepares it onto an offscreen canvas
+ * with a white background so it can be cleanly embedded into jsPDF as a JPEG.
+ */
+async function loadImageDataUrl(src: string): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  if (!src) return null;
+
+  return new Promise((resolve) => {
+    try {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+
+      const handleSuccess = () => {
+        try {
+          const naturalW = img.naturalWidth || img.width || 800;
+          const naturalH = img.naturalHeight || img.height || 600;
+
+          // Limit canvas resolution to max 1600 on longest side for PDF optimization
+          const maxDim = 1600;
+          let targetW = naturalW;
+          let targetH = naturalH;
+          if (targetW > maxDim || targetH > maxDim) {
+            if (targetW > targetH) {
+              targetH = Math.round((targetH * maxDim) / targetW);
+              targetW = maxDim;
+            } else {
+              targetW = Math.round((targetW * maxDim) / targetH);
+              targetH = maxDim;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(null);
+            return;
+          }
+
+          // Solid white background to prevent black/alpha artifacts in PDF
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, targetW, targetH);
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+
+          const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+          resolve(jpegDataUrl);
+        } catch {
+          resolve(null);
+        }
+      };
+
+      img.onload = handleSuccess;
+      img.onerror = () => {
+        // Fallback attempt without cors in case of local same-origin assets
+        try {
+          const fallback = new window.Image();
+          fallback.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = fallback.naturalWidth || fallback.width || 800;
+              canvas.height = fallback.naturalHeight || fallback.height || 600;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) {
+                resolve(null);
+                return;
+              }
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(fallback, 0, 0);
+              resolve(canvas.toDataURL("image/jpeg", 0.9));
+            } catch {
+              resolve(null);
+            }
+          };
+          fallback.onerror = () => resolve(null);
+          fallback.src = src;
+        } catch {
+          resolve(null);
+        }
+      };
+
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 function safeRunAutoTable(doc: jsPDF, options: any) {
@@ -206,7 +297,7 @@ function numberToSpanishWords(amount: number, currency: string): string {
 /**
  * Generates an executive, highly professional PDF quotation with official Infosistel branding.
  */
-export function generateQuotationPDF(data: QuotationPdfData) {
+export async function generateQuotationPDF(data: QuotationPdfData) {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -327,14 +418,16 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.text("DIRECCIÓN:", 18, clientBoxY + 16.5);
   doc.setFont("helvetica", "normal");
   const addressText = data.clientAddress || "Huancayo";
-  doc.text(addressText.length > 40 ? addressText.slice(0, 40) + "..." : addressText, 57, clientBoxY + 16.5);
+  const addressLines = doc.splitTextToSize(addressText, 54);
+  doc.text(addressLines, 57, clientBoxY + 16.5);
 
   // Right Column of Client Info
   const rightColX = pageWidth / 2 + 10;
   doc.setFont("helvetica", "bold");
   doc.text("ATENCIÓN:", rightColX, clientBoxY + 5.5);
   doc.setFont("helvetica", "normal");
-  doc.text(data.attentionTo || data.clientName || "-", rightColX + 22, clientBoxY + 5.5);
+  const attentionText = data.attentionTo || data.clientName || "-";
+  doc.text(doc.splitTextToSize(attentionText, 50), rightColX + 22, clientBoxY + 5.5);
 
   doc.setFont("helvetica", "bold");
   doc.text("TELÉFONO:", rightColX, clientBoxY + 11);
@@ -380,11 +473,12 @@ export function generateQuotationPDF(data: QuotationPdfData) {
       fontSize: 7.5,
       textColor: [30, 41, 59],
       cellPadding: 2.5,
+      overflow: "linebreak",
     },
     columnStyles: {
       0: { cellWidth: 8, halign: "center" },
       1: { cellWidth: 15, halign: "center", fontStyle: "bold" },
-      2: { cellWidth: 110 },
+      2: { cellWidth: 110, overflow: "linebreak" },
       3: { cellWidth: 24, halign: "right" },
       4: { cellWidth: 25, halign: "right", fontStyle: "bold" },
     },
@@ -458,10 +552,28 @@ export function generateQuotationPDF(data: QuotationPdfData) {
     { align: "right" }
   );
 
-  // Commercial Terms & Bank Accounts (2 boxes on Left)
-  const infoBoxesY = totalsBoxY + 26;
+  // Commercial Terms & Bank Accounts (2 boxes)
   const halfWidth = (pageWidth - 28 - 4) / 2;
-  const infoBoxesHeight = 33;
+  const innerTextWidth = halfWidth - 8;
+
+  // Split notes to size without ANY slicing or truncation
+  let noteLines: string[] = [];
+  if (data.notes && data.notes.trim()) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.2);
+    noteLines = doc.splitTextToSize(`• Obs: ${data.notes.trim()}`, innerTextWidth);
+  }
+
+  // Dynamic box height based on actual notes content
+  const notesExtraHeight = noteLines.length > 0 ? noteLines.length * 3.3 + 1.5 : 0;
+  const infoBoxesHeight = Math.max(34, 26 + notesExtraHeight);
+
+  // If infoBoxes and visitBox exceed page, move them to a new page cleanly
+  let infoBoxesY = totalsBoxY + 26;
+  if (infoBoxesY + infoBoxesHeight + 28 > pageHeight - 12) {
+    doc.addPage();
+    infoBoxesY = 16;
+  }
 
   // Box 1: Commercial Conditions
   doc.setFillColor(...lightBg);
@@ -480,8 +592,15 @@ export function generateQuotationPDF(data: QuotationPdfData) {
   doc.text(`• Plazo de entrega: ${data.deliveryTime || "Inmediata / según stock"}`, 18, infoBoxesY + 14);
   doc.text(`• Forma de pago: ${data.paymentMethod || "Contado / Depósito / Transferencia"}`, 18, infoBoxesY + 18.5);
   doc.text(`• Garantía: ${data.warranty || "12 meses de garantía oficial Infosistel"}`, 18, infoBoxesY + 23);
-  if (data.notes) {
-    doc.text(`• Obs: ${data.notes.slice(0, 42)}`, 18, infoBoxesY + 27.5);
+
+  if (noteLines.length > 0) {
+    doc.setFontSize(6.2);
+    doc.setTextColor(...brandDark);
+    let noteY = infoBoxesY + 27;
+    for (const nLine of noteLines) {
+      doc.text(nLine, 18, noteY);
+      noteY += 3.3;
+    }
   }
 
   // Box 2: Bank Accounts
@@ -587,6 +706,159 @@ export function generateQuotationPDF(data: QuotationPdfData) {
     { align: "center" }
   );
   doc.link(15, visitBoxY + 19.5, visitBoxWidth - 2, 5.2, { url: "https://www.infosistel.com.pe/" });
+
+  // ----------------------------------------------------
+  // ANEXO FOTOGRÁFICO / IMÁGENES DE REFERENCIA ADJUNTAS
+  // ----------------------------------------------------
+  if (data.images && data.images.length > 0) {
+    const loadedDataUrls: string[] = [];
+    for (const rawImg of data.images) {
+      if (rawImg && typeof rawImg === "string" && rawImg.trim()) {
+        const loaded = await loadImageDataUrl(rawImg.trim());
+        if (loaded) {
+          loadedDataUrls.push(loaded);
+        }
+      }
+    }
+
+    if (loadedDataUrls.length > 0) {
+      const IMAGES_PER_PAGE = 4;
+      const totalAnnexPages = Math.ceil(loadedDataUrls.length / IMAGES_PER_PAGE);
+
+      for (let pIdx = 0; pIdx < totalAnnexPages; pIdx++) {
+        doc.addPage("a4", "portrait");
+
+        // Top Header of Annex Page
+        try {
+          doc.addImage(INFOSISTEL_LOGO_BASE64, "PNG", 14, 10, 48, 5.8);
+        } catch {
+          doc.setTextColor(...brandPrimary);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(14);
+          doc.text("INFOSISTEL", 14, 15);
+        }
+
+        doc.setTextColor(...brandDark);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6.8);
+        doc.text("INFORMÁTICA · SISTEMAS · TELECOMUNICACIONES", 14, 19.5);
+
+        // Header Annex Title Box on the right
+        const annexBoxX = pageWidth - 80;
+        doc.setFillColor(...lightBg);
+        doc.setDrawColor(...brandPrimary);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(annexBoxX, 8, 66, 15, 2, 2, "FD");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.setTextColor(...brandPrimary);
+        doc.text("ANEXO FOTOGRÁFICO", annexBoxX + 33, 13, { align: "center" });
+
+        doc.setFontSize(7);
+        doc.setTextColor(...brandDark);
+        doc.text(`COTIZACIÓN: ${data.code}`, annexBoxX + 33, 17.5, { align: "center" });
+
+        doc.setFontSize(6);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...mutedGray);
+        const displayClient =
+          data.clientName.length > 28 ? data.clientName.slice(0, 26) + "..." : data.clientName;
+        doc.text(`Cliente: ${displayClient}`, annexBoxX + 33, 21, { align: "center" });
+
+        // Decorative Banner
+        const bannerY = 25.5;
+        doc.setFillColor(239, 246, 255);
+        doc.setDrawColor(191, 219, 254);
+        doc.setLineWidth(0.2);
+        doc.roundedRect(14, bannerY, pageWidth - 28, 6.5, 1.5, 1.5, "FD");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6.8);
+        doc.setTextColor(...brandPrimary);
+        doc.text(
+          "FOTOGRAFÍAS Y REFERENCIAS VISUALES DE LOS PRODUCTOS O SERVICIOS COTIZADOS",
+          pageWidth / 2,
+          bannerY + 4.3,
+          { align: "center" }
+        );
+
+        // 2x2 Grid of Cards
+        const cardW = 88;
+        const cardH = 114;
+        const gapX = 6;
+        const gapY = 6;
+        const startGridY = 34.5;
+
+        const pageImages = loadedDataUrls.slice(
+          pIdx * IMAGES_PER_PAGE,
+          (pIdx + 1) * IMAGES_PER_PAGE
+        );
+
+        for (let i = 0; i < pageImages.length; i++) {
+          const globalIdx = pIdx * IMAGES_PER_PAGE + i + 1;
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+
+          const cardX = 14 + col * (cardW + gapX);
+          const cardY = startGridY + row * (cardH + gapY);
+
+          // Card Background
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(...cardBorder);
+          doc.setLineWidth(0.3);
+          doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "FD");
+
+          // Header inside card
+          doc.setFillColor(...lightBg);
+          doc.roundedRect(cardX + 0.3, cardY + 0.3, cardW - 0.6, 7.5, 2.2, 2.2, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.8);
+          doc.setTextColor(...brandPrimary);
+          doc.text(`FOTOGRAFÍA 0${globalIdx}`, cardX + 4, cardY + 5.2);
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(5.8);
+          doc.setTextColor(...mutedGray);
+          doc.text("Referencia Visual", cardX + cardW - 4, cardY + 5.2, { align: "right" });
+
+          // Photo boundary inside card
+          const innerW = cardW - 6;
+          const innerH = cardH - 12.5;
+          const innerX = cardX + 3;
+          const innerY = cardY + 9.5;
+
+          const dataUrl = pageImages[i];
+          try {
+            const imgProps = doc.getImageProperties(dataUrl);
+            const naturalW = imgProps.width || 1;
+            const naturalH = imgProps.height || 1;
+            const aspect = naturalW / naturalH;
+
+            let drawW = innerW;
+            let drawH = innerW / aspect;
+
+            if (drawH > innerH) {
+              drawH = innerH;
+              drawW = innerH * aspect;
+            }
+
+            const drawX = innerX + (innerW - drawW) / 2;
+            const drawY = innerY + (innerH - drawH) / 2;
+
+            doc.addImage(dataUrl, "JPEG", drawX, drawY, drawW, drawH);
+          } catch (imgErr) {
+            console.warn("Error adding image to PDF:", imgErr);
+            doc.setTextColor(...mutedGray);
+            doc.setFontSize(7);
+            doc.text("Imagen no disponible", innerX + innerW / 2, innerY + innerH / 2, {
+              align: "center",
+            });
+          }
+        }
+      }
+    }
+  }
 
   // Page Numbers and Footer
   const totalPages = doc.getNumberOfPages();

@@ -73,6 +73,16 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
   }, [quotations]);
 
   const handleDownloadPDF = (q: QuotationRecord) => {
+    let pdfImages: string[] = [];
+    if (q.images) {
+      try {
+        const parsed = JSON.parse(q.images);
+        if (Array.isArray(parsed)) pdfImages = parsed;
+      } catch {
+        pdfImages = [];
+      }
+    }
+
     generateQuotationPDF({
       code: q.code,
       clientName: q.clientName,
@@ -95,6 +105,7 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
       warranty: q.warranty,
       notes: q.notes,
       items: q.items,
+      images: pdfImages,
     });
   };
 

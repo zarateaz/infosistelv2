@@ -269,7 +269,10 @@ export async function recognizeProductImage(
   // money — a stuck client-side retry loop shouldn't be able to run it
   // unbounded. Same defense as the public chat endpoint, generous limit
   // since it's a trusted, low-volume user.
-  const ip = getClientIP(await headers());
+  let ip = "127.0.0.1";
+  try {
+    ip = getClientIP(await headers());
+  } catch {}
   const rateCheck = checkRateLimit(rateLimitKey("recognize-product", ip), 20, 5 * 60 * 1000);
   if (!rateCheck.allowed) {
     return { error: "Demasiadas fotos procesadas seguidas. Intenta de nuevo en unos minutos." };
@@ -295,13 +298,26 @@ export async function recognizeProductImage(
         name: z
           .string()
           .describe(
-            "Nombre comercial corto del producto, en español. Si es tinta, tóner o cartucho: el color (Negro/Cian/Magenta/Amarillo/Tricolor) es OBLIGATORIO al final del nombre — sin eso, tintas del mismo modelo y distinto color quedan indistinguibles en el catálogo."
+            "Nombre comercial conciso del producto en español para catálogo (máximo 120 caracteres). Incluye marca, tipo de producto y formato físico específico (ej: 'ADAPTADOR UGREEN USB-C A HDMI COMPACTO SIN CABLE'). Si es tinta, tóner o cartucho: el color (Negro/Cian/Magenta/Amarillo/Tricolor) es OBLIGATORIO al final del nombre."
           ),
-        description: z.string().describe("Descripción breve (1-2 frases) basada en lo que dice la caja."),
+        description: z
+          .string()
+          .describe("Descripción técnica y comercial breve (1-2 frases) basada en lo que dice la caja y sus especificaciones."),
         category: z
           .string()
           .describe(
             "Categoría del producto: usa una de las existentes si encaja bien; si ninguna encaja, propone una nueva categoría corta (2-3 palabras)."
+          ),
+        searchQueries: z
+          .array(z.string())
+          .describe(
+            "2 a 3 consultas de búsqueda priorizadas en inglés o términos internacionales de catálogo para encontrar fotos del producto IDÉNTICO en internet (marca + modelo exacto si se conoce + formato físico exacto)."
+          ),
+        negativeKeywords: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Palabras clave de productos similares pero incorrectos que deben descartarse de los resultados (ej: ['hub', 'dock', 'multiport', 'cable 2m', 'cable 1.5m', 'pigtail'])."
           ),
       }),
       messages: [
@@ -310,15 +326,23 @@ export async function recognizeProductImage(
           content: [
             {
               type: "text",
-              text: `Esta es una foto de la caja o etiqueta de un producto de una tienda de tecnología. Lee la marca, modelo y especificaciones impresas para completar los datos. Si no puedes leer algo con certeza, no lo inventes.
+              text: `Esta es una foto de la caja, etiqueta o producto de una tienda de tecnología. Lee la marca, modelo, especificaciones impresas Y OBSERVA ATENTAMENTE LA ILUSTRACIÓN O FOTO DEL PRODUCTO para completar los datos con CERO MARGEN DE ERROR.
 
-Si el producto es una tinta, tóner o cartucho: el modelo impreso suele ser IGUAL para las 4 variantes de color (ej. "GT53" para negro, cian, magenta y amarillo de la misma línea), así que el modelo SOLO no alcanza para identificar cuál es. Identifica el color exacto de dos formas y usa la que te dé más certeza:
-1) texto impreso (Negro/Black, Cian/Cyan, Magenta, Amarillo/Yellow, Tricolor/Tri-color), y
-2) el color visible de la tapa, etiqueta o la tinta/tóner en sí si se ve a través de un empaque transparente.
-Incluye ese color al final de "name" (ej. "TINTA HP GT53 NEGRO", "TINTA HP GT53 CIAN") y menciona la capacidad (ml/gr) en "description" si se lee — hay presentaciones del mismo color en distintos tamaños.
+1. Identificación visual precisa:
+- Observa la forma física del producto en el empaque:
+  * Si es un adaptador o conversor de video: distingue minuciosamente entre:
+    a) Adaptador rígido de enchufe directo / una sola pieza SIN CABLE (direct plug / compact one-piece, como UGREEN US320 / 70450).
+    b) Dongle con cable corto / chicote (como UGREEN 70444 / CM297).
+    c) Cable largo de 1m, 1.5m o 2m (como UGREEN 50570).
+    d) Hub multipuerto con puertos USB/SD (como Revodok).
+  * Si es tinta, tóner o cartucho: el modelo impreso suele ser igual para variantes de color. Identifica el color exacto (Negro/Cian/Magenta/Amarillo) por texto o color visible y ponlo al final de "name".
+  * Si es memoria/disco: indica interfaz (NVMe M.2, SATA, DDR4, DDR5) y capacidad.
+2. Búsqueda de imágenes en internet (CERO MARGEN DE ERROR):
+- Proporciona en 'searchQueries' 2 a 3 consultas con la terminología exacta que usan los catálogos y tiendas en internet (ej: "UGREEN USB-C to HDMI adapter compact direct plug 70450", "UGREEN US320 USB-C to HDMI", "UGREEN USB-C to HDMI adapter no cable").
+- En 'negativeKeywords' incluye términos de productos que NO corresponden (ej: si es adaptador compacto sin cable, descarta ["hub", "dock", "multiport", "multipuerto", "cable 2m", "cable 1.5m", "pigtail"]).
+- Si no puedes leer algo con absoluta certeza, no lo inventes, pero usa la apariencia visual del producto para deducir el formato exacto.
 
-Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.
-Para "category": usa una de esas si el producto encaja claramente; si no encaja en ninguna, propón una categoría nueva y corta (nunca dejes el campo vacío).`,
+Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.`,
             },
             // "image" content parts are deprecated in ai@7 — "file" with a
             // bare base64 `data` is the replacement (see @ai-sdk/provider-utils).
@@ -329,8 +353,7 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
     });
 
     // Catch a re-scan of a box already in the catalog before spending time
-    // (and, for the image search below, a DuckDuckGo request) on a product
-    // that's just going to get flagged as a duplicate anyway.
+    // on a product that's just going to get flagged as a duplicate anyway.
     const existing = await findExistingProductByName(object.name);
     if (existing) {
       return {
@@ -342,24 +365,17 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
       };
     }
 
-    // Best-effort, same as the barcode flow's imageOptions — a failed
-    // search just means no photo suggestions, never blocks the recognition
-    // result the admin is waiting on. searchProductImages already logs its
-    // own failures internally; this .catch is only a safety net in case it
-    // ever throws unexpectedly.
-    //
-    // Search by name ALONE, without the category, routinely returns
-    // completely unrelated products: a model number like "MP550" is reused
-    // across unrelated product lines (a Micronics power supply vs. a
-    // Compumatic time clock, observed in production), and DuckDuckGo has no
-    // way to disambiguate without more context. Appending the category the
-    // vision model just read off the box narrows it back down.
-    const imageOptions = await searchProductImages(`${object.name} ${object.category}`, 4, object.name).catch(
-      (err) => {
-        console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
-        return [];
-      }
-    );
+    // Precise image search using AI-generated search queries + negative keyword filtering
+    const imageOptions = await searchProductImages({
+      queries: object.searchQueries && object.searchQueries.length > 0
+        ? object.searchQueries
+        : [object.name, `${object.name} ${object.category}`],
+      negativeKeywords: object.negativeKeywords,
+      max: 6,
+    }).catch((err) => {
+      console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
+      return [];
+    });
 
     return {
       name: object.name.toUpperCase(),
@@ -373,4 +389,23 @@ Para "category": usa una de esas si el producto encaja claramente; si no encaja 
     console.error("[scan-actions] recognizeProductImage failed:", err);
     return { error: "No se pudo procesar la imagen. Intenta con otra foto más clara." };
   }
+}
+
+/** Manual image search action called from ScannerPanel when the user wants
+ *  to find different photos by typing their own search term. */
+export async function searchImagesManually(query: string): Promise<string[]> {
+  const clean = query.trim();
+  if (!clean) return [];
+
+  let ip = "127.0.0.1";
+  try {
+    ip = getClientIP(await headers());
+  } catch {}
+  const rateCheck = checkRateLimit(rateLimitKey("manual-image-search", ip), 30, 5 * 60 * 1000);
+  if (!rateCheck.allowed) return [];
+
+  return searchProductImages({
+    query: clean,
+    max: 6,
+  }).catch(() => []);
 }

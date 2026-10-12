@@ -82,7 +82,7 @@ export async function uploadProductImage(dataUrl: string): Promise<UploadImageRe
  *  when the manufacturer/listing already has one, so it isn't always a
  *  manual one-by-one step. Best-effort: any failure just leaves the
  *  product without a photo, same as if this had never been attempted. */
-export async function downloadProductImageFromUrl(url: string): Promise<UploadImageResult> {
+export async function downloadProductImageFromUrl(url: string, fallbackUrl?: string): Promise<UploadImageResult> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -99,18 +99,33 @@ export async function downloadProductImageFromUrl(url: string): Promise<UploadIm
     // fetch() with no headers gets a 403 from plenty of product-listing
     // sites. A same-origin Referer + real User-Agent passes that check on
     // most of them (not all — some also gate on cookies/session).
-    const res = await fetch(parsed, {
+    let res = await fetch(parsed, {
       signal: AbortSignal.timeout(8000),
       headers: {
         "user-agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        // Same reasoning as api/image-proxy/route.ts: avoid an avif-first
-        // Accept header, which can make a CDN negotiate to a format sharp/
-        // this pipeline doesn't expect.
         accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
         referer: `${parsed.origin}/`,
       },
     });
+
+    if (!res.ok && fallbackUrl && fallbackUrl.startsWith("https://")) {
+      try {
+        const parsedFb = new URL(fallbackUrl);
+        const fbRes = await fetch(parsedFb, {
+          signal: AbortSignal.timeout(8000),
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
+          },
+        });
+        if (fbRes.ok) {
+          res = fbRes;
+        }
+      } catch {}
+    }
+
     if (!res.ok) {
       console.error(`[upload-actions] downloadProductImageFromUrl failed: HTTP ${res.status} for ${parsed.origin}`);
       return { error: "No se pudo descargar la imagen del proveedor." };

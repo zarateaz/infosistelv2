@@ -40,6 +40,7 @@ export interface QuotationRecord {
   paymentMethod: string | null;
   warranty: string | null;
   notes: string | null;
+  images: string | null;
   items: QuotationItemData[];
   createdAt: Date;
 }
@@ -164,6 +165,7 @@ const quotationInputSchema = z.object({
   paymentMethod: z.string().nullish(),
   warranty: z.string().nullish(),
   notes: z.string().nullish(),
+  images: z.array(z.string()).optional(),
   items: z.array(itemSchema).min(1, "Debe agregar al menos un ítem a la cotización."),
 });
 
@@ -234,6 +236,7 @@ export async function createQuotation(
         paymentMethod: val.paymentMethod || "Contado contra entrega / Transferencia",
         warranty: val.warranty || "12 meses de garantía oficial Infosistel",
         notes: val.notes || null,
+        images: val.images && val.images.length > 0 ? JSON.stringify(val.images) : null,
         items: {
           create: computedItems,
         },
@@ -321,6 +324,7 @@ export async function updateQuotation(
           paymentMethod: val.paymentMethod || null,
           warranty: val.warranty || null,
           notes: val.notes || null,
+          images: val.images && val.images.length > 0 ? JSON.stringify(val.images) : null,
           items: {
             create: computedItems,
           },
