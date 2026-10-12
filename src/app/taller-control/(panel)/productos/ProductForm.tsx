@@ -2,7 +2,10 @@
 
 import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { AlertTriangle, AlertCircle } from "lucide-react";
 import type { ProductFormState, AdminProduct } from "./actions";
+import { checkDuplicateProduct } from "./actions";
 import { ScannerPanel, type ScanFill } from "./ScannerPanel";
 import { ImageUploadField } from "./ImageUploadField";
 import { ImageGalleryField } from "./ImageGalleryField";
@@ -42,11 +45,45 @@ export function ProductForm({
   const [imageUploading, setImageUploading] = useState(false);
   const [scannedImagePath, setScannedImagePath] = useState<string | null>(null);
   const [scannedGalleryImages, setScannedGalleryImages] = useState<string[] | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    isDuplicate: boolean;
+    message?: string;
+    existingProduct?: { id: string; name: string };
+  } | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const performDuplicateCheck = async (nameVal?: string, barcodeVal?: string) => {
+    const currentName = nameVal !== undefined ? nameVal : (nameRef.current?.value ?? "");
+    const currentBarcode = barcodeVal !== undefined ? barcodeVal : (barcodeRef.current?.value ?? "");
+
+    if (!currentName.trim() && !currentBarcode.trim()) {
+      setDuplicateWarning(null);
+      return;
+    }
+
+    try {
+      const res = await checkDuplicateProduct(currentName, currentBarcode, product?.id);
+      if (res.isDuplicate) {
+        setDuplicateWarning(res);
+      } else {
+        setDuplicateWarning(null);
+      }
+    } catch {
+      // Best effort check
+    }
+  };
+
+  const scheduleDuplicateCheck = (nameVal?: string, barcodeVal?: string) => {
+    if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+    checkTimeoutRef.current = setTimeout(() => {
+      performDuplicateCheck(nameVal, barcodeVal);
+    }, 350);
+  };
 
   function handleScanFill(fill: ScanFill) {
     if (fill.name && nameRef.current) nameRef.current.value = fill.name;
@@ -55,6 +92,8 @@ export function ProductForm({
     if (fill.barcode && barcodeRef.current) barcodeRef.current.value = fill.barcode;
     if (fill.image) setScannedImagePath(fill.image);
     if (fill.images) setScannedGalleryImages(fill.images);
+
+    performDuplicateCheck(fill.name, fill.barcode);
   }
 
   return (
@@ -75,8 +114,28 @@ export function ProductForm({
               required
               autoComplete="off"
               className={inputClass}
+              onChange={(e) => scheduleDuplicateCheck(e.target.value, undefined)}
+              onBlur={(e) => performDuplicateCheck(e.target.value, undefined)}
             />
           </div>
+
+          {duplicateWarning?.isDuplicate && (
+            <div className="sm:col-span-2 flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 shrink-0 text-amber-500" size={18} />
+              <div className="flex-1 text-xs">
+                <p className="font-bold text-sm">El producto ya se encuentra en el inventario</p>
+                <p className="mt-1 opacity-90">{duplicateWarning.message}</p>
+                {duplicateWarning.existingProduct && (
+                  <Link
+                    href={`/taller-control/productos/${duplicateWarning.existingProduct.id}`}
+                    className="mt-2 inline-flex items-center gap-1 font-bold text-accent underline hover:opacity-80"
+                  >
+                    Ver o editar &quot;{duplicateWarning.existingProduct.name}&quot; en inventario →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className={labelClass} htmlFor="category">
@@ -175,6 +234,8 @@ export function ProductForm({
               autoComplete="off"
               className={inputClass}
               placeholder="Opcional"
+              onChange={(e) => scheduleDuplicateCheck(undefined, e.target.value)}
+              onBlur={(e) => performDuplicateCheck(undefined, e.target.value)}
             />
           </div>
 
@@ -231,9 +292,13 @@ export function ProductForm({
         </div>
 
         {state.error && (
-          <p role="alert" className="text-sm font-medium text-red-600">
-            {state.error}
-          </p>
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm font-semibold text-red-600 dark:text-red-400"
+          >
+            <AlertCircle className="mt-0.5 shrink-0 text-red-500" size={18} />
+            <div>{state.error}</div>
+          </div>
         )}
 
         <div className="flex items-center gap-3">

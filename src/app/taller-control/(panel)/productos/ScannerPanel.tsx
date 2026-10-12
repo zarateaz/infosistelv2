@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon, Sparkles, Search } from "lucide-react";
+import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon, Sparkles, Search, AlertTriangle } from "lucide-react";
 import { lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
@@ -307,12 +307,15 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       </form>
 
       {barcodeStatus.kind === "existing" && (
-        <p className="mt-3 text-sm text-fg-muted">
-          Ya existe en el catálogo:{" "}
-          <Link href={`/taller-control/productos/${barcodeStatus.id}`} className="font-bold text-accent">
-            {barcodeStatus.name} — editar para actualizar stock
-          </Link>
-        </p>
+        <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200">
+          <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-500" />
+          <div>
+            <span className="font-bold">El producto ya se encuentra en el inventario: </span>
+            <Link href={`/taller-control/productos/${barcodeStatus.id}`} className="font-bold underline text-accent hover:opacity-80">
+              {barcodeStatus.name} — ver / editar para actualizar stock
+            </Link>
+          </div>
+        </div>
       )}
       {barcodeStatus.kind === "found" && (
         <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-accent">
@@ -359,12 +362,15 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         </p>
       )}
       {imageStatus.kind === "existing" && (
-        <p className="mt-3 text-sm text-fg-muted">
-          Ya existe en el catálogo:{" "}
-          <Link href={`/taller-control/productos/${imageStatus.id}`} className="font-bold text-accent">
-            {imageStatus.name} — editar para actualizar stock
-          </Link>
-        </p>
+        <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200">
+          <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-500" />
+          <div>
+            <span className="font-bold">El producto ya se encuentra en el inventario: </span>
+            <Link href={`/taller-control/productos/${imageStatus.id}`} className="font-bold underline text-accent hover:opacity-80">
+              {imageStatus.name} — ver / editar para actualizar stock
+            </Link>
+          </div>
+        </div>
       )}
       {imageStatus.kind === "error" && (
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>

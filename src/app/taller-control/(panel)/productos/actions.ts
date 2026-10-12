@@ -142,7 +142,65 @@ function serializeExtraImages(images?: string[]): string | null {
   return images && images.length > 0 ? JSON.stringify(images) : null;
 }
 
+/** Check if a product with the same barcode or same name already exists in inventory */
+export async function checkDuplicateProduct(
+  name: string,
+  barcode?: string | null,
+  excludeId?: string
+): Promise<{
+  isDuplicate: boolean;
+  message?: string;
+  existingProduct?: { id: string; name: string };
+}> {
+  const cleanBarcode = barcode?.trim();
+  if (cleanBarcode) {
+    const existingByBarcode = await prisma.product.findFirst({
+      where: {
+        barcode: cleanBarcode,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true, name: true },
+    });
+    if (existingByBarcode) {
+      return {
+        isDuplicate: true,
+        message: `El producto ya se encuentra en el inventario con este código de barras ("${existingByBarcode.name}").`,
+        existingProduct: existingByBarcode,
+      };
+    }
+  }
+
+  const cleanName = name?.trim();
+  if (cleanName) {
+    const duplicates = excludeId
+      ? await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id, name FROM Product
+          WHERE id != ${excludeId} AND LOWER(TRIM(name)) = LOWER(TRIM(${cleanName}))
+          LIMIT 1
+        `
+      : await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id, name FROM Product
+          WHERE LOWER(TRIM(name)) = LOWER(TRIM(${cleanName}))
+          LIMIT 1
+        `;
+    if (duplicates && duplicates.length > 0) {
+      return {
+        isDuplicate: true,
+        message: `El producto ya se encuentra en el inventario ("${duplicates[0].name}").`,
+        existingProduct: duplicates[0],
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
 async function insertProduct(data: z.infer<typeof productSchema>): Promise<string | null> {
+  const dupCheck = await checkDuplicateProduct(data.name, data.barcode);
+  if (dupCheck.isDuplicate && dupCheck.message) {
+    return dupCheck.message;
+  }
+
   const category = await upsertCategory(data.category);
   const { images, ...rest } = data;
   try {
@@ -152,7 +210,7 @@ async function insertProduct(data: z.infer<typeof productSchema>): Promise<strin
     return null;
   } catch (err) {
     if (isUniqueConstraintError(err)) {
-      return "Ya existe un producto con ese código de barras.";
+      return "El producto ya se encuentra en el inventario con ese código de barras.";
     }
     throw err;
   }
@@ -194,6 +252,11 @@ export async function updateProduct(
   const result = parseProductForm(formData);
   if ("error" in result) return { error: result.error };
 
+  const dupCheck = await checkDuplicateProduct(result.data.name, result.data.barcode, id);
+  if (dupCheck.isDuplicate && dupCheck.message) {
+    return { error: dupCheck.message };
+  }
+
   const category = await upsertCategory(result.data.category);
   const { images, ...rest } = result.data;
   const newImagesJson = serializeExtraImages(images);
@@ -205,7 +268,7 @@ export async function updateProduct(
     });
   } catch (err) {
     if (isUniqueConstraintError(err)) {
-      return { error: "Ya existe un producto con ese código de barras." };
+      return { error: "El producto ya se encuentra en el inventario con ese código de barras." };
     }
     throw err;
   }
