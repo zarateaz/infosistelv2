@@ -625,7 +625,7 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
 
   // Dynamic box height based on actual notes content
   const notesExtraHeight = noteLines.length > 0 ? noteLines.length * 3.3 + 1.5 : 0;
-  const infoBoxesHeight = Math.max(34, 26 + notesExtraHeight);
+  const infoBoxesHeight = Math.max(36, 26 + notesExtraHeight);
 
   // If infoBoxes and visitBox exceed page, move them to a new page cleanly
   let infoBoxesY = totalsBoxY + 26;
@@ -670,35 +670,42 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(...brandPrimary);
-  doc.text("DEPÓSITOS A CUENTAS BANCARIAS", 18 + halfWidth + 4, infoBoxesY + 5);
+  doc.text("DEPÓSITOS A CUENTAS BANCARIAS", 18 + halfWidth + 4, infoBoxesY + 4.8);
 
   // Banco de la Nación
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.2);
+  doc.setFontSize(6.0);
   doc.setTextColor(...brandDark);
-  doc.text("• BANCO DE LA NACIÓN (Cta. Corriente):", 18 + halfWidth + 4, infoBoxesY + 9.2);
+  doc.text("• BANCO DE LA NACIÓN (Cta. Corriente Soles):", 18 + halfWidth + 4, infoBoxesY + 8.8);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.8);
-  doc.text("  Cta: 00-381-139530  |  CCI: 018-381-000381139530-44", 18 + halfWidth + 4, infoBoxesY + 12.5);
+  doc.setFontSize(5.6);
+  doc.text("  Cta: 00-381-139530  |  CCI: 018-381-000381139530-44", 18 + halfWidth + 4, infoBoxesY + 11.9);
   doc.setTextColor(...mutedGray);
-  doc.text("  Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL", 18 + halfWidth + 4, infoBoxesY + 15.5);
+  doc.text("  Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL", 18 + halfWidth + 4, infoBoxesY + 14.7);
 
-  // BCP
+  // Interbank Soles
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.2);
+  doc.setFontSize(6.0);
   doc.setTextColor(...brandDark);
-  doc.text("• BCP SOLES (Cuenta de Ahorros):", 18 + halfWidth + 4, infoBoxesY + 19.8);
+  doc.text("• INTERBANK SOLES (Cuenta Negocios):", 18 + halfWidth + 4, infoBoxesY + 18.2);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.8);
-  doc.text("  Cta: 35533459619031  |  CCI: 00235513345961903166", 18 + halfWidth + 4, infoBoxesY + 23.1);
-  doc.setTextColor(...mutedGray);
-  doc.text("  Titular: Edgar Wenceslao Caballero Pecho", 18 + halfWidth + 4, infoBoxesY + 26.1);
+  doc.setFontSize(5.6);
+  doc.text("  Cta: 5003008920133  |  CCI: 00350000300892013366", 18 + halfWidth + 4, infoBoxesY + 21.3);
+
+  // Interbank Dólares
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.0);
+  doc.setTextColor(...brandDark);
+  doc.text("• INTERBANK DÓLARES (Cuenta Negocios):", 18 + halfWidth + 4, infoBoxesY + 24.8);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.6);
+  doc.text("  Cta: 5003008920140  |  CCI: 00350000300892014061", 18 + halfWidth + 4, infoBoxesY + 27.9);
 
   // Yape / Plin
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.2);
+  doc.setFontSize(6.0);
   doc.setTextColor(...brandPrimary);
-  doc.text("• Yape / Plin: 964 648 202 (Edgar Caballero / Infosistel)", 18 + halfWidth + 4, infoBoxesY + 30);
+  doc.text("• Yape / Plin: 964 648 202 (Edgar Caballero / Infosistel)", 18 + halfWidth + 4, infoBoxesY + 31.8);
 
   // Box 3: Company Location & Contact ("Visítanos en Huancayo y en nuestra Web")
   const visitBoxY = infoBoxesY + infoBoxesHeight + 2.5;

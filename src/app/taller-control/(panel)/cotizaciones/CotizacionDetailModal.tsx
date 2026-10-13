@@ -344,14 +344,19 @@ export function CotizacionDetailModal({
               </span>
               <div className="space-y-1.5 text-xs">
                 <div className="rounded-lg bg-bg/70 p-2 border border-border/50 text-[11px]">
-                  <p className="font-bold text-fg">Banco de la Nación (Cta. Corriente):</p>
+                  <p className="font-bold text-fg">Banco de la Nación (Cta. Corriente Soles):</p>
                   <p className="text-fg-muted font-mono">00-381-139530 · CCI: 018-381-000381139530-44</p>
                   <p className="text-[10px] text-fg-muted/80">Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL</p>
                 </div>
                 <div className="rounded-lg bg-bg/70 p-2 border border-border/50 text-[11px]">
-                  <p className="font-bold text-fg">BCP Soles (Ahorros):</p>
-                  <p className="text-fg-muted font-mono">35533459619031 · CCI: 00235513345961903166</p>
-                  <p className="text-[10px] text-fg-muted/80">Titular: Edgar Wenceslao Caballero Pecho</p>
+                  <p className="font-bold text-fg">Interbank Soles (Cuenta Negocios):</p>
+                  <p className="text-fg-muted font-mono">5003008920133 · CCI: 00350000300892013366</p>
+                  <p className="text-[10px] text-fg-muted/80">Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL</p>
+                </div>
+                <div className="rounded-lg bg-bg/70 p-2 border border-border/50 text-[11px]">
+                  <p className="font-bold text-fg">Interbank Dólares (Cuenta Negocios):</p>
+                  <p className="text-fg-muted font-mono">5003008920140 · CCI: 00350000300892014061</p>
+                  <p className="text-[10px] text-fg-muted/80">Titular: INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL</p>
                 </div>
                 <p className="text-xs font-semibold text-accent">
                   • Yape / Plin: 964 648 202 (Edgar Caballero / Infosistel)

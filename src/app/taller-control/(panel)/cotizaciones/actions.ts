@@ -105,35 +105,40 @@ export async function listQuotations(filter?: {
   status?: string;
   query?: string;
 }): Promise<QuotationRecord[]> {
-  const where: any = {
-    deletedAt: null,
-  };
+  try {
+    const where: any = {
+      deletedAt: null,
+    };
 
-  if (filter?.status && filter.status !== "TODAS") {
-    where.status = filter.status;
-  }
+    if (filter?.status && filter.status !== "TODAS") {
+      where.status = filter.status;
+    }
 
-  if (filter?.query && filter.query.trim()) {
-    const q = filter.query.trim();
-    where.OR = [
-      { code: { contains: q } },
-      { clientName: { contains: q } },
-      { clientDocNum: { contains: q } },
-      { clientPhone: { contains: q } },
-    ];
-  }
+    if (filter?.query && filter.query.trim()) {
+      const q = filter.query.trim();
+      where.OR = [
+        { code: { contains: q } },
+        { clientName: { contains: q } },
+        { clientDocNum: { contains: q } },
+        { clientPhone: { contains: q } },
+      ];
+    }
 
-  const rows = await prisma.quotation.findMany({
-    where,
-    orderBy: { issueDate: "desc" },
-    include: {
-      items: {
-        orderBy: { id: "asc" },
+    const rows = await prisma.quotation.findMany({
+      where,
+      orderBy: { issueDate: "desc" },
+      include: {
+        items: {
+          orderBy: { id: "asc" },
+        },
       },
-    },
-  });
+    });
 
-  return rows as unknown as QuotationRecord[];
+    return rows as unknown as QuotationRecord[];
+  } catch (err) {
+    console.error("[cotizaciones/actions] listQuotations failed:", err);
+    return [];
+  }
 }
 
 export async function getQuotationById(id: string): Promise<QuotationRecord | null> {

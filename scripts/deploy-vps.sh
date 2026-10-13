@@ -55,7 +55,7 @@ npm ci
 
 echo "=== Prisma: generar cliente y aplicar migraciones ==="
 npx prisma generate
-npx prisma migrate deploy
+npx prisma migrate deploy || npx prisma db push
 
 echo "=== Estandarizando categorías a español (cero margen de error) ==="
 npx tsx scripts/migrate-categories-to-spanish.ts || true

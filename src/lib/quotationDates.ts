@@ -19,11 +19,18 @@ export const COMPANY_BANK_ACCOUNTS = [
     holder: "INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL",
   },
   {
-    bank: "Banco de Crédito del Perú (BCP)",
-    type: "Cuenta Ahorros Soles",
-    accountNumber: "35533459619031",
-    cci: "00235513345961903166",
-    holder: "Edgar Wenceslao Caballero Pecho",
+    bank: "Interbank Soles",
+    type: "Cuenta Negocios",
+    accountNumber: "5003008920133",
+    cci: "00350000300892013366",
+    holder: "INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL",
+  },
+  {
+    bank: "Interbank Dólares",
+    type: "Cuenta Negocios",
+    accountNumber: "5003008920140",
+    cci: "00350000300892014061",
+    holder: "INFORMATICA, SISTEMAS Y TELECOMUNICACIONES EIRL",
   },
 ];
 export const COMPANY_YAPE_PLIN = "964 648 202 (Edgar Caballero / Infosistel)";

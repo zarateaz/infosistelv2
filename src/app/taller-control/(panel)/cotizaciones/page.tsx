@@ -4,6 +4,11 @@ import { CotizacionesClient } from "./CotizacionesClient";
 export const dynamic = "force-dynamic";
 
 export default async function AdminCotizacionesPage() {
-  const quotations = await listQuotations();
-  return <CotizacionesClient initialQuotations={quotations} />;
+  try {
+    const quotations = await listQuotations();
+    return <CotizacionesClient initialQuotations={quotations} />;
+  } catch (err) {
+    console.error("[cotizaciones/page] Error loading quotations:", err);
+    return <CotizacionesClient initialQuotations={[]} />;
+  }
 }
