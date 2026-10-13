@@ -74,26 +74,48 @@ async function resizeImageForRecognition(file: File, maxDim = 1600, quality = 0.
   }
 }
 
+/** Formatea valores numéricos con hasta 4 decimales limpios (mínimo 2 decimales para moneda) */
+function formatDecimals(num: number, maxDecimals: number = 4): string {
+  if (isNaN(num)) return "0.00";
+  const fixed = num.toFixed(maxDecimals);
+  const parts = fixed.split(".");
+  if (parts.length === 1) return `${parts[0]}.00`;
+  const decimals = parts[1].replace(/0+$/, "");
+  if (decimals.length < 2) {
+    return `${parts[0]}.${decimals.padEnd(2, "0")}`;
+  }
+  return `${parts[0]}.${decimals}`;
+}
+
 /** Calcula el precio de venta unitario a partir del costo y el porcentaje exacto */
-function computePriceFromCost(cost: number, marginPercent: number, mode: "MARKUP" | "MARGIN"): number {
+function computePriceFromCost(
+  cost: number,
+  marginPercent: number,
+  mode: "MARKUP" | "MARGIN",
+  decimals: number = 2
+): number {
   if (cost <= 0) return 0;
+  let rawPrice = 0;
   if (mode === "MARKUP") {
-    // Margen sobre costo: Costo * (1 + % / 100)
-    return Number((cost * (1 + marginPercent / 100)).toFixed(2));
+    // Margen sobre costo (Markup): Costo * (1 + % / 100)
+    rawPrice = cost * (1 + marginPercent / 100);
   } else {
     // Margen comercial sobre venta: Costo / (1 - % / 100)
-    if (marginPercent >= 100) return Number(cost.toFixed(2));
-    return Number((cost / (1 - marginPercent / 100)).toFixed(2));
+    if (marginPercent >= 100) return Number(cost.toFixed(decimals));
+    rawPrice = cost / (1 - marginPercent / 100);
   }
+  return Number(rawPrice.toFixed(decimals));
 }
 
 /** Calcula el porcentaje exacto de ganancia a partir del costo y el precio de venta */
 function computeMarginFromPrice(cost: number, unitPrice: number, mode: "MARKUP" | "MARGIN"): number {
   if (cost <= 0) return 0;
   if (mode === "MARKUP") {
-    return Number((((unitPrice - cost) / cost) * 100).toFixed(2));
+    // Markup = ((Precio - Costo) / Costo) * 100
+    return Number((((unitPrice - cost) / cost) * 100).toFixed(4));
   } else {
-    return unitPrice > 0 ? Number((((unitPrice - cost) / unitPrice) * 100).toFixed(2)) : 0;
+    // Margen comercial = ((Precio - Costo) / Precio) * 100
+    return unitPrice > 0 ? Number((((unitPrice - cost) / unitPrice) * 100).toFixed(4)) : 0;
   }
 }
 
@@ -328,6 +350,12 @@ export function CotizacionFormModal({
       } else if (field === "marginPercent") {
         const margin = Math.max(0, Math.min(1000, Number(value) || 0));
         target.marginPercent = margin;
+        
+        // Si no había costo pero había precio unitario (ej. producto traído de catálogo o tipeado), tomarlo como costo base
+        if ((!target.costPrice || target.costPrice <= 0) && target.unitPrice > 0) {
+          target.costPrice = target.unitPrice;
+        }
+
         if (target.costPrice && target.costPrice > 0) {
           target.unitPrice = computePriceFromCost(target.costPrice, margin, marginMode);
           target.total = Number((target.quantity * target.unitPrice).toFixed(2));
@@ -351,6 +379,12 @@ export function CotizacionFormModal({
       const next = [...prev];
       const target = { ...next[index] };
       target.marginPercent = percent;
+
+      // Si no hay costo pero ya tenemos un precio unitario de venta (ej: 50 en la foto), fijar el precio como costo base
+      if ((!target.costPrice || target.costPrice <= 0) && target.unitPrice > 0) {
+        target.costPrice = target.unitPrice;
+      }
+
       if (target.costPrice && target.costPrice > 0) {
         target.unitPrice = computePriceFromCost(target.costPrice, percent, marginMode);
         target.total = Number((target.quantity * target.unitPrice).toFixed(2));
@@ -1356,7 +1390,8 @@ export function CotizacionFormModal({
                             </label>
                             <input
                               type="number"
-                              min="1"
+                              step="any"
+                              min="0.0001"
                               value={it.quantity}
                               onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
                               className="admin-field w-full rounded-xl px-3 py-2 text-center text-sm font-black text-fg h-11"
@@ -1370,13 +1405,13 @@ export function CotizacionFormModal({
                             </label>
                             <input
                               type="number"
-                              step="0.01"
+                              step="any"
                               min="0"
                               placeholder="0.00"
                               value={it.costPrice || ""}
                               onChange={(e) => handleItemChange(idx, "costPrice", e.target.value)}
                               className="admin-field w-full rounded-xl px-3.5 py-2 text-right text-sm font-bold text-fg h-11"
-                              title="Costo de compra o adquisición unitario"
+                              title="Costo de compra o adquisición unitario (admite decimales)"
                             />
                           </div>
 
@@ -1389,14 +1424,15 @@ export function CotizacionFormModal({
                             <div className="relative">
                               <input
                                 type="number"
-                                step="1"
+                                step="any"
                                 min="0"
                                 max="1000"
                                 placeholder="20"
-                                value={it.marginPercent || ""}
+                                value={it.marginPercent !== undefined && it.marginPercent !== null ? it.marginPercent : ""}
                                 onChange={(e) => handleItemChange(idx, "marginPercent", e.target.value)}
+                                onInput={(e) => handleItemChange(idx, "marginPercent", (e.target as HTMLInputElement).value)}
                                 className="admin-field w-full rounded-xl pl-3 pr-6 py-2 text-right text-sm font-extrabold text-purple-600 dark:text-purple-300 bg-purple-500/10 border-purple-500/40 h-11"
-                                title="Porcentaje de ganancia deseado (ej: 20%)"
+                                title="Porcentaje de ganancia deseado (ej: 20% o 25.5%)"
                               />
                               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-purple-500">
                                 %
@@ -1411,7 +1447,7 @@ export function CotizacionFormModal({
                             </label>
                             <input
                               type="number"
-                              step="0.01"
+                              step="any"
                               min="0"
                               value={it.unitPrice || ""}
                               placeholder="0.00"
@@ -1458,18 +1494,19 @@ export function CotizacionFormModal({
                             ))}
                           </div>
 
-                          {/* Slider de porcentaje de 1 a 100% */}
+                          {/* Slider de porcentaje de 1 a 100% con actualización en tiempo real */}
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300">1%</span>
                             <input
                               type="range"
                               min="1"
                               max="100"
-                              step="1"
-                              value={Math.min(100, Math.max(1, Math.round(it.marginPercent || 20)))}
+                              step="0.5"
+                              value={Math.min(100, Math.max(1, Number(it.marginPercent || 20)))}
+                              onInput={(e) => applyPresetMargin(idx, Number((e.target as HTMLInputElement).value))}
                               onChange={(e) => applyPresetMargin(idx, Number(e.target.value))}
-                              className="w-24 sm:w-32 h-2 accent-purple-600 cursor-pointer"
-                              title="Desliza para calcular ganancia de 1% a 100%"
+                              className="w-28 sm:w-44 h-2.5 accent-purple-600 cursor-pointer"
+                              title="Desliza para calcular ganancia de 1% a 100% en tiempo real"
                             />
                             <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300">100%</span>
 
@@ -1486,80 +1523,152 @@ export function CotizacionFormModal({
                               ) : (
                                 <>
                                   <ChevronDown size={12} />
-                                  <span>Detalles</span>
+                                  <span>Ecuación & Detalles</span>
                                 </>
                               )}
                             </button>
                           </div>
                         </div>
 
-                        {/* Desglose detallado expandible */}
-                        {showMarginDetails[idx] && (
-                          <div className="mt-3 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-500/20 pb-2 mb-2">
-                              <span className="font-bold text-purple-600 dark:text-purple-300 uppercase tracking-wider flex items-center gap-1.5 text-[11px]">
-                                <Percent size={13} />
-                                Resumen de Ganancia de este Producto
+                        {/* Caja de Ecuación Matemática Exacta y Resumen Detallado */}
+                        {(showMarginDetails[idx] || (cost > 0 && hasValidPrice)) && (
+                          <div className="mt-3 rounded-2xl border border-blue-500/30 bg-blue-500/5 p-3 text-xs shadow-xs space-y-2.5">
+                            {/* Cabecera de la Ecuación Exacta */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-500/20 pb-2">
+                              <span className="font-extrabold text-blue-600 dark:text-blue-300 uppercase tracking-wider flex items-center gap-1.5 text-[11px]">
+                                <Calculator size={14} />
+                                Ecuación Matemática Exacta ({marginMode === "MARKUP" ? "Markup sobre Costo" : "Margen Comercial"})
                               </span>
+
+                              {/* Selector de Fórmula */}
                               <div className="inline-flex rounded-lg border border-border p-0.5 bg-bg text-[10px] font-bold">
                                 <button
                                   type="button"
-                                  onClick={() => setMarginMode("MARKUP")}
-                                  className={`rounded px-2 py-0.5 transition-colors ${
+                                  onClick={() => {
+                                    setMarginMode("MARKUP");
+                                    if (it.costPrice && it.costPrice > 0 && it.marginPercent) {
+                                      handleItemChange(idx, "marginPercent", it.marginPercent);
+                                    }
+                                  }}
+                                  className={`rounded px-2.5 py-0.5 transition-colors ${
                                     marginMode === "MARKUP"
-                                      ? "bg-purple-600 text-white"
+                                      ? "bg-blue-600 text-white shadow-xs"
                                       : "text-fg-muted hover:text-fg"
                                   }`}
+                                  title="Fórmula Markup: P. Venta = Costo × (1 + % / 100)"
                                 >
                                   Sobre Costo (Markup)
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setMarginMode("MARGIN")}
-                                  className={`rounded px-2 py-0.5 transition-colors ${
+                                  onClick={() => {
+                                    setMarginMode("MARGIN");
+                                    if (it.costPrice && it.costPrice > 0 && it.marginPercent) {
+                                      handleItemChange(idx, "marginPercent", it.marginPercent);
+                                    }
+                                  }}
+                                  className={`rounded px-2.5 py-0.5 transition-colors ${
                                     marginMode === "MARGIN"
-                                      ? "bg-purple-600 text-white"
+                                      ? "bg-purple-600 text-white shadow-xs"
                                       : "text-fg-muted hover:text-fg"
                                   }`}
+                                  title="Fórmula Margen: P. Venta = Costo ÷ (1 - % / 100)"
                                 >
-                                  Sobre Venta (Margen Comercial)
+                                  Sobre Venta (Margen)
                                 </button>
                               </div>
                             </div>
 
+                            {/* Demostración paso a paso con los números reales y alta precisión */}
+                            {cost > 0 && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                <div className="rounded-xl bg-bg p-2.5 border border-border/70 font-mono text-[11px] space-y-1">
+                                  <p className="text-[10px] uppercase font-bold text-fg-muted tracking-wider">
+                                    Fórmula de Precio de Venta
+                                  </p>
+                                  {marginMode === "MARKUP" ? (
+                                    <p className="text-fg leading-relaxed">
+                                      <span className="text-blue-600 dark:text-blue-400 font-bold">P. Venta</span> ={" "}
+                                      <span>{currSymbol} {formatDecimals(cost, 4)}</span> × (1 +{" "}
+                                      <span className="text-purple-600 dark:text-purple-400 font-bold">
+                                        {formatDecimals(it.marginPercent || 0, 4)}%
+                                      </span>{" "}
+                                      / 100)
+                                      <br />
+                                      = <strong className="text-blue-600 dark:text-blue-400 text-xs">
+                                        {currSymbol} {formatDecimals(it.unitPrice || 0, 4)}
+                                      </strong>
+                                    </p>
+                                  ) : (
+                                    <p className="text-fg leading-relaxed">
+                                      <span className="text-blue-600 dark:text-blue-400 font-bold">P. Venta</span> ={" "}
+                                      <span>{currSymbol} {formatDecimals(cost, 4)}</span> ÷ (1 -{" "}
+                                      <span className="text-purple-600 dark:text-purple-400 font-bold">
+                                        {formatDecimals(it.marginPercent || 0, 4)}%
+                                      </span>{" "}
+                                      / 100)
+                                      <br />
+                                      = <strong className="text-blue-600 dark:text-blue-400 text-xs">
+                                        {currSymbol} {formatDecimals(it.unitPrice || 0, 4)}
+                                      </strong>
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="rounded-xl bg-bg p-2.5 border border-border/70 font-mono text-[11px] space-y-1">
+                                  <p className="text-[10px] uppercase font-bold text-fg-muted tracking-wider">
+                                    Fórmula de Ganancia Comercial
+                                  </p>
+                                  <p className="text-fg leading-relaxed">
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400">Ganancia Unit.</span> ={" "}
+                                    <span>{currSymbol} {formatDecimals(it.unitPrice || 0, 4)}</span> -{" "}
+                                    <span>{currSymbol} {formatDecimals(cost, 4)}</span>
+                                    <br />
+                                    = <strong className={isProfitable ? "text-emerald-600 dark:text-emerald-400 text-xs" : "text-rose-500 text-xs"}>
+                                      {isProfitable ? "+" : ""}{currSymbol} {formatDecimals(unitProfit, 4)}
+                                    </strong>
+                                    <span className="text-[10px] text-fg-muted ml-1.5 font-sans">
+                                      (Total: <span className="font-bold">{isProfitable ? "+" : ""}{currSymbol} {formatDecimals(lineProfit, 2)}</span>)
+                                    </span>
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tarjetas de Resumen Exacto */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                              <div className="rounded-lg bg-bg p-2 border border-border/60">
                                 <p className="text-[10px] text-fg-muted font-bold uppercase">Costo Total</p>
-                                <p className="font-bold text-fg mt-0.5">
-                                  {currSymbol} {(cost * qty).toFixed(2)}
+                                <p className="font-bold text-fg mt-0.5 font-mono">
+                                  {currSymbol} {formatDecimals(cost * qty, 4)}
                                 </p>
                               </div>
-                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                              <div className="rounded-lg bg-bg p-2 border border-border/60">
                                 <p className="text-[10px] text-fg-muted font-bold uppercase">Ganancia Unitaria</p>
                                 <p
-                                  className={`font-bold mt-0.5 ${
+                                  className={`font-bold mt-0.5 font-mono ${
                                     isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"
                                   }`}
                                 >
                                   {isProfitable ? "+" : ""}
-                                  {currSymbol} {unitProfit.toFixed(2)}
+                                  {currSymbol} {formatDecimals(unitProfit, 4)}
                                 </p>
                               </div>
-                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                              <div className="rounded-lg bg-bg p-2 border border-border/60">
                                 <p className="text-[10px] text-fg-muted font-bold uppercase">Ganancia Total</p>
                                 <p
-                                  className={`font-bold mt-0.5 ${
+                                  className={`font-bold mt-0.5 font-mono ${
                                     isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"
                                   }`}
                                 >
                                   {isProfitable ? "+" : ""}
-                                  {currSymbol} {lineProfit.toFixed(2)}
+                                  {currSymbol} {formatDecimals(lineProfit, 2)}
                                 </p>
                               </div>
-                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
-                                <p className="text-[10px] text-fg-muted font-bold uppercase">Porcentaje Aplicado</p>
-                                <p className="font-bold text-purple-600 dark:text-purple-400 mt-0.5">
-                                  {(it.marginPercent || 0).toFixed(1)}%
+                              <div className="rounded-lg bg-bg p-2 border border-border/60">
+                                <p className="text-[10px] text-fg-muted font-bold uppercase">Porcentaje Exacto</p>
+                                <p className="font-bold text-purple-600 dark:text-purple-400 mt-0.5 font-mono">
+                                  {formatDecimals(it.marginPercent || 0, 4)}%
                                 </p>
                               </div>
                             </div>
