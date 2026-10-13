@@ -51,6 +51,7 @@ export interface QuotationPdfData {
   validDays: number;
   currency: string; // "PEN" | "USD"
   includeIgv: boolean;
+  igvPercent?: number;
   subtotal: number;
   discount?: number;
   igv: number;
@@ -591,7 +592,8 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
     doc.setTextColor(...brandDark);
   }
 
-  const igvLabel = data.includeIgv ? "I.G.V. (18%):" : "I.G.V. (Exonerado):";
+  const igvRateText = data.igvPercent !== undefined ? `${data.igvPercent}%` : "18%";
+  const igvLabel = data.includeIgv ? `I.G.V. (${igvRateText}):` : "I.G.V. (Exonerado):";
   doc.text(igvLabel, totalsBoxX + 4, totalsBoxY + 14);
   doc.text(`${currSymbol} ${data.igv.toFixed(2)}`, totalsBoxX + totalsBoxWidth - 4, totalsBoxY + 14, {
     align: "right",

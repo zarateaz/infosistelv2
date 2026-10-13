@@ -121,6 +121,7 @@ export function CotizacionFormModal({
   const [validDays, setValidDays] = useState(15);
   const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
   const [includeIgv, setIncludeIgv] = useState(true);
+  const [igvPercent, setIgvPercent] = useState<number>(18);
   const [discount, setDiscount] = useState<number>(0);
   const [status, setStatus] = useState<"PENDIENTE" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "FACTURADA">("PENDIENTE");
   const [deliveryTime, setDeliveryTime] = useState("Inmediata sujeto a stock");
@@ -183,6 +184,13 @@ export function CotizacionFormModal({
       setValidDays(quotationToEdit.validDays || 15);
       setCurrency((quotationToEdit.currency as "PEN" | "USD") || "PEN");
       setIncludeIgv(quotationToEdit.includeIgv ?? true);
+      // Deduce or default igvPercent if subtotal > 0 and igv > 0
+      if (quotationToEdit.includeIgv && quotationToEdit.subtotal > 0 && quotationToEdit.igv > 0) {
+        const calculatedRate = Math.round((quotationToEdit.igv / quotationToEdit.subtotal) * 100);
+        setIgvPercent(calculatedRate > 0 ? calculatedRate : 18);
+      } else {
+        setIgvPercent(18);
+      }
       setDiscount(quotationToEdit.discount || 0);
       setStatus(
         (quotationToEdit.status as "PENDIENTE" | "ENVIADA" | "APROBADA" | "RECHAZADA" | "FACTURADA") ||
@@ -244,6 +252,7 @@ export function CotizacionFormModal({
       setValidDays(15);
       setCurrency("PEN");
       setIncludeIgv(true);
+      setIgvPercent(18);
       setDiscount(0);
       setStatus("PENDIENTE");
       setDeliveryTime("Inmediata sujeto a stock");
@@ -301,27 +310,33 @@ export function CotizacionFormModal({
         target.quantity = qty;
         target.total = Number((qty * target.unitPrice).toFixed(2));
       } else if (field === "costPrice") {
-        const cost = Number(value) || 0;
+        const cost = Math.max(0, Number(value) || 0);
         target.costPrice = cost;
-        // Si ya hay un porcentaje de margen establecido, recalcular el precio de venta unitario
+        // Si el precio unitario aún no se ha fijado o es 0, calcular automáticamente precio con margen
+        // para NUNCA arrojar ganancia negativa de -15
         if (target.marginPercent && target.marginPercent > 0 && cost > 0) {
           target.unitPrice = computePriceFromCost(cost, target.marginPercent, marginMode);
+          target.total = Number((target.quantity * target.unitPrice).toFixed(2));
+        } else if (cost > 0 && (!target.unitPrice || target.unitPrice <= 0)) {
+          const autoMargin = 20; // 20% margen sugerido inicial
+          target.marginPercent = autoMargin;
+          target.unitPrice = computePriceFromCost(cost, autoMargin, marginMode);
           target.total = Number((target.quantity * target.unitPrice).toFixed(2));
         } else if (target.unitPrice > 0 && cost > 0) {
           target.marginPercent = computeMarginFromPrice(cost, target.unitPrice, marginMode);
         }
       } else if (field === "marginPercent") {
-        const margin = Number(value) || 0;
+        const margin = Math.max(0, Math.min(1000, Number(value) || 0));
         target.marginPercent = margin;
         if (target.costPrice && target.costPrice > 0) {
           target.unitPrice = computePriceFromCost(target.costPrice, margin, marginMode);
           target.total = Number((target.quantity * target.unitPrice).toFixed(2));
         }
       } else if (field === "unitPrice") {
-        const price = Number(value) || 0;
+        const price = Math.max(0, Number(value) || 0);
         target.unitPrice = price;
         target.total = Number((target.quantity * price).toFixed(2));
-        if (target.costPrice && target.costPrice > 0) {
+        if (target.costPrice && target.costPrice > 0 && price > 0) {
           target.marginPercent = computeMarginFromPrice(target.costPrice, price, marginMode);
         }
       }
@@ -561,7 +576,8 @@ export function CotizacionFormModal({
   // Computations
   const subtotal = items.reduce((sum, it) => sum + (it.total || 0), 0);
   const taxableBase = Math.max(0, subtotal - (discount || 0));
-  const igv = includeIgv ? Number((taxableBase * 0.18).toFixed(2)) : 0;
+  const activeIgvRate = includeIgv ? (igvPercent || 18) / 100 : 0;
+  const igv = Number((taxableBase * activeIgvRate).toFixed(2));
   const total = Number((taxableBase + igv).toFixed(2));
 
   const currSymbol = currency === "USD" ? "$" : "S/.";
@@ -590,6 +606,7 @@ export function CotizacionFormModal({
       validDays: Number(validDays) || 15,
       currency,
       includeIgv,
+      igvPercent: includeIgv ? igvPercent : 0,
       discount: Number(discount) || 0,
       status,
       deliveryTime: deliveryTime.trim() || null,
@@ -649,6 +666,7 @@ export function CotizacionFormModal({
           validDays: res.quotation.validDays,
           currency: res.quotation.currency,
           includeIgv: res.quotation.includeIgv,
+          igvPercent: includeIgv ? igvPercent : 0,
           subtotal: res.quotation.subtotal,
           discount: res.quotation.discount,
           igv: res.quotation.igv,
@@ -1156,36 +1174,43 @@ export function CotizacionFormModal({
             )}
 
             {/* Items list */}
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 space-y-4">
               {items.map((it, idx) => {
                 const cost = Number(it.costPrice) || 0;
                 const unitPrice = Number(it.unitPrice) || 0;
                 const qty = Number(it.quantity) || 1;
-                const unitProfit = unitPrice - cost;
+                const hasValidPrice = unitPrice > 0;
+                const unitProfit = hasValidPrice && cost > 0 ? unitPrice - cost : 0;
                 const lineProfit = unitProfit * qty;
                 const isProfitable = unitProfit >= 0;
 
                 return (
                   <div
                     key={idx}
-                    className="relative rounded-xl border border-border/80 bg-bg p-3.5 shadow-sm transition-all"
+                    className="relative rounded-2xl border-2 border-border/80 bg-bg p-4 shadow-sm transition-all hover:border-accent/40"
                   >
-                    <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2">
+                    <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-fg-muted">Ítem #{idx + 1}</span>
-                        {cost > 0 && (
+                        <span className="inline-flex items-center justify-center rounded-lg bg-bg-alt px-2.5 py-1 text-xs font-black text-fg">
+                          Ítem #{idx + 1}
+                        </span>
+                        {cost > 0 && hasValidPrice ? (
                           <span
-                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${
                               isProfitable
-                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                                : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                             }`}
                           >
-                            {isProfitable ? "+" : ""}
-                            {currSymbol} {lineProfit.toFixed(2)} ({isProfitable ? "+" : ""}
-                            {(it.marginPercent || 0).toFixed(1)}%)
+                            <span>Ganancia:</span>
+                            <span>{isProfitable ? "+" : ""}{currSymbol} {lineProfit.toFixed(2)}</span>
+                            <span className="opacity-75">({(it.marginPercent || 0).toFixed(1)}%)</span>
                           </span>
-                        )}
+                        ) : cost > 0 && !hasValidPrice ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            Costo: {currSymbol} {cost.toFixed(2)} · Elige % de ganancia
+                          </span>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1196,107 +1221,106 @@ export function CotizacionFormModal({
                             setShowAiScanner(true);
                             setAiScannerExpanded(true);
                           }}
-                          className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                          className="rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-[11px] font-bold text-purple-600 dark:text-purple-300 px-2.5 py-1 flex items-center gap-1.5 transition-colors"
                           title="Escanear producto para este ítem con IA"
                         >
-                          <Camera size={12} />
-                          <span className="hidden sm:inline">IA en este ítem</span>
+                          <Camera size={13} />
+                          <span>IA en este ítem</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => removeItemRow(idx)}
                           disabled={items.length <= 1}
-                          className="text-fg-muted hover:text-rose-500 disabled:opacity-30"
+                          className="rounded-lg p-1 text-fg-muted hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-30 transition-colors"
                           title="Eliminar ítem"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                      {/* Description & Search */}
-                      <div className="relative sm:col-span-12 lg:col-span-5">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
-                            Descripción del producto o servicio *
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (activeItemIndex === idx) {
-                                setActiveItemIndex(null);
-                                setSearchQuery("");
-                              } else {
-                                setActiveItemIndex(idx);
-                                setSearchQuery("");
-                              }
-                            }}
-                            className="text-[10px] font-semibold text-accent hover:underline"
-                          >
-                            🔍 Buscar en inventario
-                          </button>
+                    <div className="mt-3.5 space-y-3">
+                      {/* Fila 1: Descripción, Marca y Modelo */}
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+                        <div className="relative sm:col-span-12 lg:col-span-6">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
+                              Descripción del producto o servicio *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeItemIndex === idx) {
+                                  setActiveItemIndex(null);
+                                  setSearchQuery("");
+                                } else {
+                                  setActiveItemIndex(idx);
+                                  setSearchQuery("");
+                                }
+                              }}
+                              className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1"
+                            >
+                              <Search size={11} /> Buscar en inventario
+                            </button>
+                          </div>
+
+                          <textarea
+                            rows={2}
+                            placeholder="Ej. PORTATIL LENOVO V15 G5 / I3-1315U / 8GB DDR5 / SSD 512GB (soporta texto multilínea completo)"
+                            value={it.description}
+                            onChange={(e) => handleItemChange(idx, "description", e.target.value)}
+                            className="admin-field w-full rounded-xl px-3.5 py-2.5 text-xs font-medium text-fg resize-y min-h-[58px]"
+                          />
+
+                          {/* Dropdown for catalog search */}
+                          {activeItemIndex === idx && (
+                            <div className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-2xl border border-border bg-bg p-2 shadow-xl">
+                              <div className="flex items-center gap-2 border-b border-border px-2 pb-2">
+                                <Search size={14} className="text-fg-muted" />
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  placeholder="Escribe nombre o marca del producto..."
+                                  value={searchQuery}
+                                  onChange={(e) => setSearchQuery(e.target.value)}
+                                  className="w-full bg-transparent text-xs text-fg outline-none"
+                                />
+                                {isSearching && <Loader2 size={13} className="animate-spin text-accent" />}
+                              </div>
+
+                              <div className="mt-1 space-y-1">
+                                {searchResults.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => handleSelectProduct(idx, p)}
+                                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs hover:bg-accent/10"
+                                  >
+                                    <div>
+                                      <p className="font-semibold text-fg">{p.name}</p>
+                                      <p className="text-[10px] text-fg-muted">
+                                        Cat: {p.category || "General"} · Stock: {p.stock} u.
+                                        {p.costPrice ? ` · Costo: ${currSymbol} ${p.costPrice.toFixed(2)}` : ""}
+                                      </p>
+                                    </div>
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                      {currSymbol} {p.price.toFixed(2)}
+                                    </span>
+                                  </button>
+                                ))}
+                                {searchQuery.trim() && searchResults.length === 0 && !isSearching && (
+                                  <p className="p-3 text-center text-xs text-fg-muted">
+                                    No se encontraron productos. Puedes escribir el ítem manualmente.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
-                        <textarea
-                          rows={2}
-                          placeholder="Ej. PORTATIL LENOVO V15 G5 / I3-1315U / 8GB DDR5 / SSD 512GB (soporta texto multilínea completo)"
-                          value={it.description}
-                          onChange={(e) => handleItemChange(idx, "description", e.target.value)}
-                          className="admin-field mt-1 w-full rounded-xl px-3 py-2 text-xs font-medium text-fg resize-y"
-                        />
-
-                        {/* Dropdown for catalog search */}
-                        {activeItemIndex === idx && (
-                          <div className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-2xl border border-border bg-bg p-2 shadow-xl">
-                            <div className="flex items-center gap-2 border-b border-border px-2 pb-2">
-                              <Search size={14} className="text-fg-muted" />
-                              <input
-                                type="text"
-                                autoFocus
-                                placeholder="Escribe nombre o marca del producto..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-transparent text-xs text-fg outline-none"
-                              />
-                              {isSearching && <Loader2 size={13} className="animate-spin text-accent" />}
-                            </div>
-
-                            <div className="mt-1 space-y-1">
-                              {searchResults.map((p) => (
-                                <button
-                                  key={p.id}
-                                  type="button"
-                                  onClick={() => handleSelectProduct(idx, p)}
-                                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs hover:bg-accent/10"
-                                >
-                                  <div>
-                                    <p className="font-semibold text-fg">{p.name}</p>
-                                    <p className="text-[10px] text-fg-muted">
-                                      Cat: {p.category || "General"} · Stock: {p.stock} u.
-                                      {p.costPrice ? ` · Costo: ${currSymbol} ${p.costPrice.toFixed(2)}` : ""}
-                                    </p>
-                                  </div>
-                                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                    {currSymbol} {p.price.toFixed(2)}
-                                  </span>
-                                </button>
-                              ))}
-                              {searchQuery.trim() && searchResults.length === 0 && !isSearching && (
-                                <p className="p-3 text-center text-xs text-fg-muted">
-                                  No se encontraron productos. Puedes escribir el ítem manualmente.
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Brand & Model */}
-                      <div className="grid grid-cols-2 gap-1.5 sm:col-span-6 lg:col-span-3">
-                        <div>
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+                        <div className="sm:col-span-6 lg:col-span-3">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted block mb-1">
                             Marca
                           </label>
                           <input
@@ -1304,11 +1328,12 @@ export function CotizacionFormModal({
                             placeholder="LENOVO"
                             value={it.brand || ""}
                             onChange={(e) => handleItemChange(idx, "brand", e.target.value)}
-                            className="admin-field mt-1 w-full rounded-xl px-2.5 py-2 text-xs text-fg"
+                            className="admin-field w-full rounded-xl px-3.5 py-2.5 text-xs font-semibold text-fg h-[42px]"
                           />
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+
+                        <div className="sm:col-span-6 lg:col-span-3">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted block mb-1">
                             Modelo
                           </label>
                           <input
@@ -1316,186 +1341,170 @@ export function CotizacionFormModal({
                             placeholder="V15 G5"
                             value={it.model || ""}
                             onChange={(e) => handleItemChange(idx, "model", e.target.value)}
-                            className="admin-field mt-1 w-full rounded-xl px-2.5 py-2 text-xs text-fg"
+                            className="admin-field w-full rounded-xl px-3.5 py-2.5 text-xs font-semibold text-fg h-[42px]"
                           />
                         </div>
                       </div>
 
-                      {/* Cantidad */}
-                      <div className="sm:col-span-2 lg:col-span-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
-                          Cant.
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={it.quantity}
-                          onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
-                          className="admin-field mt-1 w-full rounded-xl px-2 py-2 text-center text-xs font-bold text-fg"
-                        />
-                      </div>
+                      {/* Fila 2: CAMPOS GRANDES Y ESPACIOSOS CON CALCULADOR DE PRECIO Y GANANCIA */}
+                      <div className="rounded-2xl border border-border/80 bg-bg-alt/40 p-3.5">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 items-end">
+                          {/* Cantidad */}
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted block mb-1.5">
+                              Cantidad
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={it.quantity}
+                              onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
+                              className="admin-field w-full rounded-xl px-3 py-2 text-center text-sm font-black text-fg h-11"
+                            />
+                          </div>
 
-                      {/* Precio de Costo Unitario */}
-                      <div className="sm:col-span-4 lg:col-span-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
-                          Costo ({currSymbol})
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={it.costPrice || ""}
-                          onChange={(e) => handleItemChange(idx, "costPrice", e.target.value)}
-                          className="admin-field mt-1 w-full rounded-xl px-2 py-2 text-right text-xs font-semibold text-fg"
-                          title="Precio de costo o compra de este producto"
-                        />
-                      </div>
+                          {/* Precio de Costo Unitario */}
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted block mb-1.5">
+                              Costo Compra ({currSymbol})
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={it.costPrice || ""}
+                              onChange={(e) => handleItemChange(idx, "costPrice", e.target.value)}
+                              className="admin-field w-full rounded-xl px-3.5 py-2 text-right text-sm font-bold text-fg h-11"
+                              title="Costo de compra o adquisición unitario"
+                            />
+                          </div>
 
-                      {/* % Margen Exacto */}
-                      <div className="sm:col-span-4 lg:col-span-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                          % Margen
-                        </label>
-                        <div className="relative mt-1">
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={it.marginPercent || ""}
-                            onChange={(e) => handleItemChange(idx, "marginPercent", e.target.value)}
-                            className="admin-field w-full rounded-xl pl-1.5 pr-4 py-2 text-right text-xs font-bold text-purple-600 dark:text-purple-300"
-                            title="Porcentaje exacto de ganancia deseado"
-                          />
-                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-purple-500">
-                            %
-                          </span>
+                          {/* % Margen / Ganancia (1% al 100%) */}
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-300 flex items-center justify-between mb-1.5">
+                              <span>% Ganancia</span>
+                              <span className="text-[10px] font-normal opacity-80">(1-100%)</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                step="1"
+                                min="0"
+                                max="1000"
+                                placeholder="20"
+                                value={it.marginPercent || ""}
+                                onChange={(e) => handleItemChange(idx, "marginPercent", e.target.value)}
+                                className="admin-field w-full rounded-xl pl-3 pr-6 py-2 text-right text-sm font-extrabold text-purple-600 dark:text-purple-300 bg-purple-500/10 border-purple-500/40 h-11"
+                                title="Porcentaje de ganancia deseado (ej: 20%)"
+                              />
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-purple-500">
+                                %
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Precio Unitario de Venta (P. Unit) */}
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 block mb-1.5">
+                              P. Venta Unit ({currSymbol}) *
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={it.unitPrice || ""}
+                              placeholder="0.00"
+                              onChange={(e) => handleItemChange(idx, "unitPrice", e.target.value)}
+                              className="admin-field w-full rounded-xl px-3.5 py-2 text-right text-base font-black text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/40 h-11 shadow-inner"
+                              title="Precio unitario final de venta al cliente"
+                            />
+                          </div>
+
+                          {/* Importe Total Renglón */}
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block mb-1.5">
+                              Importe ({currSymbol})
+                            </label>
+                            <div className="flex h-11 w-full items-center justify-end rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3.5 text-base font-black text-emerald-600 dark:text-emerald-400">
+                              {currSymbol} {it.total.toFixed(2)}
+                            </div>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Unit Price (P. Venta) */}
-                      <div className="sm:col-span-4 lg:col-span-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
-                          P. Unit ({currSymbol})
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={it.unitPrice}
-                          onChange={(e) => handleItemChange(idx, "unitPrice", e.target.value)}
-                          className="admin-field mt-1 w-full rounded-xl px-2 py-2 text-right text-xs font-bold text-fg"
-                        />
-                      </div>
+                        {/* Fila 3: Calculador de Ganancia Rápido y Presets Interactivos (1% - 100%) */}
+                        <div className="mt-3 pt-2.5 border-t border-border/50 flex flex-wrap items-center justify-between gap-2.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] font-bold text-fg-muted mr-1 flex items-center gap-1">
+                              <Calculator size={13} className="text-purple-500" />
+                              <span>Calculador de Ganancia:</span>
+                            </span>
 
-                      {/* Row Total */}
-                      <div className="sm:col-span-12 lg:col-span-1 text-right">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
-                          Importe
-                        </label>
-                        <div className="mt-1 flex h-[34px] items-center justify-end px-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                          {currSymbol} {it.total.toFixed(2)}
-                        </div>
-                      </div>
-
-                      {/* Barra de Rentabilidad y Presets Rápidos */}
-                      <div className="sm:col-span-12 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-bg-alt/70 px-3 py-1.5 border border-border/50 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[11px] font-semibold text-fg-muted flex items-center gap-1">
-                            <Calculator size={12} className="text-accent" />
-                            Cálculo de Porcentaje:
-                          </span>
-
-                          {cost > 0 ? (
-                            <>
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold ${
-                                  isProfitable
-                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                    : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                            {/* Botones Presets Rápidos del 1 al 100% */}
+                            {[5, 10, 15, 20, 25, 30, 35, 40, 50, 75, 100].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => applyPresetMargin(idx, pct)}
+                                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition-all ${
+                                  Math.round(it.marginPercent || 0) === pct
+                                    ? "bg-purple-600 text-white shadow-xs scale-105"
+                                    : "bg-bg hover:bg-purple-500/15 text-fg hover:text-purple-600 border border-border/80"
                                 }`}
+                                title={`Aplicar +${pct}% de ganancia sobre el costo`}
                               >
-                                <span>
-                                  {isProfitable ? "+" : ""}
-                                  {currSymbol} {lineProfit.toFixed(2)} neta
-                                </span>
-                                <span className="opacity-70">
-                                  ({(it.marginPercent || 0).toFixed(2)}%)
-                                </span>
-                              </span>
-                              <span className="text-[10px] text-fg-muted">
-                                (Costo unit: {currSymbol} {cost.toFixed(2)} · Ganancia unit: {currSymbol}{" "}
-                                {unitProfit.toFixed(2)})
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-fg-muted italic">
-                              Ingresa el costo para calcular porcentaje y ganancia exacta
-                            </span>
-                          )}
-                        </div>
+                                +{pct}%
+                              </button>
+                            ))}
+                          </div>
 
-                        {/* Botones Presets Rápidos */}
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-fg-muted mr-1 hidden sm:inline">
-                            Presets:
-                          </span>
-                          {[10, 15, 20, 25, 30, 40, 50].map((pct) => (
+                          {/* Slider de porcentaje de 1 a 100% */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300">1%</span>
+                            <input
+                              type="range"
+                              min="1"
+                              max="100"
+                              step="1"
+                              value={Math.min(100, Math.max(1, Math.round(it.marginPercent || 20)))}
+                              onChange={(e) => applyPresetMargin(idx, Number(e.target.value))}
+                              className="w-24 sm:w-32 h-2 accent-purple-600 cursor-pointer"
+                              title="Desliza para calcular ganancia de 1% a 100%"
+                            />
+                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300">100%</span>
+
                             <button
-                              key={pct}
                               type="button"
-                              onClick={() => applyPresetMargin(idx, pct)}
-                              className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold transition-all ${
-                                Math.round(it.marginPercent || 0) === pct
-                                  ? "bg-purple-600 text-white shadow-xs"
-                                  : "bg-bg hover:bg-purple-500/15 text-fg-muted hover:text-purple-600 border border-border/60"
-                              }`}
-                              title={`Calcular precio con +${pct}% de margen sobre costo`}
+                              onClick={() => toggleMarginDetails(idx)}
+                              className="ml-2 inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
                             >
-                              +{pct}%
+                              {showMarginDetails[idx] ? (
+                                <>
+                                  <ChevronUp size={12} />
+                                  <span>Menos</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown size={12} />
+                                  <span>Detalles</span>
+                                </>
+                              )}
                             </button>
-                          ))}
-
-                          <button
-                            type="button"
-                            onClick={() => toggleMarginDetails(idx)}
-                            className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline"
-                            title="Agrandar o recoger detalles del cotizador de margen"
-                          >
-                            {showMarginDetails[idx] ? (
-                              <>
-                                <ChevronUp size={12} />
-                                <span>Recoger</span>
-                              </>
-                            ) : (
-                              <>
-                                <ChevronDown size={12} />
-                                <span>Agrandar</span>
-                              </>
-                            )}
-                          </button>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Desglose detallado al Agrandar */}
-                      {showMarginDetails[idx] && (
-                        <div className="sm:col-span-12 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 animate-in fade-in duration-200">
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-500/20 pb-2 mb-2">
-                            <span className="text-[11px] font-bold text-purple-600 dark:text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-                              <Percent size={13} />
-                              Calculadora de Margen y Porcentaje Exacto
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-fg-muted">Método de cálculo:</span>
+                        {/* Desglose detallado expandible */}
+                        {showMarginDetails[idx] && (
+                          <div className="mt-3 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-500/20 pb-2 mb-2">
+                              <span className="font-bold text-purple-600 dark:text-purple-300 uppercase tracking-wider flex items-center gap-1.5 text-[11px]">
+                                <Percent size={13} />
+                                Resumen de Ganancia de este Producto
+                              </span>
                               <div className="inline-flex rounded-lg border border-border p-0.5 bg-bg text-[10px] font-bold">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setMarginMode("MARKUP");
-                                    if (it.costPrice && it.costPrice > 0 && it.marginPercent) {
-                                      handleItemChange(idx, "marginPercent", it.marginPercent);
-                                    }
-                                  }}
+                                  onClick={() => setMarginMode("MARKUP")}
                                   className={`rounded px-2 py-0.5 transition-colors ${
                                     marginMode === "MARKUP"
                                       ? "bg-purple-600 text-white"
@@ -1506,12 +1515,7 @@ export function CotizacionFormModal({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setMarginMode("MARGIN");
-                                    if (it.costPrice && it.costPrice > 0 && it.marginPercent) {
-                                      handleItemChange(idx, "marginPercent", it.marginPercent);
-                                    }
-                                  }}
+                                  onClick={() => setMarginMode("MARGIN")}
                                   className={`rounded px-2 py-0.5 transition-colors ${
                                     marginMode === "MARGIN"
                                       ? "bg-purple-600 text-white"
@@ -1522,55 +1526,55 @@ export function CotizacionFormModal({
                                 </button>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div className="rounded-lg bg-bg p-2 border border-border/60">
-                              <p className="text-[10px] text-fg-muted font-bold uppercase">Costo Total Renglón</p>
-                              <p className="font-bold text-fg mt-0.5">
-                                {currSymbol} {(cost * qty).toFixed(2)}
-                              </p>
-                            </div>
-                            <div className="rounded-lg bg-bg p-2 border border-border/60">
-                              <p className="text-[10px] text-fg-muted font-bold uppercase">Ganancia Unitaria</p>
-                              <p
-                                className={`font-bold mt-0.5 ${
-                                  isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"
-                                }`}
-                              >
-                                {isProfitable ? "+" : ""}
-                                {currSymbol} {unitProfit.toFixed(2)}
-                              </p>
-                            </div>
-                            <div className="rounded-lg bg-bg p-2 border border-border/60">
-                              <p className="text-[10px] text-fg-muted font-bold uppercase">Ganancia Total Renglón</p>
-                              <p
-                                className={`font-bold mt-0.5 ${
-                                  isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"
-                                }`}
-                              >
-                                {isProfitable ? "+" : ""}
-                                {currSymbol} {lineProfit.toFixed(2)}
-                              </p>
-                            </div>
-                            <div className="rounded-lg bg-bg p-2 border border-border/60">
-                              <p className="text-[10px] text-fg-muted font-bold uppercase">Porcentaje Exacto</p>
-                              <p className="font-bold text-purple-600 dark:text-purple-400 mt-0.5">
-                                {(it.marginPercent || 0).toFixed(2)}%
-                              </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                                <p className="text-[10px] text-fg-muted font-bold uppercase">Costo Total</p>
+                                <p className="font-bold text-fg mt-0.5">
+                                  {currSymbol} {(cost * qty).toFixed(2)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                                <p className="text-[10px] text-fg-muted font-bold uppercase">Ganancia Unitaria</p>
+                                <p
+                                  className={`font-bold mt-0.5 ${
+                                    isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"
+                                  }`}
+                                >
+                                  {isProfitable ? "+" : ""}
+                                  {currSymbol} {unitProfit.toFixed(2)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                                <p className="text-[10px] text-fg-muted font-bold uppercase">Ganancia Total</p>
+                                <p
+                                  className={`font-bold mt-0.5 ${
+                                    isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"
+                                  }`}
+                                >
+                                  {isProfitable ? "+" : ""}
+                                  {currSymbol} {lineProfit.toFixed(2)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-bg p-2.5 border border-border/60">
+                                <p className="text-[10px] text-fg-muted font-bold uppercase">Porcentaje Aplicado</p>
+                                <p className="font-bold text-purple-600 dark:text-purple-400 mt-0.5">
+                                  {(it.marginPercent || 0).toFixed(1)}%
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
 
-                      {/* Item Notes / Specifics */}
-                      <div className="sm:col-span-12">
+                      {/* Detalles / Notas adicionales del ítem */}
+                      <div>
                         <input
                           type="text"
-                          placeholder="Detalles / notas adicionales de este ítem (Opcional, se incluye en el PDF)"
+                          placeholder="Detalles / notas adicionales de este ítem (Opcional, se incluye en el PDF oficial)"
                           value={it.notes || ""}
                           onChange={(e) => handleItemChange(idx, "notes", e.target.value)}
-                          className="admin-field w-full rounded-xl px-3 py-1.5 text-[11px] text-fg/80"
+                          className="admin-field w-full rounded-xl px-3.5 py-2 text-xs text-fg/80"
                         />
                       </div>
                     </div>
@@ -1652,47 +1656,101 @@ export function CotizacionFormModal({
                 ) : null;
               })()}
 
-              <div className="w-full max-w-xs space-y-2 text-xs">
-                <div className="flex items-center justify-between text-fg-muted">
-                  <span>Subtotal:</span>
-                  <span className="font-semibold text-fg">
+              <div className="w-full max-w-sm space-y-2.5 text-xs">
+                <div className="flex items-center justify-between text-fg-muted text-xs">
+                  <span className="font-medium">Subtotal sin I.G.V.:</span>
+                  <span className="font-bold text-fg text-sm">
                     {currSymbol} {subtotal.toFixed(2)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-fg-muted">
-                  <span>Descuento:</span>
-                  <div className="flex items-center gap-1">
-                    <span>- {currSymbol}</span>
+                  <span className="font-medium">Descuento:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-rose-500">- {currSymbol}</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       value={discount}
                       onChange={(e) => setDiscount(Number(e.target.value))}
-                      className="admin-field w-20 rounded-lg px-2 py-0.5 text-right font-semibold text-fg"
+                      className="admin-field w-24 rounded-xl px-2.5 py-1 text-right font-bold text-rose-500 border-rose-500/30"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-fg-muted">
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={includeIgv}
-                      onChange={(e) => setIncludeIgv(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded text-accent"
-                    />
-                    <span>Incluir I.G.V. (18%)</span>
-                  </label>
-                  <span className="font-semibold text-fg">
-                    {currSymbol} {igv.toFixed(2)}
-                  </span>
+                {/* Sección I.G.V. Editable (18% Perú por defecto) */}
+                <div className="rounded-xl border border-border/80 bg-bg-alt/60 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-fg select-none">
+                      <input
+                        type="checkbox"
+                        checked={includeIgv}
+                        onChange={(e) => setIncludeIgv(e.target.checked)}
+                        className="h-4 w-4 rounded accent-accent text-accent cursor-pointer"
+                      />
+                      <span>Aplicar I.G.V.</span>
+                    </label>
+
+                    <span className={`text-sm font-bold ${includeIgv ? "text-accent" : "text-fg-muted"}`}>
+                      {currSymbol} {igv.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {includeIgv && (
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-border/40">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-fg-muted">Tasa:</span>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="100"
+                            value={igvPercent}
+                            onChange={(e) => setIgvPercent(Math.max(0, Math.min(100, Number(e.target.value))))}
+                            className="admin-field w-16 rounded-lg pl-2 pr-5 py-1 text-right text-xs font-black text-accent border-accent/40"
+                            title="Porcentaje editable de IGV (18% en Perú)"
+                          />
+                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-fg-muted">
+                            %
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setIgvPercent(18)}
+                          className={`rounded-lg px-2 py-0.5 text-[10px] font-bold transition-all ${
+                            igvPercent === 18
+                              ? "bg-accent text-white"
+                              : "bg-bg hover:bg-accent/15 text-fg-muted hover:text-accent border border-border"
+                          }`}
+                          title="Tasa general en Perú: 18%"
+                        >
+                          18% Perú
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIgvPercent(0)}
+                          className={`rounded-lg px-2 py-0.5 text-[10px] font-bold transition-all ${
+                            igvPercent === 0
+                              ? "bg-accent text-white"
+                              : "bg-bg hover:bg-accent/15 text-fg-muted hover:text-accent border border-border"
+                          }`}
+                          title="Exonerado / Inafecto: 0%"
+                        >
+                          0% Exonerado
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-bold text-fg">
-                  <span>TOTAL COTIZACIÓN:</span>
-                  <span className="text-base text-accent">
+                  <span className="uppercase tracking-wider">TOTAL COTIZACIÓN:</span>
+                  <span className="text-lg font-black text-accent">
                     {currSymbol} {total.toFixed(2)}
                   </span>
                 </div>

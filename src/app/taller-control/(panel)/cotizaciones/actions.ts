@@ -195,6 +195,7 @@ const quotationInputSchema = z.object({
   validDays: z.coerce.number().int().min(1).default(15).optional(),
   currency: z.enum(["PEN", "USD"]).default("PEN").optional(),
   includeIgv: z.boolean().default(true).optional(),
+  igvPercent: z.coerce.number().min(0).max(100).default(18).optional(),
   discount: z.coerce.number().min(0).default(0).optional(),
   status: z.enum(["PENDIENTE", "ENVIADA", "APROBADA", "RECHAZADA", "FACTURADA"]).default("PENDIENTE").optional(),
   deliveryTime: z.string().nullish(),
@@ -243,8 +244,11 @@ export async function createQuotation(
     let igv = 0;
     let finalTotal = taxableBase;
 
+    const igvPercentVal = val.igvPercent !== undefined && val.igvPercent !== null ? Number(val.igvPercent) : 18;
+    const igvRate = igvPercentVal / 100;
+
     if (val.includeIgv) {
-      igv = Number((taxableBase * 0.18).toFixed(2));
+      igv = Number((taxableBase * igvRate).toFixed(2));
       finalTotal = Number((taxableBase + igv).toFixed(2));
     }
 
@@ -330,8 +334,11 @@ export async function updateQuotation(
     let igv = 0;
     let finalTotal = taxableBase;
 
+    const igvPercentVal = val.igvPercent !== undefined && val.igvPercent !== null ? Number(val.igvPercent) : 18;
+    const igvRate = igvPercentVal / 100;
+
     if (val.includeIgv) {
-      igv = Number((taxableBase * 0.18).toFixed(2));
+      igv = Number((taxableBase * igvRate).toFixed(2));
       finalTotal = Number((taxableBase + igv).toFixed(2));
     }
 
