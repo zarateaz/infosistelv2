@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
 import { evaluateDuplicateMatch, type ProductSummary } from "@/lib/duplicateDetection";
+import { translateCategoryToSpanish } from "@/lib/categoryUtils";
 
 export interface BarcodeLookupResult {
   existingProductId?: string;
@@ -24,46 +25,40 @@ export interface BarcodeLookupResult {
   notFound?: boolean;
 }
 
-/** Rough English/Spanish keyword → category map, matched against whatever
- *  a public UPC database returns (usually in English). Best-effort only —
- *  most of this store's inventory (generic cables, OEM parts) simply has
- *  no listing in free UPC databases at all; that's a real limitation of
- *  the data source, not a bug here. */
+/** Translates & matches barcode search keywords to standardized Spanish categories. */
 function guessCategory(text: string, categories: string[]): string | undefined {
   const normalized = text.toLowerCase();
   const rules: [RegExp, string[]][] = [
     [/laptop|notebook/, ["LAPTOPS"]],
-    [/mouse|mice/, ["MOUSE"]],
-    [/keyboard|teclado/, ["TECLADO"]],
-    [/monitor|display/, ["MONITORES"]],
+    [/mouse|mice/, ["TECLADOS Y MOUSE", "MOUSE"]],
+    [/keyboard|teclado/, ["TECLADOS Y MOUSE", "TECLADO"]],
+    [/monitor|display|pantalla/, ["MONITORES Y PANTALLAS", "MONITORES"]],
     [/printer|impresora/, ["IMPRESORAS"]],
-    [/\bink\b|toner|cartridge|tinta|tóner|cartucho/, ["TINTAS", "TINTA Y TONER", "TINTAS Y TONERS", "CARTUCHOS"]],
-    [/memory|ram|dimm/, ["RAM"]],
-    [/ssd|solid state|nvme/, ["SSD"]],
-    [/\bpc\b|desktop|computer tower/, ["PC"]],
-    [/cable|adapter|adaptador/, ["CABLES Y ADAPTADORES"]],
+    [/\bink\b|toner|cartridge|tinta|tóner|cartucho/, ["TINTAS Y TÓNERS", "TINTAS", "TINTA Y TONER", "CARTUCHOS"]],
+    [/memory|ram|dimm/, ["COMPONENTES DE PC", "RAM", "MEMORIAS RAM"]],
+    [/ssd|solid state|nvme|hard drive|disco duro/, ["ALMACENAMIENTO", "SSD"]],
+    [/\bpc\b|desktop|computer tower|computadora/, ["COMPUTADORAS Y PC", "PC"]],
+    [/cable|adapter|adaptador|hdmi|vga|usb-c/, ["CABLES Y ADAPTADORES"]],
+    [/router|switch|wifi|redes|ethernet/, ["REDES Y CONECTIVIDAD"]],
+    [/charger|cargador|bateria|battery|power/, ["CARGADORES Y ENERGÍA"]],
+    [/audio|headphone|auricular|audifono|parlante|speaker/, ["AUDIO Y SONIDO"]],
   ];
   for (const [pattern, candidates] of rules) {
     if (pattern.test(normalized)) {
       const match = categories.find((c) => candidates.includes(c.toUpperCase()));
-      if (match) return match;
+      if (match) return translateCategoryToSpanish(match);
+      return candidates[0];
     }
   }
   return undefined;
 }
 
-/** Falls back to the external listing's own category breadcrumb (e.g.
- *  "Electronics > Computers > Networking > Routers") when none of the
- *  fixed rules above match an EXISTING category — takes the last, most
- *  specific segment as a new category name instead of leaving the field
- *  blank. Whatever comes back here still goes through the same
- *  upsertCategory() as a manually-typed category when the product is
- *  saved, so a genuinely new category is created automatically. */
+/** Translates raw external category breadcrumbs to standardized Spanish. */
 function extractCategoryGuess(rawCategory: string | undefined): string | undefined {
   if (!rawCategory) return undefined;
   const segments = rawCategory.split(">").map((s) => s.trim()).filter(Boolean);
   const last = segments[segments.length - 1];
-  return last ? last.toUpperCase().slice(0, 60) : undefined;
+  return last ? translateCategoryToSpanish(last) : undefined;
 }
 
 /** Public UPC listings are almost always in English (upcitemdb is a US-
@@ -153,7 +148,8 @@ async function lookupExternalUPC(
       guessedCategory,
       categories
     );
-    const category = guessedCategory ?? translated.category ?? extractCategoryGuess(item.category);
+    const rawCategory = guessedCategory ?? translated.category ?? extractCategoryGuess(item.category);
+    const category = rawCategory ? translateCategoryToSpanish(rawCategory) : undefined;
     // upcitemdb mixes http:// and https:// sources in the same array —
     // downloadProductImageFromUrl only accepts https, so pick the first
     // one that qualifies instead of always trying images[0].
@@ -345,7 +341,7 @@ export async function recognizeProductImage(
         category: z
           .string()
           .describe(
-            "Categoría del producto: usa una de las existentes si encaja bien; si ninguna encaja, propone una nueva categoría corta (2-3 palabras)."
+            "Categoría del producto: OBLIGATORIO SIEMPRE EN ESPAÑOL y en mayúsculas (ej: 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'ALMACENAMIENTO', 'TECLADOS Y MOUSE', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'AUDIO Y SONIDO', 'CARGADORES Y ENERGÍA', 'COMPUTADORAS Y PC', 'LAPTOPS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC'). Si existe una en el catálogo que encaje úsala; si no, propón una categoría estándar en español."
           ),
         searchQueries: z
           .array(z.string())
@@ -373,6 +369,7 @@ export async function recognizeProductImage(
 3. Velocidad, Resolución y Potencia: Si dice 4K@60Hz, 4K@30Hz, 8K, 18Gbps, 48Gbps, 100Mbps, 1000Mbps Gigabit, 20W, 65W, 100W, etc.
 4. Forma física: Distingue entre adaptador rígido sin cable (direct plug), dongle chicote con cable corto, cable largo, o hub multipuerto.
 5. Si es tinta, tóner o cartucho: el color exacto (Negro/Cian/Magenta/Amarillo) es OBLIGATORIO al final de 'name'.
+6. La categoría DEBE ser 100% en español (ej: CABLES Y ADAPTADORES, ALMACENAMIENTO, etc.).
 
 Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.`,
             },
@@ -384,6 +381,8 @@ Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.
       ],
     });
 
+    const categoryInSpanish = translateCategoryToSpanish(object.category);
+
     // Catch a re-scan of a box already in the catalog before spending time
     // on a product that's just going to get flagged as a duplicate anyway.
     const existing = await findExistingProductByName(object.name, object.description);
@@ -391,7 +390,7 @@ Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.
       return {
         name: existing.name,
         description: existing.description ?? object.description.toUpperCase(),
-        category: existing.category ?? object.category.toUpperCase(),
+        category: existing.category ?? categoryInSpanish,
         existingProductId: existing.id,
         existingProductName: existing.name,
         existingProduct: existing,
@@ -402,7 +401,7 @@ Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.
     const imageOptions = await searchProductImages({
       queries: object.searchQueries && object.searchQueries.length > 0
         ? object.searchQueries
-        : [object.name, `${object.name} ${object.category}`],
+        : [object.name, `${object.name} ${categoryInSpanish}`],
       negativeKeywords: object.negativeKeywords,
       max: 6,
     }).catch((err) => {
@@ -413,7 +412,7 @@ Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.
     return {
       name: object.name.toUpperCase(),
       description: object.description.toUpperCase(),
-      category: object.category.toUpperCase(),
+      category: categoryInSpanish,
       imageOptions: imageOptions.length > 0 ? imageOptions : undefined,
     };
   } catch (err) {

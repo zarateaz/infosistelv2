@@ -57,6 +57,9 @@ echo "=== Prisma: generar cliente y aplicar migraciones ==="
 npx prisma generate
 npx prisma migrate deploy
 
+echo "=== Estandarizando categorías a español (cero margen de error) ==="
+npx tsx scripts/migrate-categories-to-spanish.ts || true
+
 echo "=== Build de producción (si esto falla, NO sigas a PM2) ==="
 NODE_ENV=production npm run build
 

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { deleteProductImageIfManaged } from "./upload-actions";
+import { translateCategoryToSpanish } from "@/lib/categoryUtils";
 
 export interface AdminProduct {
   id: string;
@@ -65,11 +66,11 @@ const productSchema = z.object({
     .transform((v) => (v ? v : null)),
 });
 
-/** Keeps the Category table in sync with whatever the admin types — this is
+/** Keeps the Category table in sync with standard Spanish categories — this is
  *  what makes /tienda's filter chips and the scanner's category dropdown
- *  (once it exists) pick up a brand-new category with zero extra steps. */
+ *  pick up a brand-new category with zero extra steps. */
 async function upsertCategory(name: string): Promise<string> {
-  const normalized = name.toUpperCase();
+  const normalized = translateCategoryToSpanish(name);
   await prisma.category.upsert({ where: { name: normalized }, update: {}, create: { name: normalized } });
   return normalized;
 }
@@ -89,9 +90,12 @@ function parseProductForm(formData: FormData) {
     }
   }
 
+  const rawCategory = typeof formData.get("category") === "string" ? (formData.get("category") as string) : "";
+  const translatedCategory = rawCategory ? translateCategoryToSpanish(rawCategory) : "";
+
   const parsed = productSchema.safeParse({
     name: formData.get("productName"),
-    category: formData.get("category"),
+    category: translatedCategory,
     description: formData.get("description"),
     price: formData.get("price"),
     costPrice: formData.get("costPrice") || 0,
