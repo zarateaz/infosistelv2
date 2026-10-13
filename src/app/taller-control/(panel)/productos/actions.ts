@@ -148,7 +148,8 @@ import { evaluateDuplicateMatch, type DuplicateDetectionResult, type ProductSumm
 export async function checkDuplicateProduct(
   name: string,
   barcode?: string | null,
-  excludeId?: string
+  excludeId?: string,
+  description?: string | null
 ): Promise<DuplicateDetectionResult> {
   const cleanBarcode = barcode?.trim();
   const cleanName = name?.trim();
@@ -206,7 +207,7 @@ export async function checkDuplicateProduct(
 
   for (const cand of candidates) {
     const match = evaluateDuplicateMatch(
-      { name: cleanName, barcode: cleanBarcode },
+      { name: cleanName, barcode: cleanBarcode, description: description ?? undefined },
       cand
     );
     if (match.isDuplicate) {

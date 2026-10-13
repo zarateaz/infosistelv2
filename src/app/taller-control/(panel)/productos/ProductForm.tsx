@@ -58,9 +58,10 @@ export function ProductForm({
   const stockRef = useRef<HTMLInputElement>(null);
   const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const performDuplicateCheck = async (nameVal?: string, barcodeVal?: string) => {
+  const performDuplicateCheck = async (nameVal?: string, barcodeVal?: string, descVal?: string) => {
     const currentName = nameVal !== undefined ? nameVal : (nameRef.current?.value ?? "");
     const currentBarcode = barcodeVal !== undefined ? barcodeVal : (barcodeRef.current?.value ?? "");
+    const currentDesc = descVal !== undefined ? descVal : (descriptionRef.current?.value ?? "");
 
     if (!currentName.trim() && !currentBarcode.trim()) {
       setDuplicateWarning(null);
@@ -68,7 +69,7 @@ export function ProductForm({
     }
 
     try {
-      const res = await checkDuplicateProduct(currentName, currentBarcode, product?.id);
+      const res = await checkDuplicateProduct(currentName, currentBarcode, product?.id, currentDesc);
       if (res.isDuplicate) {
         setDuplicateWarning(res);
       } else {
@@ -79,10 +80,10 @@ export function ProductForm({
     }
   };
 
-  const scheduleDuplicateCheck = (nameVal?: string, barcodeVal?: string) => {
+  const scheduleDuplicateCheck = (nameVal?: string, barcodeVal?: string, descVal?: string) => {
     if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
     checkTimeoutRef.current = setTimeout(() => {
-      performDuplicateCheck(nameVal, barcodeVal);
+      performDuplicateCheck(nameVal, barcodeVal, descVal);
     }, 350);
   };
 
@@ -103,7 +104,7 @@ export function ProductForm({
     if (fill.image) setScannedImagePath(fill.image);
     if (fill.images) setScannedGalleryImages(fill.images);
 
-    performDuplicateCheck(fill.name, fill.barcode);
+    performDuplicateCheck(fill.name, fill.barcode, fill.description);
   }
 
   return (
@@ -192,6 +193,8 @@ export function ProductForm({
               required
               rows={3}
               className={inputClass}
+              onChange={(e) => scheduleDuplicateCheck(undefined, undefined, e.target.value)}
+              onBlur={(e) => performDuplicateCheck(undefined, undefined, e.target.value)}
             />
           </div>
 

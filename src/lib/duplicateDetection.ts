@@ -445,27 +445,124 @@ export function extractModelCodes(str: string): string[] {
 }
 
 /**
- * Extracts variant indicators such as capacity (8GB, 16GB, 1TB), cable length (1m, 2m),
- * or ink colors (negro, cyan, magenta, amarillo).
+ * Extracts fine-grained hardware and electronics technical specifications.
+ * Supports decimal measurements (e.g. 1.5m, 1.8m), protocols (HDMI 2.0 vs 2.1),
+ * refresh rates, bandwidths, wattages, and colors.
  */
-export function extractVariantAttributes(str: string): {
+export interface TechnicalSpecs {
+  lengths: Set<string>;
+  versions: Set<string>;
+  resolutions: Set<string>;
+  refreshRates: Set<string>;
+  speeds: Set<string>;
+  wattages: Set<string>;
+  amperages: Set<string>;
   capacities: Set<string>;
   colors: Set<string>;
-} {
-  const normalized = normalizeText(str);
+  portCounts: Set<string>;
+}
+
+export function extractTechnicalSpecs(text: string): TechnicalSpecs {
+  const lengths = new Set<string>();
+  const versions = new Set<string>();
+  const resolutions = new Set<string>();
+  const refreshRates = new Set<string>();
+  const speeds = new Set<string>();
+  const wattages = new Set<string>();
+  const amperages = new Set<string>();
   const capacities = new Set<string>();
   const colors = new Set<string>();
+  const portCounts = new Set<string>();
 
-  // Capacity / length / wattage regex
-  const capRegex = /\b(\d+(?:\.\d+)?)\s*(gb|tb|mb|hz|mhz|ghz|w|watts|v|volts|a|amp|m|mts|metros|cm|mm|mah)\b/gi;
-  let match: RegExpExecArray | null;
-  while ((match = capRegex.exec(normalized)) !== null) {
-    capacities.add(`${match[1]}${match[2].replace(/metros|mts/, "m")}`);
+  if (!text) {
+    return {
+      lengths,
+      versions,
+      resolutions,
+      refreshRates,
+      speeds,
+      wattages,
+      amperages,
+      capacities,
+      colors,
+      portCounts,
+    };
   }
 
-  // Color variants regex
-  const colorRegex = /\b(negro|black|cian|cyan|magenta|amarillo|yellow|azul|blue|rojo|red|blanco|white|gris|gray|grey|verde|green)\b/gi;
-  while ((match = colorRegex.exec(normalized)) !== null) {
+  const raw = text.toLowerCase();
+
+  // 1. Lengths / Measures (e.g. 1.5m, 1.8m, 2m, 3m, 5m, 10m, 50cm)
+  const lengthRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(m|mts|metros|cm|mm)(?:$|[\s,;.)\]/])/gi;
+  let match: RegExpExecArray | null;
+  while ((match = lengthRegex.exec(raw)) !== null) {
+    const num = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit.startsWith("m")) {
+      lengths.add(`${num}m`);
+    } else if (unit === "cm") {
+      lengths.add(`${num}cm`);
+    } else if (unit === "mm") {
+      lengths.add(`${num}mm`);
+    }
+  }
+
+  // 2. Protocols and versions (HDMI 2.0 vs 2.1, USB 2.0 vs 3.0 vs 3.2, Cat5e vs Cat6, BT 5.0 vs 5.3)
+  const hdmiRegex = /(?:^|[\s,;([/])(?:hdmi\s*(1\.4|2\.0|2\.1)|(?:1\.4|2\.0|2\.1)\s*hdmi)(?:$|[\s,;.)\]/])/gi;
+  while ((match = hdmiRegex.exec(raw)) !== null) {
+    versions.add(`hdmi_${match[1]}`);
+  }
+  const usbRegex = /(?:^|[\s,;([/])(?:usb\s*(2\.0|3\.0|3\.1|3\.2|4\.0)|(?:2\.0|3\.0|3\.1|3\.2|4\.0)\s*usb)(?:$|[\s,;.)\]/])/gi;
+  while ((match = usbRegex.exec(raw)) !== null) {
+    versions.add(`usb_${match[1]}`);
+  }
+  const ethRegex = /(?:^|[\s,;([/])(?:cat(?:egoria)?\s*(5e|5|6a|6|7|8)|cat(5e|5|6a|6|7|8))(?:$|[\s,;.)\]/])/gi;
+  while ((match = ethRegex.exec(raw)) !== null) {
+    versions.add(`cat_${match[1] || match[2]}`);
+  }
+  const btRegex = /(?:^|[\s,;([/])(?:bluetooth|bt)\s*(4\.0|4\.2|5\.0|5\.1|5\.2|5\.3|5\.4)(?:$|[\s,;.)\]/])/gi;
+  while ((match = btRegex.exec(raw)) !== null) {
+    versions.add(`bt_${match[1]}`);
+  }
+  const dpRegex = /(?:^|[\s,;([/])(?:displayport|dp)\s*(1\.2|1\.4|2\.0|2\.1)(?:$|[\s,;.)\]/])/gi;
+  while ((match = dpRegex.exec(raw)) !== null) {
+    versions.add(`dp_${match[1]}`);
+  }
+
+  // 3. Resolutions and refresh rates (4K, 8K, 60Hz, 120Hz, 144Hz, etc.)
+  const resRegex = /(?:^|[\s,;([/])(4k|8k|2k|1080p|720p|1440p|fhd|qhd|uhd)(?:$|[\s,;.)\]/])/gi;
+  while ((match = resRegex.exec(raw)) !== null) {
+    resolutions.add(match[1]);
+  }
+  const hzRegex = /(?:^|[\s,;([/])(\d+)\s*hz(?:$|[\s,;.)\]/])/gi;
+  while ((match = hzRegex.exec(raw)) !== null) {
+    refreshRates.add(`${match[1]}hz`);
+  }
+
+  // 4. Speeds and bandwidths (18Gbps, 48Gbps, 100Mbps, 1000Mbps / 1Gbps, 2.5Gbps)
+  const speedRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(gbps|mbps)(?:$|[\s,;.)\]/])/gi;
+  while ((match = speedRegex.exec(raw)) !== null) {
+    speeds.add(`${parseFloat(match[1])}${match[2]}`);
+  }
+
+  // 5. Electrical: Wattage and Amperage (20W, 65W, 100W, 2A, 3A, etc.)
+  const wRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(w|watts)(?:$|[\s,;.)\]/])/gi;
+  while ((match = wRegex.exec(raw)) !== null) {
+    wattages.add(`${parseFloat(match[1])}w`);
+  }
+  const aRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(a|amp|amperios)(?:$|[\s,;.)\]/])/gi;
+  while ((match = aRegex.exec(raw)) !== null) {
+    amperages.add(`${parseFloat(match[1])}a`);
+  }
+
+  // 6. Memory / Storage Capacities (8GB, 16GB, 512GB, 1TB, 2TB)
+  const capRegex = /(?:^|[\s,;([/])(\d+)\s*(gb|tb|mb)(?:$|[\s,;.)\]/])/gi;
+  while ((match = capRegex.exec(raw)) !== null) {
+    capacities.add(`${match[1]}${match[2]}`);
+  }
+
+  // 7. Colors (ink cartridges, cables, cases, accessories)
+  const colorRegex = /(?:^|[\s,;([/])(negro|black|cian|cyan|magenta|amarillo|yellow|azul|blue|rojo|red|blanco|white|gris|gray|grey|verde|green)(?:$|[\s,;.)\]/])/gi;
+  while ((match = colorRegex.exec(raw)) !== null) {
     const c = match[1].toLowerCase();
     if (c === "black") colors.add("negro");
     else if (c === "cyan") colors.add("cian");
@@ -478,51 +575,68 @@ export function extractVariantAttributes(str: string): {
     else colors.add(c);
   }
 
-  return { capacities, colors };
+  // 8. Port counts (hubs, multiports: 4 en 1, 7 en 1, 4 puertos, 8 puertos)
+  const portRegex = /(?:^|[\s,;([/])(\d+)\s*(?:en\s*1|in\s*1|puertos|ports)(?:$|[\s,;.)\]/])/gi;
+  while ((match = portRegex.exec(raw)) !== null) {
+    portCounts.add(`${match[1]}_ports`);
+  }
+
+  return {
+    lengths,
+    versions,
+    resolutions,
+    refreshRates,
+    speeds,
+    wattages,
+    amperages,
+    capacities,
+    colors,
+    portCounts,
+  };
 }
 
 /**
- * Checks if two products have conflicting variant attributes (e.g. 8GB vs 16GB, Negro vs Amarillo).
- * If they do, they are different products and should NOT be flagged as duplicates.
+ * Checks if two products have conflicting technical specifications.
+ * Evaluates both product name and technical description.
+ * If either length, version, refresh rate, speed, wattage, color, or port count
+ * is specified in both products and they have no overlap, they are DIFFERENT products.
  */
-function haveConflictingVariants(a: string, b: string): boolean {
-  const varsA = extractVariantAttributes(a);
-  const varsB = extractVariantAttributes(b);
+export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const sA = extractTechnicalSpecs(a);
+  const sB = extractTechnicalSpecs(b);
 
-  // If both specify capacities, and they have no overlap -> conflicting
-  if (varsA.capacities.size > 0 && varsB.capacities.size > 0) {
-    let hasOverlap = false;
-    for (const cap of varsA.capacities) {
-      if (varsB.capacities.has(cap)) {
-        hasOverlap = true;
-        break;
+  const checkConflict = (setA: Set<string>, setB: Set<string>) => {
+    if (setA.size > 0 && setB.size > 0) {
+      for (const val of setA) {
+        if (setB.has(val)) return false; // Overlap exists!
       }
+      return true; // Both specify this characteristic and have zero overlap -> CONFLICT!
     }
-    if (!hasOverlap) return true;
-  }
+    return false;
+  };
 
-  // If both specify colors, and they have no overlap -> conflicting
-  if (varsA.colors.size > 0 && varsB.colors.size > 0) {
-    let hasOverlap = false;
-    for (const col of varsA.colors) {
-      if (varsB.colors.has(col)) {
-        hasOverlap = true;
-        break;
-      }
-    }
-    if (!hasOverlap) return true;
-  }
+  if (checkConflict(sA.lengths, sB.lengths)) return true;
+  if (checkConflict(sA.versions, sB.versions)) return true;
+  if (checkConflict(sA.resolutions, sB.resolutions)) return true;
+  if (checkConflict(sA.refreshRates, sB.refreshRates)) return true;
+  if (checkConflict(sA.speeds, sB.speeds)) return true;
+  if (checkConflict(sA.wattages, sB.wattages)) return true;
+  if (checkConflict(sA.amperages, sB.amperages)) return true;
+  if (checkConflict(sA.capacities, sB.capacities)) return true;
+  if (checkConflict(sA.colors, sB.colors)) return true;
+  if (checkConflict(sA.portCounts, sB.portCounts)) return true;
 
   return false;
 }
 
 /**
  * Evaluates whether an input product matches an existing catalog product.
- * ZERO MARGIN OF ERROR: Never flags a generic phrase (e.g. "Mouse Inalámbrico")
- * as a duplicate of a specific branded/model product, nor different brands or models.
+ * ZERO MARGIN OF ERROR: Takes into account both name and description.
+ * If technical characteristics differ (length, speed, version, etc.), it is NEVER a duplicate.
  */
 export function evaluateDuplicateMatch(
-  input: { name: string; barcode?: string | null },
+  input: { name: string; barcode?: string | null; description?: string | null },
   candidate: ProductSummary
 ): DuplicateDetectionResult {
   // 1. Barcode check (100% indisputable physical SKU match)
@@ -544,6 +658,15 @@ export function evaluateDuplicateMatch(
   const rawInputName = input.name?.trim();
   const rawCandName = candidate.name?.trim();
   if (!rawInputName || !rawCandName) {
+    return { isDuplicate: false };
+  }
+
+  // Combined full text (name + description) for deep technical characteristic checking
+  const inputFull = `${rawInputName} ${input.description ?? ""}`;
+  const candFull = `${rawCandName} ${candidate.description ?? ""}`;
+
+  // Conflicting technical specifications check (length, version, speed, wattage, etc.)
+  if (haveConflictingTechnicalSpecs(inputFull, candFull)) {
     return { isDuplicate: false };
   }
 
@@ -570,15 +693,10 @@ export function evaluateDuplicateMatch(
     };
   }
 
-  // 4. Conflicting brands check (e.g. Logitech vs Razer, Epson vs HP, Ugreen vs Baseus)
-  const brandInput = extractBrand(rawInputName);
-  const brandCand = extractBrand(rawCandName);
+  // 4. Conflicting brands check (e.g. Logitech vs Razer, Epson vs HP, Ugreen vs Baseus, ZKTeco vs Philips)
+  const brandInput = extractBrand(inputFull);
+  const brandCand = extractBrand(candFull);
   if (brandInput && brandCand && brandInput !== brandCand) {
-    return { isDuplicate: false };
-  }
-
-  // 5. Conflicting variants check (e.g. 8GB vs 16GB, Negro vs Amarillo, 1M vs 2M)
-  if (haveConflictingVariants(rawInputName, rawCandName)) {
     return { isDuplicate: false };
   }
 

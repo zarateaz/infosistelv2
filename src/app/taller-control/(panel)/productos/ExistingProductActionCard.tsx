@@ -12,7 +12,7 @@ import {
   AlertTriangle,
   Loader2,
   Download,
-  ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 import type { ProductSummary } from "@/lib/duplicateDetection";
 import type { ScanFill } from "./ScannerPanel";
@@ -36,7 +36,7 @@ export function ExistingProductActionCard({
   const [isLoadedIntoForm, setIsLoadedIntoForm] = useState(false);
 
   const priceFormatted =
-    product.price !== undefined ? `S/. ${Number(product.price).toFixed(2)}` : "No definido";
+    product.price !== undefined ? `S/. ${Number(product.price).toFixed(2)}` : "No def.";
   const costFormatted =
     product.costPrice !== undefined && product.costPrice !== null
       ? `S/. ${Number(product.costPrice).toFixed(2)}`
@@ -53,14 +53,14 @@ export function ExistingProductActionCard({
         onStockUpdated?.(res.newStock);
         setFeedback(
           delta > 0
-            ? `¡Se agregaron +${delta} unidad(es)! Nuevo stock: ${res.newStock} u.`
-            : `¡Se descontaron ${Math.abs(delta)} unidad(es)! Nuevo stock: ${res.newStock} u.`
+            ? `+${delta} u. (Nuevo stock: ${res.newStock} u.)`
+            : `-${Math.abs(delta)} u. (Nuevo stock: ${res.newStock} u.)`
         );
       } else {
         setFeedback(res.error || "Error al actualizar stock.");
       }
     } catch {
-      setFeedback("Error de conexión al actualizar el stock.");
+      setFeedback("Error de conexión al actualizar stock.");
     } finally {
       setIsUpdating(false);
     }
@@ -82,117 +82,105 @@ export function ExistingProductActionCard({
   }
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border-2 border-amber-500/50 bg-gradient-to-b from-amber-500/10 via-amber-500/5 to-transparent p-5 shadow-md">
-      {/* Header Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-black">
-            <AlertTriangle size={12} strokeWidth={2.5} />
+    <div className="mt-3 overflow-hidden rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 sm:p-3.5 shadow-xs transition-all animate-in fade-in duration-200">
+      {/* Header Compacto */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-amber-500/20 pb-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-500 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-black">
+            <AlertTriangle size={10} strokeWidth={2.5} />
             0 Margen de Error
           </span>
-          <span className="text-xs sm:text-sm font-black text-amber-800 dark:text-amber-200">
+          <span className="truncate text-xs font-bold text-amber-900 dark:text-amber-200">
             El producto ya se encuentra en la tienda. ¿Desea agregar o quitar stock o editar?
           </span>
         </div>
 
         <Link
           href={`/taller-control/productos/${product.id}`}
-          className="inline-flex items-center gap-1 text-xs font-bold text-accent hover:underline"
+          className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-accent hover:underline"
         >
-          <span>Ir a editar en ficha completa</span>
-          <ArrowRight size={13} />
+          <span>Editar ficha</span>
+          <ExternalLink size={11} />
         </Link>
       </div>
 
-      {/* Product Details Header */}
-      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-        {product.image ? (
-          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-border bg-white shadow-xs">
-            <Image
-              src={product.image}
-              alt={product.name}
-              fill
-              unoptimized
-              sizes="80px"
-              className="object-contain p-1"
-            />
-          </div>
-        ) : (
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border border-dashed border-border-strong bg-bg text-fg-muted">
-            <Package size={28} strokeWidth={1.5} />
-          </div>
-        )}
+      {/* Fila Central: Mini Thumbnail + Datos + Chips de Precio y Stock */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {product.image ? (
+            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-border bg-white shadow-xs">
+              <Image
+                src={product.image}
+                alt={product.name}
+                fill
+                unoptimized
+                sizes="40px"
+                className="object-contain p-0.5"
+              />
+            </div>
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-border bg-bg text-fg-muted">
+              <Package size={18} strokeWidth={1.5} />
+            </div>
+          )}
 
-        <div className="flex-1 min-w-0">
-          <h4 className="text-base font-black text-fg leading-snug">{product.name}</h4>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-fg-muted">
-            {product.category && (
-              <span className="rounded-md bg-bg-raised px-2 py-0.5 font-semibold text-fg">
-                {product.category}
-              </span>
-            )}
-            {product.barcode && (
-              <span>
-                Cód: <strong className="font-mono text-fg">{product.barcode}</strong>
-              </span>
-            )}
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate text-xs font-bold text-fg leading-tight" title={product.name}>
+              {product.name}
+            </h4>
+            <div className="flex items-center gap-2 text-[10px] text-fg-muted mt-0.5">
+              {product.category && <span className="font-medium text-fg/80">{product.category}</span>}
+              {product.barcode && (
+                <span>
+                  Cód: <strong className="font-mono text-fg">{product.barcode}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Chips de Precios y Stock compactos */}
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="rounded-lg border border-border bg-bg/80 px-2.5 py-1 text-center">
+            <span className="block text-[9px] uppercase tracking-wider text-fg-muted font-semibold">
+              Venta
+            </span>
+            <span className="text-xs font-black text-accent">{priceFormatted}</span>
+          </div>
+
+          <div className="rounded-lg border border-border bg-bg/80 px-2.5 py-1 text-center">
+            <span className="block text-[9px] uppercase tracking-wider text-fg-muted font-semibold">
+              Costo
+            </span>
+            <span className="text-xs font-bold text-fg">{costFormatted}</span>
+          </div>
+
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-center">
+            <span className="block text-[9px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-semibold">
+              Stock
+            </span>
+            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+              {currentStock} u.
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Precios y Stock Originales */}
-      <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-bg/70 p-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
-            Precio Venta Actual
-          </p>
-          <p className="mt-1 text-lg font-black text-accent">{priceFormatted}</p>
-          <p className="text-[10px] text-fg-muted">Precio original en tienda</p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-bg/70 p-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
-            Precio de Costo
-          </p>
-          <p className="mt-1 text-lg font-black text-fg">{costFormatted}</p>
-          <p className="text-[10px] text-fg-muted">Costo registrado</p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-bg/70 p-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
-            Stock en Inventario
-          </p>
-          <p className="mt-1 text-lg font-black text-emerald-600 dark:text-emerald-400">
-            {currentStock} <span className="text-xs font-normal">unidades</span>
-          </p>
-          <p className="text-[10px] text-fg-muted">Disponible ahora</p>
-        </div>
-      </div>
-
-      {/* Stock Adjustment Controls */}
-      <div className="mt-4 rounded-xl border border-amber-500/30 bg-bg/80 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-black text-fg">
-            ¿Deseas agregar o quitar stock de este producto?
-          </p>
-          <span className="text-[11px] text-fg-muted">
-            Stock actual: <strong className="text-fg">{currentStock} u.</strong>
-          </span>
-        </div>
-
-        {/* Quick Delta Buttons */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-fg-muted font-medium">Rápido:</span>
+      {/* Controles de Acción Compactos en 1 Sola Línea */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/20 pt-2">
+        {/* Ajustes de stock rápidos */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-fg-muted">Stock:</span>
           {[1, 5, 10].map((num) => (
             <button
               key={`add-${num}`}
               type="button"
               disabled={isUpdating}
               onClick={() => handleAdjust(num)}
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-0.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:opacity-50"
             >
-              <Plus size={11} strokeWidth={2.5} />
-              <span>+{num} u.</span>
+              <Plus size={10} strokeWidth={2.5} />
+              <span>{num}</span>
             </button>
           ))}
           {[-1, -5].map((num) => (
@@ -201,78 +189,70 @@ export function ExistingProductActionCard({
               type="button"
               disabled={isUpdating || currentStock <= 0}
               onClick={() => handleAdjust(num)}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-bold text-red-700 dark:text-red-300 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-0.5 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:text-red-300 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
             >
-              <Minus size={11} strokeWidth={2.5} />
-              <span>{num} u.</span>
+              <Minus size={10} strokeWidth={2.5} />
+              <span>{Math.abs(num)}</span>
             </button>
           ))}
-        </div>
 
-        {/* Custom Quantity Input & Action Buttons */}
-        <div className="mt-3 flex flex-wrap items-center gap-2 pt-2 border-t border-border/40">
-          <div className="flex items-center gap-2">
-            <label htmlFor="custom-stock-delta" className="text-xs text-fg-muted font-medium">
-              Cantidad:
-            </label>
+          {/* Cantidad personalizada directa */}
+          <div className="flex items-center gap-1 pl-1">
             <input
-              id="custom-stock-delta"
               type="number"
               min={1}
               value={stockDelta}
               onChange={(e) => setStockDelta(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-16 rounded-lg border border-border bg-bg px-2 py-1 text-center text-xs font-bold text-fg outline-none focus:border-accent"
+              className="w-12 rounded border border-border bg-bg px-1 py-0.5 text-center text-xs font-bold text-fg outline-none focus:border-accent"
             />
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() => handleAdjust(stockDelta)}
+              className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+              title="Sumar cantidad al stock"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              disabled={isUpdating || currentStock <= 0}
+              onClick={() => handleAdjust(-stockDelta)}
+              className="rounded border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:text-red-300 transition-all hover:bg-red-500/20 disabled:opacity-50"
+              title="Restar cantidad del stock"
+            >
+              -
+            </button>
           </div>
-
-          <button
-            type="button"
-            disabled={isUpdating}
-            onClick={() => handleAdjust(stockDelta)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
-          >
-            {isUpdating ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} strokeWidth={2.5} />}
-            <span>Agregar stock</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isUpdating || currentStock <= 0}
-            onClick={() => handleAdjust(-stockDelta)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/50 bg-red-500/10 px-3.5 py-1.5 text-xs font-bold text-red-700 dark:text-red-300 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
-          >
-            {isUpdating ? <Loader2 size={12} className="animate-spin" /> : <Minus size={12} strokeWidth={2.5} />}
-            <span>Quitar stock</span>
-          </button>
         </div>
 
-        {feedback && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent animate-in fade-in">
-            <CheckCircle2 size={14} className="shrink-0" />
-            <span>{feedback}</span>
-          </div>
-        )}
+        {/* Botones de acción principales */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleLoadOriginals}
+            className="inline-flex items-center gap-1 rounded-lg border border-border-strong bg-bg px-2.5 py-1 text-[11px] font-bold text-fg transition-all hover:border-accent hover:text-accent active:scale-95"
+          >
+            <Download size={11} />
+            <span>{isLoadedIntoForm ? "✓ Cargado abajo" : "Cargar datos originales"}</span>
+          </button>
+
+          <Link
+            href={`/taller-control/productos/${product.id}`}
+            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1 text-[11px] font-bold text-accent-fg shadow-xs transition-all hover:bg-accent-hover active:scale-95"
+          >
+            <Edit3 size={11} />
+            <span>Editar</span>
+          </Link>
+        </div>
       </div>
 
-      {/* Action Footer */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-amber-500/20">
-        <button
-          type="button"
-          onClick={handleLoadOriginals}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-bg px-4 py-2 text-xs font-bold text-fg transition-all hover:border-accent hover:text-accent active:scale-95"
-        >
-          <Download size={13} />
-          <span>{isLoadedIntoForm ? "✓ Precios originales cargados abajo" : "Cargar precios y datos originales al formulario"}</span>
-        </button>
-
-        <Link
-          href={`/taller-control/productos/${product.id}`}
-          className="inline-flex items-center gap-1.5 rounded-full bg-accent px-5 py-2 text-xs font-bold text-accent-fg shadow-sm transition-all hover:bg-accent-hover active:scale-95"
-        >
-          <Edit3 size={13} />
-          <span>Editar producto completo</span>
-        </Link>
-      </div>
+      {feedback && (
+        <div className="mt-2 flex items-center gap-1.5 rounded-md bg-accent/10 px-2 py-1 text-[11px] font-bold text-accent animate-in fade-in">
+          <CheckCircle2 size={12} className="shrink-0" />
+          <span>{feedback}</span>
+        </div>
+      )}
     </div>
   );
 }

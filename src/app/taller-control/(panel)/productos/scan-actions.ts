@@ -231,7 +231,10 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
 
   // If external suggestion found, check if that item name already exists locally (0 margin of error)
   if (externalResult.suggestion?.name) {
-    const existingByName = await findExistingProductByName(externalResult.suggestion.name);
+    const existingByName = await findExistingProductByName(
+      externalResult.suggestion.name,
+      externalResult.suggestion.description
+    );
     if (existingByName) {
       return {
         existingProductId: existingByName.id,
@@ -258,7 +261,8 @@ export interface RecognizeImageResult {
 
 /** Comprehensive zero-margin-of-error duplicate match across catalog products */
 async function findExistingProductByName(
-  name: string
+  name: string,
+  description?: string
 ): Promise<ProductSummary | null> {
   const cleanName = name.trim();
   if (!cleanName) return null;
@@ -279,7 +283,10 @@ async function findExistingProductByName(
   });
 
   for (const cand of candidates) {
-    const match = evaluateDuplicateMatch({ name: cleanName }, cand);
+    const match = evaluateDuplicateMatch(
+      { name: cleanName, description },
+      cand
+    );
     if (match.isDuplicate && match.existingProduct) {
       return match.existingProduct;
     }
@@ -328,11 +335,13 @@ export async function recognizeProductImage(
         name: z
           .string()
           .describe(
-            "Nombre comercial conciso del producto en español para catálogo (máximo 120 caracteres). Incluye marca, tipo de producto y formato físico específico (ej: 'ADAPTADOR UGREEN USB-C A HDMI COMPACTO SIN CABLE'). Si es tinta, tóner o cartucho: el color (Negro/Cian/Magenta/Amarillo/Tricolor) es OBLIGATORIO al final del nombre."
+            "Nombre comercial exacto en español para catálogo (máximo 140 caracteres). OBLIGATORIO: Marca + Producto + Versión/Protocolo si aplica (ej: 2.0, 3.0, Cat6) + Medida/Longitud exacta si es cable (ej: 1.5M, 2M, 3M, 5M) + Resolución/Velocidad si aplica (ej: 4K@60Hz, 18Gbps, 1000Mbps) + Capacidad/Color si aplica. Ejemplo: 'CABLE HDMI 2.0 4K@60HZ 18GBPS ZKTECO 1.5M'. NUNCA omitas la longitud ni la versión porque hay productos idénticos que solo varían en esas medidas."
           ),
         description: z
           .string()
-          .describe("Descripción técnica y comercial breve (1-2 frases) basada en lo que dice la caja y sus especificaciones."),
+          .describe(
+            "Descripción técnica minuciosa en español (1-3 frases) basada estrictamente en lo que dice la caja o etiqueta: lista marca, modelo exacto, longitud de cable, velocidad/ancho de banda (ej: 18Gbps), resolución (ej: 4K@60Hz), versión de puerto (ej: HDMI 2.0) y compatibilidad."
+          ),
         category: z
           .string()
           .describe(
@@ -356,21 +365,14 @@ export async function recognizeProductImage(
           content: [
             {
               type: "text",
-              text: `Esta es una foto de la caja, etiqueta o producto de una tienda de tecnología. Lee la marca, modelo, especificaciones impresas Y OBSERVA ATENTAMENTE LA ILUSTRACIÓN O FOTO DEL PRODUCTO para completar los datos con CERO MARGEN DE ERROR.
+              text: `Esta es una foto de la caja, etiqueta o producto de una tienda de tecnología. Lee la marca, modelo y TODAS LAS ESPECIFICACIONES TÉCNICAS IMPRESAS con CERO MARGEN DE ERROR.
 
-1. Identificación visual precisa:
-- Observa la forma física del producto en el empaque:
-  * Si es un adaptador o conversor de video: distingue minuciosamente entre:
-    a) Adaptador rígido de enchufe directo / una sola pieza SIN CABLE (direct plug / compact one-piece, como UGREEN US320 / 70450).
-    b) Dongle con cable corto / chicote (como UGREEN 70444 / CM297).
-    c) Cable largo de 1m, 1.5m o 2m (como UGREEN 50570).
-    d) Hub multipuerto con puertos USB/SD (como Revodok).
-  * Si es tinta, tóner o cartucho: el modelo impreso suele ser igual para variantes de color. Identifica el color exacto (Negro/Cian/Magenta/Amarillo) por texto o color visible y ponlo al final de "name".
-  * Si es memoria/disco: indica interfaz (NVMe M.2, SATA, DDR4, DDR5) y capacidad.
-2. Búsqueda de imágenes en internet (CERO MARGEN DE ERROR):
-- Proporciona en 'searchQueries' 2 a 3 consultas con la terminología exacta que usan los catálogos y tiendas en internet (ej: "UGREEN USB-C to HDMI adapter compact direct plug 70450", "UGREEN US320 USB-C to HDMI", "UGREEN USB-C to HDMI adapter no cable").
-- En 'negativeKeywords' incluye términos de productos que NO corresponden (ej: si es adaptador compacto sin cable, descarta ["hub", "dock", "multiport", "multipuerto", "cable 2m", "cable 1.5m", "pigtail"]).
-- Si no puedes leer algo con absoluta certeza, no lo inventes, pero usa la apariencia visual del producto para deducir el formato exacto.
+¡CRÍTICO!: En la tienda hay productos muy similares que solo varían en pequeñas características. Debes leer y plasmar CADA detalle en 'name' y 'description':
+1. Longitud / Medida exacta de cable: Si la caja indica una medida (ej: 1m, 1.5m, 1.8m, 2m, 3m, 5m, 10m, 15m, 20cm), ES OBLIGATORIO incluirla en el nombre y descripción.
+2. Versión y tecnología: Si es HDMI 2.0 vs 2.1, USB 2.0 vs 3.0 vs 3.2, Cat5e vs Cat6, Bluetooth 5.0 vs 5.3, etc.
+3. Velocidad, Resolución y Potencia: Si dice 4K@60Hz, 4K@30Hz, 8K, 18Gbps, 48Gbps, 100Mbps, 1000Mbps Gigabit, 20W, 65W, 100W, etc.
+4. Forma física: Distingue entre adaptador rígido sin cable (direct plug), dongle chicote con cable corto, cable largo, o hub multipuerto.
+5. Si es tinta, tóner o cartucho: el color exacto (Negro/Cian/Magenta/Amarillo) es OBLIGATORIO al final de 'name'.
 
 Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.`,
             },
@@ -384,7 +386,7 @@ Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.
 
     // Catch a re-scan of a box already in the catalog before spending time
     // on a product that's just going to get flagged as a duplicate anyway.
-    const existing = await findExistingProductByName(object.name);
+    const existing = await findExistingProductByName(object.name, object.description);
     if (existing) {
       return {
         name: existing.name,
