@@ -19,13 +19,17 @@ export function ProductCard({
       onClick={onSelect}
       className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-bg-alt transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-xl hover:shadow-accent/10"
     >
-      <div className="relative aspect-square overflow-hidden bg-bg">
+      <div
+        style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", overflow: "hidden" }}
+        className="relative aspect-square overflow-hidden bg-bg"
+      >
         {product.image ? (
           <Image
             src={product.image}
             alt={product.name}
             fill
             unoptimized
+            style={{ objectFit: "contain", maxWidth: "100%", maxHeight: "100%" }}
             className="object-contain p-4 transition-transform duration-300 group-hover:scale-105"
           />
         ) : (

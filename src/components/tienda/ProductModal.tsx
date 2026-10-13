@@ -36,9 +36,19 @@ export function ProductModal({
           </button>
         </div>
 
-        <div className="relative mb-6 h-56 w-full rounded-2xl bg-bg">
+        <div
+          style={{ position: "relative", width: "100%", height: "14rem", overflow: "hidden" }}
+          className="relative mb-6 h-56 w-full rounded-2xl bg-bg"
+        >
           {product.image ? (
-            <Image src={product.image} alt={product.name} fill unoptimized className="object-contain p-6" />
+            <Image
+              src={product.image}
+              alt={product.name}
+              fill
+              unoptimized
+              style={{ objectFit: "contain", maxWidth: "100%", maxHeight: "100%" }}
+              className="object-contain p-6"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <CategoryIcon category={product.category} size={64} strokeWidth={1.25} className="text-fg-muted opacity-40" />
