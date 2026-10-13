@@ -48,7 +48,7 @@ export function ImageGalleryField({
         <div className="mt-2 flex flex-wrap gap-3">
           {images.map((path, i) => (
             <div key={path} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-bg">
-              <Image src={path} alt="" fill sizes="64px" className="object-cover" />
+              <Image src={path} alt="" fill sizes="64px" className="object-cover" unoptimized />
               <button
                 type="button"
                 onClick={() => removeAt(i)}

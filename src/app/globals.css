@@ -247,6 +247,18 @@ body {
   );
 }
 
+@keyframes autoDismissBar {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+.animate-dismiss-bar {
+  animation: autoDismissBar 3s linear forwards;
+}
+
 /* Diagonal light sweep used by the "Reconocer con IA" progress bar
    (ScannerPanel.tsx) — a moving highlight inside the filled portion of
    the bar, on top of its own width transition. */

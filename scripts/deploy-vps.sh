@@ -39,6 +39,8 @@ fi
 
 echo "=== Preparando directorio de datos persistentes ==="
 mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones"
+chmod 755 "$HOME" 2>/dev/null || true
+chmod -R 755 "$DATA_DIR" 2>/dev/null || true
 DB_PATH="${DATABASE_URL#file:}"
 if [ -f "$DB_PATH" ]; then
   STAMP="$(date +%Y%m%d-%H%M%S)"

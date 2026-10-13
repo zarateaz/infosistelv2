@@ -397,6 +397,8 @@ model QuotationItem {
   unitPrice   Float
   total       Float
   notes       String?
+  costPrice   Float?    @default(0)
+  marginPercent Float?  @default(0)
 
   @@index([quotationId])
 }

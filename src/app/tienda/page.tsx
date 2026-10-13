@@ -141,12 +141,20 @@ export default function TiendaPage() {
       {cartCount > 0 && !isCartOpen && (
         <button
           onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-24 right-5 z-50 flex items-center gap-2.5 rounded-2xl bg-accent px-5 py-3.5 text-sm font-black text-accent-fg shadow-2xl sm:hidden"
+          style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+          className="fixed left-4 right-20 z-40 flex items-center justify-between rounded-2xl bg-accent px-4 py-3 text-sm font-black text-accent-fg shadow-2xl shadow-accent/30 transition-all active:scale-95 sm:hidden"
         >
-          <ShoppingCart size={18} />
-          <span>S/. {cartTotal.toFixed(0)}</span>
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-fg text-[10px] font-black text-accent">
-            {cartCount}
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <ShoppingCart size={18} />
+              <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-black text-accent">
+                {cartCount}
+              </span>
+            </div>
+            <span className="text-xs font-bold tracking-wide">Ver Carrito</span>
+          </div>
+          <span className="rounded-xl bg-white/20 px-2.5 py-1 font-mono text-xs font-black">
+            S/. {cartTotal.toFixed(2)}
           </span>
         </button>
       )}

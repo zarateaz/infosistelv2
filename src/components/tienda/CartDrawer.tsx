@@ -229,7 +229,10 @@ export function CartDrawer({
         </div>
 
         {cart.length > 0 && (
-          <div className="space-y-4 border-t border-border p-5">
+          <div
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+            className="space-y-4 border-t border-border p-5"
+          >
             <div className="flex items-center justify-between">
               <span className="text-base font-black text-fg">Total</span>
               <span className="text-2xl font-black tracking-tight text-accent">S/. {total.toFixed(2)}</span>

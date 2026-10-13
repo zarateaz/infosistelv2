@@ -289,11 +289,39 @@ export interface SearchProductImageOptions {
   negativeKeywords?: string[];
 }
 
+function deriveBroaderQueries(rawQuery: string): string[] {
+  const clean = rawQuery
+    .replace(/\b(adaptadores de red|cables y adaptadores|tintas y toners|categoria|nuevo|tienda|peru|precio|oferta|marca)\b/gi, "")
+    .replace(/[(),;:"]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const tokens = clean.split(" ").filter((t) => t.length > 1);
+  const broader: string[] = [];
+
+  // Try extracting brand + model
+  const modelMatch = clean.match(/\b([A-Z0-9]+[-_][A-Z0-9]+|[A-Z]+[0-9]+[A-Z0-9]*|[0-9]+[A-Z]+[A-Z0-9]*)\b/i);
+  if (modelMatch && tokens.length > 0) {
+    const brand = tokens[0];
+    const model = modelMatch[1];
+    const combo = `${brand} ${model}`;
+    if (!broader.includes(combo)) broader.push(combo);
+    const withProduct = `${brand} ${model} oficial`;
+    if (!broader.includes(withProduct)) broader.push(withProduct);
+  }
+
+  // 3-word subset
+  if (tokens.length >= 3) {
+    const subset = tokens.slice(0, 3).join(" ");
+    if (!broader.includes(subset)) broader.push(subset);
+  }
+
+  return broader.filter((b) => b !== rawQuery && b.length > 3);
+}
+
 /**
  * Searches the web for official product photos.
- * Supports overloaded arguments for full backward compatibility:
- *   searchProductImages("query", 4, "broaderQuery", ["hub", "dock"])
- *   searchProductImages({ queries: [...], negativeKeywords: [...], max: 4 })
+ * Guarantees high yield (4+ photos) with fallback query expansion and relaxed negative keyword filtering.
  */
 export async function searchProductImages(
   queryOrOptions: string | SearchProductImageOptions,
@@ -328,9 +356,36 @@ export async function searchProductImages(
   const negRegex = buildNegativeRegex(negKeywords);
   const collectedUrls: string[] = [];
 
+  // Pass 1: standard prioritized queries with negative keyword filtering
   for (const q of queryList) {
     if (collectedUrls.length >= limit) break;
     const results = await searchSingleQuery(q, limit, negRegex);
+    for (const url of results) {
+      if (collectedUrls.length >= limit) break;
+      if (!collectedUrls.includes(url)) {
+        collectedUrls.push(url);
+      }
+    }
+  }
+
+  // Pass 2: if fewer than `limit` images, expand with derived broader queries
+  if (collectedUrls.length < limit && queryList[0]) {
+    const expansions = deriveBroaderQueries(queryList[0]);
+    for (const expQ of expansions) {
+      if (collectedUrls.length >= limit) break;
+      const results = await searchSingleQuery(expQ, limit, negRegex);
+      for (const url of results) {
+        if (collectedUrls.length >= limit) break;
+        if (!collectedUrls.includes(url)) {
+          collectedUrls.push(url);
+        }
+      }
+    }
+  }
+
+  // Pass 3: if still fewer than `limit` and negRegex was active, search without negRegex to guarantee 4+ images
+  if (collectedUrls.length < limit && negRegex && queryList[0]) {
+    const results = await searchSingleQuery(queryList[0], limit, null);
     for (const url of results) {
       if (collectedUrls.length >= limit) break;
       if (!collectedUrls.includes(url)) {

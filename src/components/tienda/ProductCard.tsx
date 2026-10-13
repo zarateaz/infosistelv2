@@ -25,6 +25,7 @@ export function ProductCard({
             src={product.image}
             alt={product.name}
             fill
+            unoptimized
             className="object-contain p-4 transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
@@ -54,7 +55,7 @@ export function ProductCard({
               onAddToCart(product);
             }}
             aria-label="Añadir al carrito"
-            className="absolute bottom-2.5 right-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-fg opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+            className="absolute bottom-2.5 right-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-fg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 shadow-lg transition-all active:scale-90"
           >
             <ShoppingCart size={14} />
           </button>

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { MessageCircle, X, ArrowUp, Sparkles } from "lucide-react";
-import "@/app/taller-control/login/halloween.css";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 
 // The chat bubble renders plain text (no markdown parser, by design — no
@@ -159,19 +158,16 @@ export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   // Se lee una sola vez al montar — el "returning" y las categorías que ve
-  // ESTE saludo son el estado de ANTES de esta visita (se marca como visto
-  // justo después, en el useEffect de abajo, para que la próxima vez ya
-  // cuente como recurrente). Nunca se reasigna — no es el canal por el que
-  // esta misma sesión aprende, ver `transport` más abajo para eso.
+  // ESTE saludo son el estado de ANTES de esta visita
   const [visitor] = useState<VisitorMemory>(() => loadVisitorMemory());
   const [showPulse, setShowPulse] = useState(() => visitor.returning);
   const [initialMessages] = useState<UIMessage[]>(() => [buildGreeting(visitor)]);
+  const [isAutoDismissing, setIsAutoDismissing] = useState(false);
+  const [showToast, setShowToast] = useState(false);
 
-  // Objeto nuevo cada render (barato) — `recentCategories` se relee de
-  // localStorage en cada render en vez de guardarse en un estado propio,
-  // así el body de la próxima llamada ya refleja lo que esta misma
-  // conversación acaba de aprender (ver el useEffect de aprendizaje más
-  // abajo) sin duplicar esa fuente de verdad en otro state.
+  const hasInteractedRef = useRef(false);
+  const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const transport = new DefaultChatTransport({
     api: "/api/chat",
     body: { visitorContext: { returning: visitor.returning, recentCategories: readRecentCategories() } },
@@ -186,26 +182,50 @@ export function ChatBot() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isBusy, error]);
 
-  // Primera vez en el sitio: el panel se abre solo a los pocos segundos para
-  // que el saludo se vea sin que el cliente tenga que buscar el botón —
-  // "que al entrar a la web el chatbot te salude". Marca el flag de una vez
-  // para que esto no se repita en cada recarga. Visitas siguientes: no se
-  // fuerza el panel (no ser invasivo), solo un pulso breve en el botón.
+  // Cancela el cierre automático si el usuario interactúa (toca, pasa mouse, hace focus o escribe)
+  const cancelAutoDismiss = () => {
+    hasInteractedRef.current = true;
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
+    }
+    setIsAutoDismissing(false);
+  };
+
+  // Saludo automático al cargar la web y auto-desaparición exacta a los 3 segundos tras el saludo
   useEffect(() => {
     try {
       localStorage.setItem(LS_RETURNING_KEY, "1");
     } catch {
       // no crítico
     }
-    const t = setTimeout(() => setIsOpen(true), 1500);
-    return () => clearTimeout(t);
+
+    // Abre el asistente para dar el saludo tras 1.2 segundos
+    const greetTimer = setTimeout(() => {
+      if (!hasInteractedRef.current) {
+        setIsOpen(true);
+        setIsAutoDismissing(true);
+
+        // Desaparece en 3 segundos luego del saludo si el visitante no interactúa
+        autoCloseTimerRef.current = setTimeout(() => {
+          if (!hasInteractedRef.current) {
+            setIsOpen(false);
+            setIsAutoDismissing(false);
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 5000);
+          }
+        }, 3000);
+      }
+    }, 1200);
+
+    return () => {
+      clearTimeout(greetTimer);
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    };
   }, []);
 
   // "Aprende" qué categorías le interesan a este visitante a partir de lo
   // que buscarProductos/productosPopulares ya le mostró en esta conversación
-  // — se guarda en localStorage y queda disponible para el saludo de la
-  // próxima visita, y para `transport` (arriba) en el resto de esta misma,
-  // que relee `readRecentCategories()` en cada render.
   useEffect(() => {
     const seen = new Set<string>();
     for (const message of messages) {
@@ -222,24 +242,43 @@ export function ChatBot() {
     if (seen.size > 0) rememberCategories(Array.from(seen));
   }, [messages]);
 
+  const handleToggle = () => {
+    cancelAutoDismiss();
+    setShowToast(false);
+    setIsOpen((v) => !v);
+  };
+
+  const handleClose = () => {
+    cancelAutoDismiss();
+    setShowToast(false);
+    setIsOpen(false);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    cancelAutoDismiss();
+    setShowToast(false);
     if (!input.trim() || isBusy) return;
     sendMessage({ text: input });
     setInput("");
   };
 
   const handleQuickReply = (text: string) => {
+    cancelAutoDismiss();
+    setShowToast(false);
     if (isBusy) return;
     sendMessage({ text });
   };
 
   return (
     <>
+      {/* Botón Flotante Launcher del Asistente */}
       <button
-        onClick={() => setIsOpen((v) => !v)}
-        style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
-        className="fixed right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-[0_8px_30px_rgba(79,70,229,0.3)] transition-all hover:scale-105 hover:shadow-[0_8px_30px_rgba(79,70,229,0.5)] active:scale-95"
+        type="button"
+        onClick={handleToggle}
+        className={`fixed right-4 sm:right-6 z-40 sm:z-50 h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-[0_8px_30px_rgba(79,70,229,0.35)] transition-all hover:scale-105 active:scale-95 bottom-[calc(1rem+env(safe-area-inset-bottom))] sm:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] ${
+          isOpen ? "hidden sm:flex" : "flex"
+        }`}
         aria-label="Abrir asistente"
       >
         {showPulse && !isOpen && (
@@ -248,54 +287,87 @@ export function ChatBot() {
         {isOpen ? <X size={22} /> : <Sparkles size={22} />}
       </button>
 
-      {isOpen && (
-        // Mobile: near-fullscreen sheet (inset-x-3 + top-3 instead of a
-        // small floating card) — a fixed 70vh card leaves too little room
-        // once the on-screen keyboard opens on a phone, which is where
-        // most Infosistel customers are. dvh (not vh) so the panel doesn't
-        // get stuck sized against the address-bar-hidden viewport and then
-        // clipped when the bar reappears — Android Chrome. From sm: up
-        // (real desktop pointer, no keyboard-over-viewport problem) it
-        // goes back to the small floating-card layout.
+      {/* Toast discreto de invitación si se auto-cerró a los 3s */}
+      {showToast && !isOpen && (
         <div
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-          className="fixed inset-x-3 top-3 bottom-3 z-50 flex flex-col overflow-hidden rounded-3xl border border-blue-100 bg-white/95 backdrop-blur-xl shadow-[0_20px_60px_-15px_rgba(37,99,235,0.25)] ring-1 ring-black/5 sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96"
+          onClick={() => {
+            setShowToast(false);
+            cancelAutoDismiss();
+            setIsOpen(true);
+          }}
+          className="fixed right-4 sm:right-6 z-40 flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2 text-xs font-bold text-gray-800 shadow-xl border border-blue-100 backdrop-blur-md cursor-pointer hover:scale-105 transition-all max-w-[270px] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:bottom-[calc(6rem+env(safe-area-inset-bottom))]"
         >
-          {/* Arañas de Halloween que caminan y desaparecen al abrir */}
-          <div className="absolute inset-0 pointer-events-none z-[100] overflow-hidden rounded-3xl">
-            <svg className="absolute left-[10%] -top-10 w-8 h-8 text-black opacity-0 walking-spider" viewBox="0 0 60 60">
-              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
-                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
-                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
-              </g>
-              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
-              <path d="M27 34 L33 34 L30 38 L33 42 L27 42 L30 38 Z" fill="#ff5e1a" />
-              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
-            </svg>
-            <svg className="absolute right-[20%] -top-10 w-6 h-6 text-slate-800 opacity-0 walking-spider-delay" viewBox="0 0 60 60">
-              <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
-                <path d="M24 28 Q12 18 6 24" /><path d="M24 31 Q10 28 4 34" /><path d="M24 34 Q12 38 6 46" /><path d="M25 37 Q16 46 12 54" />
-                <path d="M36 28 Q48 18 54 24" /><path d="M36 31 Q50 28 56 34" /><path d="M36 34 Q48 38 54 46" /><path d="M35 37 Q44 46 48 54" />
-              </g>
-              <ellipse cx="30" cy="38" rx="10" ry="12" fill="currentColor" />
-              <circle cx="30" cy="24" r="6.5" fill="currentColor" />
-            </svg>
+          <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="truncate">👋 ¿En qué te ayudo? Chatea aquí</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowToast(false);
+            }}
+            className="text-gray-400 hover:text-gray-600 p-0.5 ml-auto"
+            aria-label="Cerrar aviso"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Overlay oscuro para dispositivos móviles (Android / iOS) */}
+      {isOpen && (
+        <div
+          onClick={handleClose}
+          className="fixed inset-0 z-40 bg-black/45 backdrop-blur-xs transition-opacity sm:hidden"
+          aria-hidden="true"
+        />
+      )}
+
+      {isOpen && (
+        <div
+          onMouseEnter={cancelAutoDismiss}
+          onTouchStart={cancelAutoDismiss}
+          onClick={cancelAutoDismiss}
+          style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+          className="fixed z-50 flex flex-col overflow-hidden bg-white/95 backdrop-blur-xl shadow-2xl transition-all duration-300 inset-x-0 bottom-0 max-h-[85dvh] rounded-t-[28px] border-t border-blue-100 shadow-[0_-12px_40px_rgba(0,0,0,0.18)] sm:inset-x-auto sm:inset-y-auto sm:bottom-24 sm:right-6 sm:h-[70dvh] sm:max-h-[560px] sm:w-96 sm:rounded-3xl sm:border sm:border-blue-100 sm:shadow-[0_20px_60px_-15px_rgba(37,99,235,0.25)] ring-1 ring-black/5"
+        >
+          {/* Manija táctil para Android */}
+          <div className="flex w-full items-center justify-center pt-2.5 pb-1 sm:hidden">
+            <div className="h-1.5 w-12 rounded-full bg-gray-300" />
           </div>
-          <div className="flex shrink-0 items-center gap-4 bg-white px-6 py-4 border-b border-gray-100">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 shadow-inner">
-              <Sparkles size={18} className="text-blue-600" />
+
+          {/* Cabecera del Chatbot con indicador de estado en vivo */}
+          <div className="flex shrink-0 items-center gap-3 bg-white px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-100">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 shadow-inner">
+              <Sparkles size={18} />
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-base font-extrabold tracking-tight text-gray-900">Asistente Infosistel</p>
-              <p className="text-xs font-medium text-gray-500">Respuestas en segundos</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm sm:text-base font-extrabold tracking-tight text-gray-900 truncate">
+                  Asistente Infosistel
+                </p>
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 border border-emerald-200">
+                  En línea
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs font-medium text-gray-500">Respuestas en segundos</p>
             </div>
             <button
-              onClick={() => setIsOpen(false)}
-              className="p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 rounded-full"
+              type="button"
+              onClick={handleClose}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 active:scale-90"
+              aria-label="Cerrar asistente"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
           </div>
+
+          {/* Barra sutil de progreso cuando está por auto-desaparecer en 3s */}
+          {isAutoDismissing && (
+            <div className="relative h-1 w-full bg-blue-50 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-accent animate-dismiss-bar" />
+            </div>
+          )}
 
           <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-5 bg-slate-50/50">
             {messages.map((message) => (
@@ -382,25 +454,27 @@ export function ChatBot() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex shrink-0 items-center gap-3 border-t border-gray-100 bg-white/95 p-4 backdrop-blur-md">
+          <form
+            onSubmit={handleSubmit}
+            className="flex shrink-0 items-center gap-2 sm:gap-3 border-t border-gray-100 bg-white/95 p-3 sm:p-4 backdrop-blur-md"
+          >
             <input
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                cancelAutoDismiss();
+                setInput(e.target.value);
+              }}
+              onFocus={cancelAutoDismiss}
               placeholder="Escribe tu pregunta..."
               disabled={isBusy}
               maxLength={MAX_MESSAGE_CHARS}
-              // 16px (text-base), not text-sm (14px) — below 16px, iOS
-              // Safari auto-zooms the whole page on focus, which on a
-              // small phone screen shoves the input out from under the
-              // keyboard. Purely a mobile-correctness fix, invisible on
-              // desktop.
-              className="flex-1 rounded-2xl bg-gray-100 border border-transparent px-4 py-3 text-base text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60"
+              className="flex-1 rounded-2xl bg-gray-100 border border-transparent px-4 py-2.5 sm:py-3 text-base text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={isBusy || !input.trim()}
-              aria-label="Enviar"
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-500/30 transition-all hover:scale-105 hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Enviar pregunta"
+              className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowUp size={18} />
             </button>

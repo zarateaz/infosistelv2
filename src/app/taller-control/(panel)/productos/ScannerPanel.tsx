@@ -2,7 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Barcode, Camera, ScanLine, Loader2, CheckCircle2, ImageIcon, Sparkles, Search, AlertTriangle } from "lucide-react";
+import {
+  Barcode,
+  Camera,
+  ScanLine,
+  Loader2,
+  CheckCircle2,
+  ImageIcon,
+  Sparkles,
+  Search,
+  AlertTriangle,
+  ZoomIn,
+  X,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
 import { lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
@@ -81,6 +95,10 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Agrandar o recoger el apartado de fotos encontradas
+  const [isEnlargedPicker, setIsEnlargedPicker] = useState(true);
+  const [zoomModalUrl, setZoomModalUrl] = useState<string | null>(null);
 
   // "Reconocer con IA" takes several real seconds (vision model, then an
   // image search) — a bare spinner reads as frozen. This fakes a smooth,
@@ -164,7 +182,10 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     onFill({ barcode: clean, ...suggestion });
     setBarcodeStatus(result.suggestion ? { kind: "found" } : { kind: "not-found" });
     if (suggestion.name) setManualSearchQuery(suggestion.name);
-    if (candidates && candidates.length > 0) setImageOptions(candidates);
+    if (candidates && candidates.length > 0) {
+      setImageOptions(candidates);
+      setSelectedUrls(candidates.slice(0, MAX_PICKS));
+    }
 
     // Best-effort: the product listing sometimes has its own photo — fetch
     // it in the background so a product with a barcode match doesn't
@@ -211,21 +232,12 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     runBarcodeLookup(code);
   }
 
-  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  async function processImageFile(file: File) {
     setImageStatus({ kind: "loading" });
     setImageOptions([]);
     setSelectedUrls([]);
     setPicksApplied(false);
 
-    // Everything below can throw — a rejected FileReader, a dropped
-    // connection to the server action, a timeout — and none of that is a
-    // clean `{ error }` return from recognizeProductImage. Without this
-    // try/catch, an exception here left imageStatus stuck on "loading"
-    // forever, which is what kept the progress bar pinned at its 92% cap
-    // instead of ever reaching 100%.
     try {
       const dataUrl = await resizeImageForRecognition(file);
 
@@ -235,16 +247,16 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         return;
       }
       if (result.existingProductId) {
-        // Don't fill the "new product" form for something that already
-        // exists — same reasoning as the barcode flow's "existing" case,
-        // just matched by name since a re-scanned box has no barcode here.
         setImageStatus({ kind: "existing", id: result.existingProductId, name: result.existingProductName ?? "" });
         return;
       }
       onFill({ name: result.name, description: result.description, category: result.category });
       setImageStatus({ kind: "done" });
       if (result.name) setManualSearchQuery(result.name);
-      if (result.imageOptions && result.imageOptions.length > 0) setImageOptions(result.imageOptions);
+      if (result.imageOptions && result.imageOptions.length > 0) {
+        setImageOptions(result.imageOptions);
+        setSelectedUrls(result.imageOptions.slice(0, MAX_PICKS));
+      }
     } catch {
       setImageStatus({
         kind: "error",
@@ -254,6 +266,35 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) processImageFile(file);
+  }
+
+  // Pegar con Ctrl + V directamente en el panel
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
+        if (!e.clipboardData?.files || e.clipboardData.files.length === 0) return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/")) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            processImageFile(file);
+            break;
+          }
+        }
+      }
+    }
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, []);
 
   return (
     <div className="mb-8 admin-glass rounded-[var(--radius-lg)] p-6">
@@ -289,13 +330,14 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           Usar cámara
         </button>
 
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border-strong px-5 py-2.5 text-sm font-bold text-fg transition-colors hover:border-accent hover:text-accent">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-purple-500/40 bg-purple-500/10 px-5 py-2.5 text-sm font-bold text-purple-700 dark:text-purple-300 transition-all hover:bg-purple-500/20 hover:scale-[1.02] shadow-xs">
           {imageStatus.kind === "loading" ? (
-            <Loader2 size={15} className="animate-spin" />
+            <Loader2 size={15} className="animate-spin text-purple-500" />
           ) : (
-            <Camera size={15} />
+            <Camera size={15} className="text-purple-500" />
           )}
-          Reconocer con IA
+          <span>Reconocer con IA</span>
+          <Sparkles size={13} className="text-purple-500 animate-pulse" />
           <input
             ref={fileInputRef}
             type="file"
@@ -307,13 +349,28 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       </form>
 
       {barcodeStatus.kind === "existing" && (
-        <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200">
-          <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-500" />
-          <div>
-            <span className="font-bold">El producto ya se encuentra en el inventario: </span>
-            <Link href={`/taller-control/productos/${barcodeStatus.id}`} className="font-bold underline text-accent hover:opacity-80">
-              {barcodeStatus.name} — ver / editar para actualizar stock
-            </Link>
+        <div className="mt-3 flex items-start gap-3 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 text-xs text-red-800 dark:text-red-200 shadow-sm animate-in fade-in duration-200">
+          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-500" />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black uppercase text-white tracking-wider">
+                0 Margen de Error
+              </span>
+              <span className="font-bold text-sm text-red-800 dark:text-red-200">
+                ¡Producto ya registrado en inventario!
+              </span>
+            </div>
+            <p className="mt-1 text-xs opacity-90">
+              Coincidencia por código de barras. No dupliques el registro; actualiza el stock directamente:
+            </p>
+            <div className="mt-2.5">
+              <Link
+                href={`/taller-control/productos/${barcodeStatus.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-700 hover:scale-[1.02]"
+              >
+                Abrir y editar &quot;{barcodeStatus.name}&quot; →
+              </Link>
+            </div>
           </div>
         </div>
       )}
@@ -327,7 +384,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         <p className="mt-3 text-sm text-fg-muted">
           No se encontró en bases públicas de códigos de barra (normal para repuestos genéricos
           o marcas B2B) — completa los datos a mano o usa &ldquo;Reconocer con IA&rdquo; con una
-          foto de la caja.
+          foto de la caja o pega con <kbd className="rounded bg-bg px-1 font-mono text-xs">Ctrl+V</kbd>.
         </p>
       )}
       {showRecognizeProgress && (
@@ -362,13 +419,28 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         </p>
       )}
       {imageStatus.kind === "existing" && (
-        <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200">
-          <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-500" />
-          <div>
-            <span className="font-bold">El producto ya se encuentra en el inventario: </span>
-            <Link href={`/taller-control/productos/${imageStatus.id}`} className="font-bold underline text-accent hover:opacity-80">
-              {imageStatus.name} — ver / editar para actualizar stock
-            </Link>
+        <div className="mt-3 flex items-start gap-3 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 text-xs text-red-800 dark:text-red-200 shadow-sm animate-in fade-in duration-200">
+          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-500" />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black uppercase text-white tracking-wider">
+                0 Margen de Error
+              </span>
+              <span className="font-bold text-sm text-red-800 dark:text-red-200">
+                ¡Producto ya registrado en inventario!
+              </span>
+            </div>
+            <p className="mt-1 text-xs opacity-90">
+              La IA detectó coincidencia de modelo o nombre con un producto existente en tu catálogo. Evita duplicados:
+            </p>
+            <div className="mt-2.5">
+              <Link
+                href={`/taller-control/productos/${imageStatus.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-700 hover:scale-[1.02]"
+              >
+                Abrir y editar &quot;{imageStatus.name}&quot; →
+              </Link>
+            </div>
           </div>
         </div>
       )}
@@ -376,62 +448,139 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>
       )}
       {imageOptions.length > 0 && (
-        <div className="mt-4 rounded-2xl border border-border/70 bg-bg/50 p-4">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg-muted">
-            <ImageIcon size={13} />
-            Elige hasta {MAX_PICKS} fotos encontradas en internet para este producto (la primera
-            será la foto principal, el resto quedan de referencia)
-          </p>
+        <div className="mt-4 rounded-2xl border border-border/80 bg-bg/50 p-4 shadow-sm animate-in fade-in duration-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-border/40 pb-2.5">
+            <div>
+              <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg">
+                <ImageIcon size={14} className="text-accent" />
+                Elige hasta {MAX_PICKS} fotos encontradas en internet para este producto
+              </p>
+              <p className="text-[11px] text-fg-muted mt-0.5">
+                La primera foto seleccionada será la foto principal de portada; las demás quedarán en la galería.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-bold text-accent">
+                {selectedUrls.length} de {MAX_PICKS} fotos elegidas
+              </span>
+
+              {selectedUrls.length < Math.min(imageOptions.length, MAX_PICKS) ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedUrls(imageOptions.slice(0, MAX_PICKS))}
+                  className="rounded-lg border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] font-bold text-accent hover:bg-accent/20"
+                >
+                  Elegir las {Math.min(imageOptions.length, MAX_PICKS)}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSelectedUrls([])}
+                  className="rounded-lg border border-border px-2 py-0.5 text-[11px] font-medium text-fg-muted hover:text-fg"
+                >
+                  Desmarcar
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsEnlargedPicker(!isEnlargedPicker)}
+                className="inline-flex items-center gap-1 rounded-xl border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-fg-muted hover:text-fg transition-colors"
+                title={isEnlargedPicker ? "Recoger apartado para vista compacta" : "Agrandar fotos para ver detalles"}
+              >
+                {isEnlargedPicker ? (
+                  <>
+                    <Minimize2 size={12} />
+                    <span>Recoger</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 size={12} />
+                    <span>Agrandar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-end gap-3">
             {imageOptions.map((url, i) => {
               const order = selectedUrls.indexOf(url);
               const selected = order !== -1;
               return (
-                <button
+                <div
                   key={url}
-                  type="button"
-                  onClick={() => toggleSelection(url)}
-                  disabled={downloadingSelection}
-                  className={`group relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border-2 transition-all disabled:cursor-wait ${
-                    selected ? "border-accent ring-2 ring-accent/30" : "border-border hover:border-accent/50"
+                  className={`group relative flex items-center justify-center overflow-hidden rounded-2xl border-2 transition-all bg-white shadow-xs ${
+                    isEnlargedPicker ? "h-36 w-36 sm:h-44 sm:w-44" : "h-20 w-20"
+                  } ${
+                    selected ? "border-accent ring-2 ring-accent/30 shadow-md" : "border-border hover:border-accent/60"
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={previewUrl(url)}
                     alt={`Opción ${i + 1}`}
-                    className="h-full w-full object-contain bg-white p-1"
+                    className="h-full w-full object-contain p-2"
                     onError={() => {
                       setImageOptions((prev) => prev.filter((u) => u !== url));
                       setSelectedUrls((prev) => prev.filter((u) => u !== url));
                     }}
                   />
+
+                  {/* Badge de orden o portada */}
                   {selected && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-accent/20">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg">
-                        {order === 0 ? <CheckCircle2 size={14} /> : order + 1}
-                      </span>
+                    <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-accent-fg shadow-xs">
+                      <CheckCircle2 size={11} />
+                      {order === 0 ? "★ Portada" : `#${order + 1} Galería`}
                     </div>
                   )}
-                </button>
+
+                  {/* Click overlay para seleccionar / deseleccionar */}
+                  <button
+                    type="button"
+                    onClick={() => toggleSelection(url)}
+                    disabled={downloadingSelection}
+                    className="absolute inset-0 cursor-pointer bg-black/0 hover:bg-black/10 transition-colors"
+                    title={selected ? "Quitar selección" : "Seleccionar esta foto"}
+                  />
+
+                  {/* Botón de lupa Zoom en modo ampliado */}
+                  {isEnlargedPicker && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setZoomModalUrl(previewUrl(url));
+                      }}
+                      className="absolute bottom-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 hover:scale-110 transition-transform opacity-0 group-hover:opacity-100"
+                      title="Ver foto en tamaño completo"
+                    >
+                      <ZoomIn size={13} />
+                    </button>
+                  )}
+                </div>
               );
             })}
+
             <button
               type="button"
               onClick={handleConfirmSelection}
               disabled={selectedUrls.length === 0 || downloadingSelection}
-              className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-xs font-bold text-accent-fg transition-all hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-xs font-bold text-accent-fg transition-all hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
             >
               {downloadingSelection && <Loader2 size={13} className="animate-spin" />}
               {downloadingSelection
-                ? "Guardando…"
-                : `Usar ${selectedUrls.length || ""} foto${selectedUrls.length === 1 ? "" : "s"}`.trim()}
+                ? "Descargando y aplicando fotos…"
+                : selectedUrls.length === MAX_PICKS
+                ? `Usar las ${MAX_PICKS} fotos (1 portada + 3 galería)`
+                : `Usar ${selectedUrls.length} foto${selectedUrls.length === 1 ? "" : "s"}`}
             </button>
           </div>
           {picksApplied && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-accent">
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-accent">
               <CheckCircle2 size={13} />
-              Fotos aplicadas abajo.
+              Fotos aplicadas al producto abajo (1 de portada y {Math.max(0, selectedUrls.length - 1)} en galería de referencia).
             </p>
           )}
 
@@ -446,7 +595,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
               setIsSearchingManual(false);
               if (found.length > 0) {
                 setImageOptions(found);
-                setSelectedUrls([]);
+                setSelectedUrls(found.slice(0, MAX_PICKS));
                 setPicksApplied(false);
               }
             }}
@@ -517,6 +666,35 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
 
       {cameraOpen && (
         <CameraScanner onDetected={handleCameraDetected} onClose={() => setCameraOpen(false)} />
+      )}
+
+      {zoomModalUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setZoomModalUrl(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl bg-card p-2 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setZoomModalUrl(null)}
+              className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white backdrop-blur-sm transition-colors hover:bg-black/90"
+              title="Cerrar vista ampliada"
+            >
+              <X size={18} />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={zoomModalUrl}
+              alt="Vista previa ampliada"
+              className="max-h-[82vh] max-w-[85vw] rounded-xl object-contain"
+            />
+          </div>
+        </div>
       )}
     </div>
   );

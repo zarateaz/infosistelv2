@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
+import { evaluateDuplicateMatch, type ProductSummary } from "@/lib/duplicateDetection";
 
 export interface BarcodeLookupResult {
   existingProductId?: string;
@@ -198,19 +199,38 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
   const clean = barcode.trim();
   if (!clean) return { notFound: true };
 
-  // Local DB first — this is what actually matters day to day: does this
-  // exact item already exist in the catalog (restock), so we don't create
-  // a duplicate entry for the same product.
-  const existing = await prisma.product.findUnique({
-    where: { barcode: clean },
+  // 1. Local DB lookup (handles exact and leading-zero normalized barcode)
+  const normBarcode = clean.replace(/^0+/, "");
+  const existing = await prisma.product.findFirst({
+    where: {
+      OR: [
+        { barcode: clean },
+        ...(normBarcode && normBarcode !== clean ? [{ barcode: normBarcode }] : []),
+      ],
+    },
     select: { id: true, name: true },
   });
   if (existing) {
     return { existingProductId: existing.id, existingProductName: existing.name, source: "local" };
   }
 
+  // 2. Query external UPC database
   const categories = (await prisma.category.findMany({ select: { name: true } })).map((c) => c.name);
-  return lookupExternalUPC(clean, categories);
+  const externalResult = await lookupExternalUPC(clean, categories);
+
+  // If external suggestion found, check if that item name already exists locally (0 margin of error)
+  if (externalResult.suggestion?.name) {
+    const existingByName = await findExistingProductByName(externalResult.suggestion.name);
+    if (existingByName) {
+      return {
+        existingProductId: existingByName.id,
+        existingProductName: existingByName.name,
+        source: "local",
+      };
+    }
+  }
+
+  return externalResult;
 }
 
 export interface RecognizeImageResult {
@@ -233,29 +253,25 @@ export interface RecognizeImageResult {
   error?: string;
 }
 
-/** Exact match first (both sides are already uppercased on save — see
- *  createProduct/updateProduct), then a loose `contains` in either
- *  direction so "MICRONICS MP-350" still catches an existing
- *  "MICRONICS MP-350 FUENTE POWER 250W" typed with extra words, and vice
- *  versa. Good enough to stop the obvious re-scan-the-same-box case
- *  without a full fuzzy-matching library for what's meant to be a quick
- *  heads-up, not a hard block — the admin still decides. */
+/** Comprehensive zero-margin-of-error duplicate match across catalog products */
 async function findExistingProductByName(
   name: string
 ): Promise<{ id: string; name: string } | null> {
-  const normalized = name.trim().toUpperCase();
-  if (!normalized) return null;
+  const cleanName = name.trim();
+  if (!cleanName) return null;
 
-  const exact = await prisma.product.findFirst({
-    where: { name: normalized },
-    select: { id: true, name: true },
+  const candidates: ProductSummary[] = await prisma.product.findMany({
+    select: { id: true, name: true, barcode: true, category: true },
   });
-  if (exact) return exact;
 
-  return prisma.product.findFirst({
-    where: { name: { contains: normalized } },
-    select: { id: true, name: true },
-  });
+  for (const cand of candidates) {
+    const match = evaluateDuplicateMatch({ name: cleanName }, cand);
+    if (match.isDuplicate && match.existingProduct) {
+      return { id: match.existingProduct.id, name: match.existingProduct.name };
+    }
+  }
+
+  return null;
 }
 
 export async function recognizeProductImage(

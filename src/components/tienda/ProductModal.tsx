@@ -21,8 +21,12 @@ export function ProductModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90svh] w-full overflow-y-auto rounded-t-3xl bg-bg-alt p-6 sm:max-w-lg sm:rounded-3xl sm:p-8"
+        style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+        className="max-h-[90dvh] w-full overflow-y-auto overscroll-contain rounded-t-[28px] bg-bg-alt p-6 sm:max-w-lg sm:rounded-3xl sm:p-8"
       >
+        <div className="flex w-full items-center justify-center pb-3 -mt-2 sm:hidden">
+          <div className="h-1.5 w-12 rounded-full bg-border-strong/40" />
+        </div>
         <div className="mb-4 flex items-start justify-between">
           <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-accent">
             {product.category}
@@ -34,7 +38,7 @@ export function ProductModal({
 
         <div className="relative mb-6 h-56 w-full rounded-2xl bg-bg">
           {product.image ? (
-            <Image src={product.image} alt={product.name} fill className="object-contain p-6" />
+            <Image src={product.image} alt={product.name} fill unoptimized className="object-contain p-6" />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <CategoryIcon category={product.category} size={64} strokeWidth={1.25} className="text-fg-muted opacity-40" />

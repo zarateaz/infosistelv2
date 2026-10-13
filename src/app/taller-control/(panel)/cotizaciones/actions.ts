@@ -2,7 +2,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { generateObject } from "ai";
+import { deepseek } from "@ai-sdk/deepseek";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { parseDateInputToUtcNoon, formatQuotationDate } from "@/lib/quotationDates";
 
 export interface QuotationItemData {
@@ -15,6 +19,8 @@ export interface QuotationItemData {
   unitPrice: number;
   total: number;
   notes?: string | null;
+  costPrice?: number | null;
+  marginPercent?: number | null;
 }
 
 export interface QuotationRecord {
@@ -49,8 +55,28 @@ export interface CatalogProductResult {
   id: string;
   name: string;
   price: number;
+  costPrice: number | null;
   stock: number;
   category: string | null;
+}
+
+export interface RecognizeQuotationItemResult {
+  brand?: string;
+  model?: string;
+  description?: string;
+  quantity?: number;
+  detectedPrice?: number;
+  detectedCost?: number;
+  notes?: string;
+  matchedProduct?: {
+    id: string;
+    name: string;
+    price: number;
+    costPrice: number | null;
+    stock: number;
+    category: string | null;
+  };
+  error?: string;
 }
 
 export async function generateNextQuotationCode(): Promise<string> {
@@ -145,6 +171,8 @@ const itemSchema = z.object({
   quantity: z.coerce.number().int().min(1, "La cantidad mínima es 1"),
   unitPrice: z.coerce.number().min(0, "El precio no puede ser negativo"),
   notes: z.string().nullish(),
+  costPrice: z.coerce.number().nullish().optional(),
+  marginPercent: z.coerce.number().nullish().optional(),
 });
 
 const quotationInputSchema = z.object({
@@ -196,6 +224,8 @@ export async function createQuotation(
         unitPrice: it.unitPrice,
         total: lineTotal,
         notes: it.notes || null,
+        costPrice: it.costPrice !== undefined && it.costPrice !== null ? Number(it.costPrice) : 0,
+        marginPercent: it.marginPercent !== undefined && it.marginPercent !== null ? Number(it.marginPercent) : 0,
       };
     });
 
@@ -281,6 +311,8 @@ export async function updateQuotation(
         unitPrice: it.unitPrice,
         total: lineTotal,
         notes: it.notes || null,
+        costPrice: it.costPrice !== undefined && it.costPrice !== null ? Number(it.costPrice) : 0,
+        marginPercent: it.marginPercent !== undefined && it.marginPercent !== null ? Number(it.marginPercent) : 0,
       };
     });
 
@@ -385,6 +417,7 @@ export async function searchCatalogProducts(query: string): Promise<CatalogProdu
         id: true,
         name: true,
         price: true,
+        costPrice: true,
         stock: true,
         category: true,
       },
@@ -406,12 +439,132 @@ export async function searchCatalogProducts(query: string): Promise<CatalogProdu
       id: true,
       name: true,
       price: true,
+      costPrice: true,
       stock: true,
       category: true,
     },
   });
 
   return products;
+}
+
+export async function recognizeQuotationItemImage(
+  dataUrl: string
+): Promise<RecognizeQuotationItemResult> {
+  if (!process.env.DEEPSEEK_API_KEY) {
+    return { error: "El reconocimiento por IA no está configurado (falta DEEPSEEK_API_KEY)." };
+  }
+
+  let ip = "127.0.0.1";
+  try {
+    ip = getClientIP(await headers());
+  } catch {}
+  const rateCheck = checkRateLimit(rateLimitKey("recognize-quote-item", ip), 30, 5 * 60 * 1000);
+  if (!rateCheck.allowed) {
+    return { error: "Demasiadas fotos procesadas seguidas. Intenta de nuevo en unos minutos." };
+  }
+
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
+  if (!match) {
+    return { error: "Formato de imagen no válido." };
+  }
+  const [, mimeType, base64] = match;
+
+  try {
+    const { object } = await generateObject({
+      model: deepseek("deepseek-v4-flash-vision-exp"),
+      schema: z.object({
+        brand: z
+          .string()
+          .describe(
+            "Marca oficial visible del producto (ej: LENOVO, HP, ASUS, DELL, KINGSTON, EPSON, LOGITECH, CANON, etc.) o cadena vacía si no aplica."
+          ),
+        model: z
+          .string()
+          .describe(
+            "Modelo exacto del producto (ej: V15 G5, Inspiron 3520, L3250, Fury Beast 16GB, MX Master 3S, etc.) o cadena vacía si no se detecta."
+          ),
+        description: z
+          .string()
+          .describe(
+            "Descripción técnica y comercial completa para una cotización profesional en Perú (INFOSISTEL). Incluye tipo de producto, marca, modelo y características técnicas principales (procesador, RAM, almacenamiento, pantalla, puertos, etc.). Máximo 160 caracteres."
+          ),
+        quantity: z
+          .number()
+          .int()
+          .positive()
+          .default(1)
+          .describe("Cantidad detectada si es una proforma o pedido, o 1 por defecto."),
+        detectedPrice: z
+          .number()
+          .optional()
+          .describe("Precio unitario o importe numérico si en la imagen aparece un precio visible."),
+        detectedCost: z
+          .number()
+          .optional()
+          .describe("Precio de costo numérico si la imagen es una lista de costos o proforma mayorista."),
+        notes: z
+          .string()
+          .optional()
+          .describe("Notas adicionales relevantes (garantía, color, compatibilidad)."),
+      }),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Esta es una foto de una caja, etiqueta, producto o proforma/cotización técnica para INFOSISTEL.
+Lee minuciosamente la marca, modelo y especificaciones visibles:
+1. Marca: Marca oficial visible.
+2. Modelo: Modelo exacto visible.
+3. Descripción: Redacta una descripción clara y concisa para cotización técnica (ej: 'PORTATIL LENOVO V15 G5 / RYZEN 5 7520U / 8GB / SSD 512GB').
+4. Precios: Si hay precios impresos o escritos, extráelos como número positivo. Si no hay, no inventes precios.`,
+            },
+            { type: "file", data: base64, mediaType: mimeType },
+          ],
+        },
+      ],
+    });
+
+    // Check if there is an existing inventory product matching this
+    let matchedProduct: RecognizeQuotationItemResult["matchedProduct"] = undefined;
+    const searchTerms = [object.model, `${object.brand} ${object.model}`, object.brand].filter(Boolean);
+    for (const term of searchTerms) {
+      if (!term || term.trim().length < 3) continue;
+      const found = await prisma.product.findFirst({
+        where: {
+          name: { contains: term.trim() },
+        },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          costPrice: true,
+          stock: true,
+          category: true,
+        },
+      });
+      if (found) {
+        matchedProduct = found;
+        break;
+      }
+    }
+
+    return {
+      brand: object.brand ? object.brand.toUpperCase() : undefined,
+      model: object.model ? object.model.toUpperCase() : undefined,
+      description: object.description.toUpperCase(),
+      quantity: object.quantity || 1,
+      detectedPrice: object.detectedPrice,
+      detectedCost: object.detectedCost,
+      notes: object.notes,
+      matchedProduct,
+    };
+  } catch (err: any) {
+    console.error("[cotizaciones/actions] recognizeQuotationItemImage failed:", err);
+    return { error: err.message || "Error al procesar la imagen con IA." };
+  }
 }
 
 export async function buildWhatsAppQuotationLink(

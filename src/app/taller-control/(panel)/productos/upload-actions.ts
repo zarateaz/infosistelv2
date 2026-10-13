@@ -109,6 +109,22 @@ export async function downloadProductImageFromUrl(url: string, fallbackUrl?: str
       },
     });
 
+    if (!res.ok) {
+      try {
+        const altRes = await fetch(parsed, {
+          signal: AbortSignal.timeout(8000),
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            accept: "image/*,*/*;q=0.8",
+          },
+        });
+        if (altRes.ok) {
+          res = altRes;
+        }
+      } catch {}
+    }
+
     if (!res.ok && fallbackUrl && fallbackUrl.startsWith("https://")) {
       try {
         const parsedFb = new URL(fallbackUrl);
@@ -116,7 +132,7 @@ export async function downloadProductImageFromUrl(url: string, fallbackUrl?: str
           signal: AbortSignal.timeout(8000),
           headers: {
             "user-agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
           },
         });

@@ -142,91 +142,53 @@ function serializeExtraImages(images?: string[]): string | null {
   return images && images.length > 0 ? JSON.stringify(images) : null;
 }
 
-/** Normaliza texto para comparaciones de duplicados con 0 margen de error:
- * - quita acentos y tildes (á->a, Ó->O, etc.)
- * - convierte a minúsculas
- * - reemplaza signos de puntuación por espacios
- * - colapsa espacios continuos y quita bordes
- */
-function normalizeProductKey(str: string): string {
-  return str
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+import { evaluateDuplicateMatch, type DuplicateDetectionResult, type ProductSummary } from "@/lib/duplicateDetection";
 
-/** Check if a product with the same barcode or same name already exists in inventory */
+/** Check if a product with the same barcode or same name already exists in inventory (0 error margin) */
 export async function checkDuplicateProduct(
   name: string,
   barcode?: string | null,
   excludeId?: string
-): Promise<{
-  isDuplicate: boolean;
-  message?: string;
-  existingProduct?: { id: string; name: string };
-}> {
+): Promise<DuplicateDetectionResult> {
   const cleanBarcode = barcode?.trim();
+  const cleanName = name?.trim();
+
+  if (!cleanBarcode && !cleanName) {
+    return { isDuplicate: false };
+  }
+
+  // 1. Direct barcode lookup if present
   if (cleanBarcode) {
     const existingByBarcode = await prisma.product.findFirst({
       where: {
         barcode: cleanBarcode,
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
-      select: { id: true, name: true, barcode: true },
+      select: { id: true, name: true, barcode: true, category: true },
     });
     if (existingByBarcode) {
       return {
         isDuplicate: true,
+        reason: "barcode",
         message: `El producto ya se encuentra en el inventario con este código de barras ("${existingByBarcode.name}").`,
         existingProduct: existingByBarcode,
       };
     }
   }
 
-  const cleanName = name?.trim();
-  if (cleanName) {
-    const normInput = normalizeProductKey(cleanName);
+  // 2. Comprehensive multi-criteria scan over existing products
+  const candidates: ProductSummary[] = await prisma.product.findMany({
+    where: excludeId ? { id: { not: excludeId } } : undefined,
+    select: { id: true, name: true, barcode: true, category: true },
+  });
 
-    // 1. Coincidencia directa SQL en SQLite (exacta y ASCII-insensitive)
-    const exactMatches = excludeId
-      ? await prisma.$queryRaw<{ id: string; name: string }[]>`
-          SELECT id, name FROM Product
-          WHERE id != ${excludeId} AND LOWER(TRIM(name)) = LOWER(TRIM(${cleanName}))
-          LIMIT 1
-        `
-      : await prisma.$queryRaw<{ id: string; name: string }[]>`
-          SELECT id, name FROM Product
-          WHERE LOWER(TRIM(name)) = LOWER(TRIM(${cleanName}))
-          LIMIT 1
-        `;
-
-    if (exactMatches && exactMatches.length > 0) {
-      return {
-        isDuplicate: true,
-        message: `El producto ya se encuentra en el inventario ("${exactMatches[0].name}").`,
-        existingProduct: exactMatches[0],
-      };
-    }
-
-    // 2. Coincidencia normalizada en memoria para tildes y signos especiales (0 margen de error)
-    if (normInput) {
-      const allProducts = await prisma.product.findMany({
-        where: excludeId ? { id: { not: excludeId } } : undefined,
-        select: { id: true, name: true },
-      });
-
-      for (const prod of allProducts) {
-        if (normalizeProductKey(prod.name) === normInput) {
-          return {
-            isDuplicate: true,
-            message: `El producto ya se encuentra en el inventario ("${prod.name}").`,
-            existingProduct: prod,
-          };
-        }
-      }
+  for (const cand of candidates) {
+    const match = evaluateDuplicateMatch(
+      { name: cleanName, barcode: cleanBarcode },
+      cand
+    );
+    if (match.isDuplicate) {
+      return match;
     }
   }
 

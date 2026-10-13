@@ -120,18 +120,27 @@ export function ProductForm({
           </div>
 
           {duplicateWarning?.isDuplicate && (
-            <div className="sm:col-span-2 flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-200">
-              <AlertTriangle className="mt-0.5 shrink-0 text-amber-500" size={18} />
-              <div className="flex-1 text-xs">
-                <p className="font-bold text-sm">El producto ya se encuentra en el inventario</p>
-                <p className="mt-1 opacity-90">{duplicateWarning.message}</p>
+            <div className="sm:col-span-2 flex items-start gap-3 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 text-xs text-red-800 dark:text-red-200 shadow-sm animate-in fade-in duration-200">
+              <AlertTriangle className="mt-0.5 shrink-0 text-red-500" size={20} />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black uppercase text-white tracking-wider">
+                    0 Margen de Error
+                  </span>
+                  <span className="font-bold text-sm text-red-800 dark:text-red-200">
+                    ¡Producto ya existe en el inventario!
+                  </span>
+                </div>
+                <p className="mt-1 text-xs opacity-90">{duplicateWarning.message}</p>
                 {duplicateWarning.existingProduct && (
-                  <Link
-                    href={`/taller-control/productos/${duplicateWarning.existingProduct.id}`}
-                    className="mt-2 inline-flex items-center gap-1 font-bold text-accent underline hover:opacity-80"
-                  >
-                    Ver o editar &quot;{duplicateWarning.existingProduct.name}&quot; en inventario →
-                  </Link>
+                  <div className="mt-2.5">
+                    <Link
+                      href={`/taller-control/productos/${duplicateWarning.existingProduct.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-700 hover:scale-[1.02]"
+                    >
+                      Abrir y editar &quot;{duplicateWarning.existingProduct.name}&quot; en inventario →
+                    </Link>
+                  </div>
                 )}
               </div>
             </div>
@@ -301,6 +310,13 @@ export function ProductForm({
           </div>
         )}
 
+        {duplicateWarning?.isDuplicate && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs font-bold text-red-600 dark:text-red-400">
+            <AlertTriangle size={16} className="shrink-0 text-red-500" />
+            <span>Guardado bloqueado: este producto ya está en tu inventario (0 margen de error).</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           <button
             type="submit"
@@ -308,7 +324,7 @@ export function ProductForm({
             className="rounded-full bg-accent px-7 py-3 text-sm font-bold text-accent-fg transition-opacity disabled:opacity-60"
           >
             {duplicateWarning?.isDuplicate
-              ? "Producto ya en inventario"
+              ? "🚫 Producto ya en inventario"
               : isPending
               ? "Guardando..."
               : imageUploading

@@ -26,13 +26,18 @@ export function ImageUploadField({
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [imgLoadError, setImgLoadError] = useState(false);
+
   // Adjusting state during render (React's documented pattern) instead of
   // an effect, so a scanner-provided photo shows up in the same render
   // instead of one frame later.
   const [lastAppliedAutoPath, setLastAppliedAutoPath] = useState(autoImagePath);
   if (autoImagePath !== lastAppliedAutoPath) {
     setLastAppliedAutoPath(autoImagePath);
-    if (autoImagePath) setImagePath(autoImagePath);
+    if (autoImagePath) {
+      setImagePath(autoImagePath);
+      setImgLoadError(false);
+    }
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -41,6 +46,7 @@ export function ImageUploadField({
 
     setStatus("loading");
     setError("");
+    setImgLoadError(false);
     onUploadingChange?.(true);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -58,6 +64,7 @@ export function ImageUploadField({
       }
 
       setImagePath(result.path ?? "");
+      setImgLoadError(false);
       setStatus("idle");
     } catch {
       // A thrown/rejected Server Action (network hiccup, request body over
@@ -83,10 +90,28 @@ export function ImageUploadField({
       <div className="mt-2 flex items-center gap-4">
         {imagePath ? (
           <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-border bg-bg">
-            <Image src={imagePath} alt="" fill sizes="80px" className="object-cover" />
+            {!imgLoadError ? (
+              <Image
+                src={imagePath}
+                alt=""
+                fill
+                sizes="80px"
+                className="object-cover"
+                unoptimized
+                onError={() => setImgLoadError(true)}
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center p-1 text-center text-[10px] text-amber-600 bg-amber-500/10">
+                <ImagePlus size={18} className="mb-0.5 text-amber-500" />
+                <span>Foto asignada</span>
+              </div>
+            )}
             <button
               type="button"
-              onClick={() => setImagePath("")}
+              onClick={() => {
+                setImagePath("");
+                setImgLoadError(false);
+              }}
               aria-label="Quitar imagen"
               className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"
             >
