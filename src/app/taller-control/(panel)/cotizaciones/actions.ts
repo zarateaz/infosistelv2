@@ -106,12 +106,15 @@ export async function listQuotations(filter?: {
   query?: string;
 }): Promise<QuotationRecord[]> {
   try {
-    const where: any = {
-      deletedAt: null,
-    };
+    const where: any = {};
 
-    if (filter?.status && filter.status !== "TODAS") {
-      where.status = filter.status;
+    if (filter?.status === "ELIMINADAS") {
+      where.deletedAt = { not: null };
+    } else {
+      where.deletedAt = null;
+      if (filter?.status && filter.status !== "TODAS") {
+        where.status = filter.status;
+      }
     }
 
     if (filter?.query && filter.query.trim()) {
@@ -408,6 +411,34 @@ export async function deleteQuotation(id: string): Promise<{ success?: boolean; 
   } catch (err: any) {
     console.error("Error deleting quotation:", err);
     return { error: err.message || "Error al eliminar la cotización." };
+  }
+}
+
+export async function restoreQuotation(id: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    await prisma.quotation.update({
+      where: { id },
+      data: { deletedAt: null },
+    });
+    revalidatePath("/taller-control/cotizaciones");
+    return { success: true };
+  } catch (err: any) {
+    console.error("Error restoring quotation:", err);
+    return { error: err.message || "Error al restaurar la cotización." };
+  }
+}
+
+export async function unDeleteAllQuotations(): Promise<{ count: number; error?: string }> {
+  try {
+    const res = await prisma.quotation.updateMany({
+      where: { deletedAt: { not: null } },
+      data: { deletedAt: null },
+    });
+    revalidatePath("/taller-control/cotizaciones");
+    return { count: res.count };
+  } catch (err: any) {
+    console.error("Error un-deleting quotations:", err);
+    return { count: 0, error: err.message || "Error al restaurar cotizaciones." };
   }
 }
 
