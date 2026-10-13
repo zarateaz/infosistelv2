@@ -20,6 +20,8 @@ import {
 import { lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
+import { ExistingProductActionCard } from "./ExistingProductActionCard";
+import type { ProductSummary } from "@/lib/duplicateDetection";
 
 // The site's CSP (img-src 'self' blob: data:) blocks hotlinking the image
 // search results directly — this re-serves them from our own origin just
@@ -67,6 +69,9 @@ export interface ScanFill {
   description?: string;
   category?: string;
   barcode?: string;
+  price?: number;
+  costPrice?: number;
+  stock?: number;
   image?: string;
   /** Extra reference photos beyond the cover — admin-only, see
    *  ImageGalleryField. Only set when the admin picks more than one
@@ -81,7 +86,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const [barcodeStatus, setBarcodeStatus] = useState<
     | { kind: "idle" }
     | { kind: "loading" }
-    | { kind: "existing"; id: string; name: string }
+    | { kind: "existing"; product: ProductSummary }
     | { kind: "found" }
     | { kind: "not-found" }
   >({ kind: "idle" });
@@ -91,7 +96,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     | { kind: "idle" }
     | { kind: "loading" }
     | { kind: "done" }
-    | { kind: "existing"; id: string; name: string }
+    | { kind: "existing"; product: ProductSummary }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,11 +174,30 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     setPicksApplied(false);
     const result = await lookupBarcode(clean);
 
-    if (result.existingProductId) {
+    if (result.existingProduct) {
       setBarcodeStatus({
         kind: "existing",
-        id: result.existingProductId,
-        name: result.existingProductName ?? "",
+        product: result.existingProduct,
+      });
+      let parsedImages: string[] | undefined;
+      if (result.existingProduct.images) {
+        try {
+          parsedImages =
+            typeof result.existingProduct.images === "string"
+              ? JSON.parse(result.existingProduct.images)
+              : result.existingProduct.images;
+        } catch {}
+      }
+      onFill({
+        name: result.existingProduct.name,
+        category: result.existingProduct.category ?? undefined,
+        description: result.existingProduct.description ?? undefined,
+        barcode: result.existingProduct.barcode ?? clean,
+        price: result.existingProduct.price,
+        costPrice: result.existingProduct.costPrice ?? 0,
+        stock: result.existingProduct.stock ?? 0,
+        image: result.existingProduct.image ?? undefined,
+        images: parsedImages,
       });
       return;
     }
@@ -246,8 +270,31 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         setImageStatus({ kind: "error", message: result.error });
         return;
       }
-      if (result.existingProductId) {
-        setImageStatus({ kind: "existing", id: result.existingProductId, name: result.existingProductName ?? "" });
+      if (result.existingProduct) {
+        setImageStatus({
+          kind: "existing",
+          product: result.existingProduct,
+        });
+        let parsedImages: string[] | undefined;
+        if (result.existingProduct.images) {
+          try {
+            parsedImages =
+              typeof result.existingProduct.images === "string"
+                ? JSON.parse(result.existingProduct.images)
+                : result.existingProduct.images;
+          } catch {}
+        }
+        onFill({
+          name: result.existingProduct.name,
+          category: result.existingProduct.category ?? undefined,
+          description: result.existingProduct.description ?? undefined,
+          barcode: result.existingProduct.barcode ?? undefined,
+          price: result.existingProduct.price,
+          costPrice: result.existingProduct.costPrice ?? 0,
+          stock: result.existingProduct.stock ?? 0,
+          image: result.existingProduct.image ?? undefined,
+          images: parsedImages,
+        });
         return;
       }
       onFill({ name: result.name, description: result.description, category: result.category });
@@ -349,30 +396,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       </form>
 
       {barcodeStatus.kind === "existing" && (
-        <div className="mt-3 flex items-start gap-3 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 text-xs text-red-800 dark:text-red-200 shadow-sm animate-in fade-in duration-200">
-          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-500" />
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black uppercase text-white tracking-wider">
-                0 Margen de Error
-              </span>
-              <span className="font-bold text-sm text-red-800 dark:text-red-200">
-                ¡Producto ya registrado en inventario!
-              </span>
-            </div>
-            <p className="mt-1 text-xs opacity-90">
-              Coincidencia por código de barras. No dupliques el registro; actualiza el stock directamente:
-            </p>
-            <div className="mt-2.5">
-              <Link
-                href={`/taller-control/productos/${barcodeStatus.id}`}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-700 hover:scale-[1.02]"
-              >
-                Abrir y editar &quot;{barcodeStatus.name}&quot; →
-              </Link>
-            </div>
-          </div>
-        </div>
+        <ExistingProductActionCard product={barcodeStatus.product} onFill={onFill} />
       )}
       {barcodeStatus.kind === "found" && (
         <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-accent">
@@ -419,30 +443,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         </p>
       )}
       {imageStatus.kind === "existing" && (
-        <div className="mt-3 flex items-start gap-3 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 text-xs text-red-800 dark:text-red-200 shadow-sm animate-in fade-in duration-200">
-          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-500" />
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black uppercase text-white tracking-wider">
-                0 Margen de Error
-              </span>
-              <span className="font-bold text-sm text-red-800 dark:text-red-200">
-                ¡Producto ya registrado en inventario!
-              </span>
-            </div>
-            <p className="mt-1 text-xs opacity-90">
-              La IA detectó coincidencia de modelo o nombre con un producto existente en tu catálogo. Evita duplicados:
-            </p>
-            <div className="mt-2.5">
-              <Link
-                href={`/taller-control/productos/${imageStatus.id}`}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-700 hover:scale-[1.02]"
-              >
-                Abrir y editar &quot;{imageStatus.name}&quot; →
-              </Link>
-            </div>
-          </div>
-        </div>
+        <ExistingProductActionCard product={imageStatus.product} onFill={onFill} />
       )}
       {imageStatus.kind === "error" && (
         <p className="mt-3 text-sm font-medium text-red-600">{imageStatus.message}</p>

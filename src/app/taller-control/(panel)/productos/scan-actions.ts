@@ -12,17 +12,12 @@ import { evaluateDuplicateMatch, type ProductSummary } from "@/lib/duplicateDete
 export interface BarcodeLookupResult {
   existingProductId?: string;
   existingProductName?: string;
+  existingProduct?: ProductSummary;
   suggestion?: {
     name?: string;
     description?: string;
     category?: string;
     imageUrl?: string;
-    /** Candidate photos from an image search — only populated when the
-     *  listing itself had no photo, so the admin can pick one instead of
-     *  always falling back to a manual upload. Raw external URLs: the
-     *  caller must preview them through /api/image-proxy (CSP blocks
-     *  hotlinking) and, on selection, persist via
-     *  downloadProductImageFromUrl — never save the URL itself. */
     imageOptions?: string[];
   };
   source?: "local" | "external";
@@ -208,10 +203,26 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
         ...(normBarcode && normBarcode !== clean ? [{ barcode: normBarcode }] : []),
       ],
     },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      barcode: true,
+      category: true,
+      price: true,
+      costPrice: true,
+      stock: true,
+      image: true,
+      images: true,
+      description: true,
+    },
   });
   if (existing) {
-    return { existingProductId: existing.id, existingProductName: existing.name, source: "local" };
+    return {
+      existingProductId: existing.id,
+      existingProductName: existing.name,
+      existingProduct: existing,
+      source: "local",
+    };
   }
 
   // 2. Query external UPC database
@@ -225,6 +236,7 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
       return {
         existingProductId: existingByName.id,
         existingProductName: existingByName.name,
+        existingProduct: existingByName,
         source: "local",
       };
     }
@@ -237,37 +249,39 @@ export interface RecognizeImageResult {
   name?: string;
   description?: string;
   category?: string;
-  /** Candidate photos found from the recognized product name — same
-   *  picker/flow as the barcode lookup's imageOptions. Populated whenever
-   *  recognition succeeds, so a product with no barcode listing at all can
-   *  still get real photos straight from a single box photo instead of a
-   *  manual search. */
   imageOptions?: string[];
-  /** Set when a product with (essentially) this same name already exists
-   *  in the catalog — same "no dupliques lo que ya subiste" warning the
-   *  barcode flow already gives when the exact barcode matches, just
-   *  matched by name instead since a re-scanned box has no barcode to
-   *  compare here. */
   existingProductId?: string;
   existingProductName?: string;
+  existingProduct?: ProductSummary;
   error?: string;
 }
 
 /** Comprehensive zero-margin-of-error duplicate match across catalog products */
 async function findExistingProductByName(
   name: string
-): Promise<{ id: string; name: string } | null> {
+): Promise<ProductSummary | null> {
   const cleanName = name.trim();
   if (!cleanName) return null;
 
   const candidates: ProductSummary[] = await prisma.product.findMany({
-    select: { id: true, name: true, barcode: true, category: true },
+    select: {
+      id: true,
+      name: true,
+      barcode: true,
+      category: true,
+      price: true,
+      costPrice: true,
+      stock: true,
+      image: true,
+      images: true,
+      description: true,
+    },
   });
 
   for (const cand of candidates) {
     const match = evaluateDuplicateMatch({ name: cleanName }, cand);
     if (match.isDuplicate && match.existingProduct) {
-      return { id: match.existingProduct.id, name: match.existingProduct.name };
+      return match.existingProduct;
     }
   }
 
@@ -373,11 +387,12 @@ Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.
     const existing = await findExistingProductByName(object.name);
     if (existing) {
       return {
-        name: object.name.toUpperCase(),
-        description: object.description.toUpperCase(),
-        category: object.category.toUpperCase(),
+        name: existing.name,
+        description: existing.description ?? object.description.toUpperCase(),
+        category: existing.category ?? object.category.toUpperCase(),
         existingProductId: existing.id,
         existingProductName: existing.name,
+        existingProduct: existing,
       };
     }
 

@@ -9,6 +9,8 @@ import { checkDuplicateProduct } from "./actions";
 import { ScannerPanel, type ScanFill } from "./ScannerPanel";
 import { ImageUploadField } from "./ImageUploadField";
 import { ImageGalleryField } from "./ImageGalleryField";
+import { ExistingProductActionCard } from "./ExistingProductActionCard";
+import type { DuplicateDetectionResult } from "@/lib/duplicateDetection";
 
 const initialState: ProductFormState = {};
 
@@ -45,16 +47,15 @@ export function ProductForm({
   const [imageUploading, setImageUploading] = useState(false);
   const [scannedImagePath, setScannedImagePath] = useState<string | null>(null);
   const [scannedGalleryImages, setScannedGalleryImages] = useState<string[] | null>(null);
-  const [duplicateWarning, setDuplicateWarning] = useState<{
-    isDuplicate: boolean;
-    message?: string;
-    existingProduct?: { id: string; name: string };
-  } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateDetectionResult | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const priceRef = useRef<HTMLInputElement>(null);
+  const costPriceRef = useRef<HTMLInputElement>(null);
+  const stockRef = useRef<HTMLInputElement>(null);
   const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const performDuplicateCheck = async (nameVal?: string, barcodeVal?: string) => {
@@ -90,6 +91,15 @@ export function ProductForm({
     if (fill.description && descriptionRef.current) descriptionRef.current.value = fill.description;
     if (fill.category && categoryRef.current) categoryRef.current.value = fill.category;
     if (fill.barcode && barcodeRef.current) barcodeRef.current.value = fill.barcode;
+    if (fill.price !== undefined && priceRef.current) {
+      priceRef.current.value = String(fill.price);
+    }
+    if (fill.costPrice !== undefined && costPriceRef.current) {
+      costPriceRef.current.value = String(fill.costPrice ?? 0);
+    }
+    if (fill.stock !== undefined && stockRef.current) {
+      stockRef.current.value = String(fill.stock);
+    }
     if (fill.image) setScannedImagePath(fill.image);
     if (fill.images) setScannedGalleryImages(fill.images);
 
@@ -119,30 +129,15 @@ export function ProductForm({
             />
           </div>
 
-          {duplicateWarning?.isDuplicate && (
-            <div className="sm:col-span-2 flex items-start gap-3 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 text-xs text-red-800 dark:text-red-200 shadow-sm animate-in fade-in duration-200">
-              <AlertTriangle className="mt-0.5 shrink-0 text-red-500" size={20} />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black uppercase text-white tracking-wider">
-                    0 Margen de Error
-                  </span>
-                  <span className="font-bold text-sm text-red-800 dark:text-red-200">
-                    ¡Producto ya existe en el inventario!
-                  </span>
-                </div>
-                <p className="mt-1 text-xs opacity-90">{duplicateWarning.message}</p>
-                {duplicateWarning.existingProduct && (
-                  <div className="mt-2.5">
-                    <Link
-                      href={`/taller-control/productos/${duplicateWarning.existingProduct.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-700 hover:scale-[1.02]"
-                    >
-                      Abrir y editar &quot;{duplicateWarning.existingProduct.name}&quot; en inventario →
-                    </Link>
-                  </div>
-                )}
-              </div>
+          {duplicateWarning?.isDuplicate && duplicateWarning.existingProduct && (
+            <div className="sm:col-span-2">
+              <ExistingProductActionCard
+                product={duplicateWarning.existingProduct}
+                onFill={handleScanFill}
+                onStockUpdated={(newStock) => {
+                  if (stockRef.current) stockRef.current.value = String(newStock);
+                }}
+              />
             </div>
           )}
 
@@ -173,6 +168,7 @@ export function ProductForm({
               Stock
             </label>
             <input
+              ref={stockRef}
               id="stock"
               name="stock"
               type="number"
@@ -204,6 +200,7 @@ export function ProductForm({
               Precio (S/.)
             </label>
             <input
+              ref={priceRef}
               id="price"
               name="price"
               type="number"
@@ -220,6 +217,7 @@ export function ProductForm({
               Precio de costo (S/.)
             </label>
             <input
+              ref={costPriceRef}
               id="costPrice"
               name="costPrice"
               type="number"

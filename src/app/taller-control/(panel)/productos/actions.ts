@@ -164,7 +164,18 @@ export async function checkDuplicateProduct(
         barcode: cleanBarcode,
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
-      select: { id: true, name: true, barcode: true, category: true },
+      select: {
+        id: true,
+        name: true,
+        barcode: true,
+        category: true,
+        price: true,
+        costPrice: true,
+        stock: true,
+        image: true,
+        images: true,
+        description: true,
+      },
     });
     if (existingByBarcode) {
       return {
@@ -179,7 +190,18 @@ export async function checkDuplicateProduct(
   // 2. Comprehensive multi-criteria scan over existing products
   const candidates: ProductSummary[] = await prisma.product.findMany({
     where: excludeId ? { id: { not: excludeId } } : undefined,
-    select: { id: true, name: true, barcode: true, category: true },
+    select: {
+      id: true,
+      name: true,
+      barcode: true,
+      category: true,
+      price: true,
+      costPrice: true,
+      stock: true,
+      image: true,
+      images: true,
+      description: true,
+    },
   });
 
   for (const cand of candidates) {
@@ -193,6 +215,65 @@ export async function checkDuplicateProduct(
   }
 
   return { isDuplicate: false };
+}
+
+/** Quick stock increment/decrement action for existing products */
+export async function adjustProductStock(
+  productId: string,
+  delta: number
+): Promise<{ success: boolean; newStock?: number; error?: string }> {
+  try {
+    const prod = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, stock: true },
+    });
+    if (!prod) return { success: false, error: "Producto no encontrado." };
+
+    const newStock = Math.max(0, prod.stock + delta);
+    const updated = await prisma.product.update({
+      where: { id: productId },
+      data: { stock: newStock },
+      select: { id: true, stock: true },
+    });
+
+    revalidatePath("/taller-control/productos");
+    revalidatePath("/tienda");
+    revalidatePath("/taller-control/inventario");
+    return { success: true, newStock: updated.stock };
+  } catch (err) {
+    console.error("[actions] adjustProductStock error:", err);
+    return { success: false, error: "Error al actualizar el stock." };
+  }
+}
+
+/** Quick stock and price update for existing product without reloading page */
+export async function updateExistingProductStockAndPrice(
+  productId: string,
+  data: {
+    stock?: number;
+    price?: number;
+    costPrice?: number;
+  }
+): Promise<{ success: boolean; newStock?: number; newPrice?: number; error?: string }> {
+  try {
+    const updated = await prisma.product.update({
+      where: { id: productId },
+      data: {
+        ...(data.stock !== undefined ? { stock: Math.max(0, data.stock) } : {}),
+        ...(data.price !== undefined && data.price > 0 ? { price: data.price } : {}),
+        ...(data.costPrice !== undefined && data.costPrice >= 0 ? { costPrice: data.costPrice } : {}),
+      },
+      select: { id: true, stock: true, price: true },
+    });
+
+    revalidatePath("/taller-control/productos");
+    revalidatePath("/tienda");
+    revalidatePath("/taller-control/inventario");
+    return { success: true, newStock: updated.stock, newPrice: updated.price };
+  } catch (err) {
+    console.error("[actions] updateExistingProductStockAndPrice error:", err);
+    return { success: false, error: "Error al actualizar el producto." };
+  }
 }
 
 async function insertProduct(data: z.infer<typeof productSchema>): Promise<string | null> {
