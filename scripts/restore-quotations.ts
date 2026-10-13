@@ -224,6 +224,17 @@ async function main() {
     CREATE INDEX IF NOT EXISTS "QuotationItem_quotationId_idx" ON "QuotationItem"("quotationId");
   `);
 
+  // Ensure missing columns in existing pre-migrated tables are added cleanly
+  try { targetDb.exec('ALTER TABLE "Quotation" ADD COLUMN "images" TEXT;'); } catch {}
+  try { targetDb.exec('ALTER TABLE "Quotation" ADD COLUMN "deletedAt" DATETIME;'); } catch {}
+  try { targetDb.exec('ALTER TABLE "QuotationItem" ADD COLUMN "costPrice" REAL DEFAULT 0;'); } catch {}
+  try { targetDb.exec('ALTER TABLE "QuotationItem" ADD COLUMN "marginPercent" REAL DEFAULT 0;'); } catch {}
+
+  // Check columns present in target QuotationItem
+  const itemCols = (targetDb.prepare('PRAGMA table_info("QuotationItem")').all() as { name: string }[]).map((c) => c.name);
+  const hasCostPrice = itemCols.includes("costPrice");
+  const hasMarginPercent = itemCols.includes("marginPercent");
+
   const insertQuote = targetDb.prepare(`
     INSERT INTO "Quotation" (
       id, code, clientName, clientDocType, clientDocNum, clientPhone, clientEmail,
@@ -262,13 +273,15 @@ async function main() {
       deletedAt = NULL
   `);
 
-  const insertItem = targetDb.prepare(`
-    INSERT OR REPLACE INTO "QuotationItem" (
-      id, quotationId, productId, description, brand, model, quantity, unitPrice, total, notes, costPrice, marginPercent
-    ) VALUES (
-      @id, @quotationId, @productId, @description, @brand, @model, @quantity, @unitPrice, @total, @notes, @costPrice, @marginPercent
-    )
-  `);
+  const itemColsList = ["id", "quotationId", "productId", "description", "brand", "model", "quantity", "unitPrice", "total", "notes"];
+  if (hasCostPrice) itemColsList.push("costPrice");
+  if (hasMarginPercent) itemColsList.push("marginPercent");
+
+  const insertItemSql = `
+    INSERT OR REPLACE INTO "QuotationItem" (${itemColsList.map(c => `"${c}"`).join(", ")})
+    VALUES (${itemColsList.map(c => `@${c}`).join(", ")})
+  `;
+  const insertItem = targetDb.prepare(insertItemSql);
 
   let restoredCount = 0;
   const restoreTx = targetDb.transaction(() => {
