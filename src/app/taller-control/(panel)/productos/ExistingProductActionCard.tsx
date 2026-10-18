@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -11,7 +12,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  Download,
+  Save,
   ExternalLink,
 } from "lucide-react";
 import type { ProductSummary } from "@/lib/duplicateDetection";
@@ -22,18 +23,28 @@ interface ExistingProductActionCardProps {
   product: ProductSummary;
   onFill?: (fill: ScanFill) => void;
   onStockUpdated?: (newStock: number) => void;
+  onPlannedStockChange?: (plannedTotalStock: number) => void;
 }
 
 export function ExistingProductActionCard({
   product,
-  onFill,
   onStockUpdated,
+  onPlannedStockChange,
 }: ExistingProductActionCardProps) {
+  const router = useRouter();
   const [currentStock, setCurrentStock] = useState<number>(product.stock ?? 0);
-  const [stockDelta, setStockDelta] = useState<number>(1);
+  const [addAmount, setAddAmount] = useState<number>(1);
   const [isUpdating, setIsUpdating] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [isLoadedIntoForm, setIsLoadedIntoForm] = useState(false);
+
+  // Sync when product prop changes
+  const [trackedProductId, setTrackedProductId] = useState(product.id);
+  if (product.id !== trackedProductId) {
+    setTrackedProductId(product.id);
+    setCurrentStock(product.stock ?? 0);
+    setAddAmount(1);
+    setFeedback(null);
+  }
 
   const priceFormatted =
     product.price !== undefined ? `S/. ${Number(product.price).toFixed(2)}` : "No def.";
@@ -42,7 +53,13 @@ export function ExistingProductActionCard({
       ? `S/. ${Number(product.costPrice).toFixed(2)}`
       : "S/. 0.00";
 
-  async function handleAdjust(delta: number) {
+  function handleSelectAddAmount(amount: number) {
+    const valid = Math.max(1, amount);
+    setAddAmount(valid);
+    onPlannedStockChange?.(currentStock + valid);
+  }
+
+  async function handleSaveAddedStock(delta: number) {
     if (delta === 0) return;
     setIsUpdating(true);
     setFeedback(null);
@@ -51,11 +68,13 @@ export function ExistingProductActionCard({
       if (res.success && res.newStock !== undefined) {
         setCurrentStock(res.newStock);
         onStockUpdated?.(res.newStock);
+        onPlannedStockChange?.(res.newStock + addAmount);
         setFeedback(
           delta > 0
-            ? `+${delta} u. (Nuevo stock: ${res.newStock} u.)`
-            : `-${Math.abs(delta)} u. (Nuevo stock: ${res.newStock} u.)`
+            ? `¡Guardado! Se agregaron +${delta} u. al inventario (Nuevo stock en tienda: ${res.newStock} u.).`
+            : `Stock ajustado en ${delta} u. (Nuevo stock en tienda: ${res.newStock} u.).`
         );
+        router.refresh();
       } else {
         setFeedback(res.error || "Error al actualizar stock.");
       }
@@ -66,190 +85,176 @@ export function ExistingProductActionCard({
     }
   }
 
-  function handleLoadOriginals() {
-    if (!onFill) return;
-    onFill({
-      name: product.name,
-      category: product.category ?? undefined,
-      description: product.description ?? undefined,
-      barcode: product.barcode ?? undefined,
-      price: product.price,
-      costPrice: product.costPrice ?? 0,
-      stock: currentStock,
-      image: product.image ?? undefined,
-    });
-    setIsLoadedIntoForm(true);
-  }
-
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 sm:p-3.5 shadow-xs transition-all animate-in fade-in duration-200">
-      {/* Header Compacto */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-amber-500/20 pb-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-500 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-black">
-            <AlertTriangle size={10} strokeWidth={2.5} />
-            0 Margen de Error
-          </span>
-          <span className="truncate text-xs font-bold text-amber-900 dark:text-amber-200">
-            El producto ya se encuentra en la tienda. ¿Desea agregar o quitar stock o editar?
-          </span>
+    <div className="mt-2 overflow-hidden rounded-2xl border-2 border-amber-500/60 bg-amber-50/90 p-4 shadow-md transition-all animate-in fade-in duration-200">
+      {/* Encabezado de alerta clara */}
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-amber-500/25 pb-3">
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-xs">
+            <AlertTriangle size={16} strokeWidth={2.5} />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+                Producto ya registrado
+              </span>
+              <h3 className="text-sm font-extrabold text-amber-950">
+                ¡Este producto ya se encuentra en la tienda!
+              </h3>
+            </div>
+            <p className="mt-0.5 text-xs font-medium text-amber-900/85">
+              Para evitar productos repetidos, elige cuántas unidades deseas agregar al stock y pulsa{" "}
+              <strong>Guardar</strong>.
+            </p>
+          </div>
         </div>
 
         <Link
           href={`/taller-control/productos/${product.id}`}
-          className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-600/30 bg-white px-2.5 py-1 text-xs font-bold text-[#0a5fdb] shadow-2xs transition-colors hover:bg-amber-50"
         >
-          <span>Editar ficha</span>
+          <Edit3 size={12} />
+          <span>Editar ficha completa</span>
           <ExternalLink size={11} />
         </Link>
       </div>
 
-      {/* Fila Central: Mini Thumbnail + Datos + Chips de Precio y Stock */}
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      {/* Datos del producto encontrado */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-white p-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {product.image ? (
-            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-border bg-white shadow-xs">
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
               <Image
                 src={product.image}
                 alt={product.name}
                 fill
                 unoptimized
-                sizes="40px"
-                className="object-contain p-0.5"
+                sizes="48px"
+                className="object-contain p-1"
               />
             </div>
           ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-border bg-bg text-fg-muted">
-              <Package size={18} strokeWidth={1.5} />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400">
+              <Package size={20} strokeWidth={1.5} />
             </div>
           )}
 
           <div className="min-w-0 flex-1">
-            <h4 className="truncate text-xs font-bold text-fg leading-tight" title={product.name}>
+            <h4 className="truncate text-xs font-extrabold text-[#0b1230]" title={product.name}>
               {product.name}
             </h4>
-            <div className="flex items-center gap-2 text-[10px] text-fg-muted mt-0.5">
-              {product.category && <span className="font-medium text-fg/80">{product.category}</span>}
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+              {product.category && (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700">
+                  {product.category}
+                </span>
+              )}
               {product.barcode && (
                 <span>
-                  Cód: <strong className="font-mono text-fg">{product.barcode}</strong>
+                  Cód: <strong className="font-mono text-[#0b1230]">{product.barcode}</strong>
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Chips de Precios y Stock compactos */}
-        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-          <div className="rounded-lg border border-border bg-bg/80 px-2.5 py-1 text-center">
-            <span className="block text-[9px] uppercase tracking-wider text-fg-muted font-semibold">
-              Venta
+        {/* Chips de Precio, Costo y Stock Actual */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-center">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">
+              Precio
             </span>
-            <span className="text-xs font-black text-accent">{priceFormatted}</span>
+            <span className="text-xs font-black text-[#0a5fdb]">{priceFormatted}</span>
           </div>
 
-          <div className="rounded-lg border border-border bg-bg/80 px-2.5 py-1 text-center">
-            <span className="block text-[9px] uppercase tracking-wider text-fg-muted font-semibold">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-center">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">
               Costo
             </span>
-            <span className="text-xs font-bold text-fg">{costFormatted}</span>
+            <span className="text-xs font-bold text-slate-700">{costFormatted}</span>
           </div>
 
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-center">
-            <span className="block text-[9px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-semibold">
-              Stock
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-50 px-3 py-1 text-center">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+              Stock actual
             </span>
-            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
-              {currentStock} u.
-            </span>
+            <span className="text-xs font-black text-emerald-700">{currentStock} u.</span>
           </div>
         </div>
       </div>
 
-      {/* Controles de Acción Compactos en 1 Sola Línea */}
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/20 pt-2">
-        {/* Ajustes de stock rápidos */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] font-semibold text-fg-muted">Stock:</span>
-          {[1, 5, 10].map((num) => (
-            <button
-              key={`add-${num}`}
-              type="button"
-              disabled={isUpdating}
-              onClick={() => handleAdjust(num)}
-              className="inline-flex items-center gap-0.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:opacity-50"
-            >
-              <Plus size={10} strokeWidth={2.5} />
-              <span>{num}</span>
-            </button>
-          ))}
-          {[-1, -5].map((num) => (
-            <button
-              key={`sub-${num}`}
-              type="button"
-              disabled={isUpdating || currentStock <= 0}
-              onClick={() => handleAdjust(num)}
-              className="inline-flex items-center gap-0.5 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:text-red-300 transition-all hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
-            >
-              <Minus size={10} strokeWidth={2.5} />
-              <span>{Math.abs(num)}</span>
-            </button>
-          ))}
+      {/* Selector de Agregar Stock + Botón Guardar */}
+      <div className="mt-3 flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-white/90 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-extrabold text-[#0b1230]">¿Cuánto stock deseas agregar?</span>
+          <div className="flex items-center gap-1">
+            {[1, 2, 5, 10].map((num) => (
+              <button
+                key={`preset-${num}`}
+                type="button"
+                disabled={isUpdating}
+                onClick={() => handleSelectAddAmount(num)}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-bold transition-all ${
+                  addAmount === num
+                    ? "border-[#0a5fdb] bg-[#0a5fdb] text-white shadow-xs"
+                    : "border-slate-300 bg-white text-slate-700 hover:border-[#0a5fdb] hover:text-[#0a5fdb]"
+                }`}
+              >
+                +{num}
+              </button>
+            ))}
+          </div>
 
-          {/* Cantidad personalizada directa */}
-          <div className="flex items-center gap-1 pl-1">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={isUpdating || addAmount <= 1}
+              onClick={() => handleSelectAddAmount(addAmount - 1)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:border-[#0a5fdb] disabled:opacity-40"
+              title="Menos"
+            >
+              <Minus size={12} />
+            </button>
             <input
               type="number"
               min={1}
-              value={stockDelta}
-              onChange={(e) => setStockDelta(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-12 rounded border border-border bg-bg px-1 py-0.5 text-center text-xs font-bold text-fg outline-none focus:border-accent"
+              value={addAmount}
+              onChange={(e) => handleSelectAddAmount(parseInt(e.target.value, 10) || 1)}
+              className="h-7 w-14 rounded-lg border-2 border-slate-300 bg-white px-1 text-center text-xs font-extrabold text-[#0b1230] outline-none focus:border-[#0a5fdb]"
             />
             <button
               type="button"
               disabled={isUpdating}
-              onClick={() => handleAdjust(stockDelta)}
-              className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
-              title="Sumar cantidad al stock"
+              onClick={() => handleSelectAddAmount(addAmount + 1)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:border-[#0a5fdb] disabled:opacity-40"
+              title="Más"
             >
-              +
-            </button>
-            <button
-              type="button"
-              disabled={isUpdating || currentStock <= 0}
-              onClick={() => handleAdjust(-stockDelta)}
-              className="rounded border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:text-red-300 transition-all hover:bg-red-500/20 disabled:opacity-50"
-              title="Restar cantidad del stock"
-            >
-              -
+              <Plus size={12} />
             </button>
           </div>
+
+          <span className="text-xs font-semibold text-slate-600">
+            Nuevo total:{" "}
+            <strong className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800">
+              {currentStock + addAmount} u.
+            </strong>
+          </span>
         </div>
 
-        {/* Botones de acción principales */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleLoadOriginals}
-            className="inline-flex items-center gap-1 rounded-lg border border-border-strong bg-bg px-2.5 py-1 text-[11px] font-bold text-fg transition-all hover:border-accent hover:text-accent active:scale-95"
-          >
-            <Download size={11} />
-            <span>{isLoadedIntoForm ? "✓ Cargado abajo" : "Cargar datos originales"}</span>
-          </button>
-
-          <Link
-            href={`/taller-control/productos/${product.id}`}
-            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1 text-[11px] font-bold text-accent-fg shadow-xs transition-all hover:bg-accent-hover active:scale-95"
-          >
-            <Edit3 size={11} />
-            <span>Editar</span>
-          </Link>
-        </div>
+        <button
+          type="button"
+          disabled={isUpdating}
+          onClick={() => handleSaveAddedStock(addAmount)}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
+        >
+          {isUpdating ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          <span>Agregar +{addAmount} u. y Guardar</span>
+        </button>
       </div>
 
       {feedback && (
-        <div className="mt-2 flex items-center gap-1.5 rounded-md bg-accent/10 px-2 py-1 text-[11px] font-bold text-accent animate-in fade-in">
-          <CheckCircle2 size={12} className="shrink-0" />
+        <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 animate-in fade-in">
+          <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
           <span>{feedback}</span>
         </div>
       )}

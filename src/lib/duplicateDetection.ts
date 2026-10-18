@@ -6,11 +6,11 @@
  * 1. Barcode match (exact, trimmed, leading zeros normalized).
  * 2. Exact name match (case-insensitive, whitespace trimmed).
  * 3. Normalized name match (accents/diacritics stripped, punctuation cleaned).
- * 4. Word-sorted match (e.g. "ADAPTADOR TP-LINK TL-WN725N" vs "TP-LINK ADAPTADOR TL-WN725N").
- * 5. Distinctive model code match with brand verification (e.g. TL-WN725N, US320, V15, G502, B450M, RTX 3060, L3250).
- * 6. Brand conflict protection: Logitech vs Razer, Epson vs HP, Ugreen vs Baseus NEVER match.
- * 7. Variant protection: Differentiates legitimate variants like 8GB vs 16GB, Negro vs Cyan, 1m vs 2m.
- * 8. Zero false positives on generic phrases (e.g. "Mouse Inalámbrico" will NEVER match "Mouse Inalámbrico Logitech M170").
+ * 4. Canonical synonym & word-sorted match (e.g. "CAJA DE DISCO DURO UGREEN 2.5 SATA" vs "CASE DISCO DURO UGREEN 2.5 SATA").
+ * 5. Distinctive model code match with brand & spec verification (checks both name and description).
+ * 6. Brand conflict protection: Logitech vs Razer, Epson vs HP, Ugreen vs Cabletime NEVER match.
+ * 7. Variant protection: Differentiates legitimate variants like 8GB vs 16GB, Negro vs Cyan, 1.5m vs 2m, 2.5" vs 3.5".
+ * 8. Smart brand + product type + spec overlap for repeated AI photo scans of the same item.
  */
 
 export interface ProductSummary {
@@ -59,7 +59,68 @@ const STOP_WORDS = new Set([
   "o",
   "a",
   "al",
+  "uso",
+  "tipo",
 ]);
+
+/**
+ * Canonical synonym map for Spanish/English hardware terms so AI scans of the same box
+ * normalize to the same root token even if phrased slightly differently.
+ */
+const CANONICAL_SYNONYMS: Record<string, string> = {
+  portatil: "laptop",
+  portatiles: "laptop",
+  notebook: "laptop",
+  notebooks: "laptop",
+  laptops: "laptop",
+  celular: "celular",
+  celulares: "celular",
+  telefono: "celular",
+  smartphone: "celular",
+  movil: "celular",
+  case: "caja",
+  cofre: "caja",
+  enclosure: "caja",
+  carcasa: "caja",
+  stand: "soporte",
+  holder: "soporte",
+  base: "soporte",
+  soportes: "soporte",
+  raton: "mouse",
+  mouses: "mouse",
+  mice: "mouse",
+  teclados: "teclado",
+  keyboard: "teclado",
+  auricular: "audifono",
+  auriculares: "audifono",
+  audifonos: "audifono",
+  headset: "audifono",
+  headphone: "audifono",
+  headphones: "audifono",
+  altavoz: "parlante",
+  altavoces: "parlante",
+  parlantes: "parlante",
+  bocina: "parlante",
+  speaker: "parlante",
+  speakers: "parlante",
+  convertidor: "adaptador",
+  adapter: "adaptador",
+  adaptadores: "adaptador",
+  cables: "cable",
+  cord: "cable",
+  inalambrico: "wireless",
+  inalambrica: "wireless",
+  carro: "auto",
+  vehiculo: "auto",
+  automovil: "auto",
+  ventilacion: "rejilla",
+  aire: "rejilla",
+  desktop: "escritorio",
+  plegable: "ajustable",
+  regulable: "ajustable",
+  pulgadas: "inch",
+  pulgada: "inch",
+};
 
 /**
  * Common hardware & tech brands in Peru and international catalogs.
@@ -115,6 +176,10 @@ export const KNOWN_BRANDS = [
   "ubiquiti",
   "mikrotik",
   "ugreen",
+  "cabletime",
+  "vention",
+  "orico",
+  "zkteco",
   "baseus",
   "anker",
   "belkin",
@@ -156,13 +221,24 @@ export const KNOWN_BRANDS = [
   "xfx",
   "sapphire",
   "powercolor",
+  "jbl",
+  "fifine",
+  "boya",
+  "wacom",
+  "steren",
+  "dixon",
+  "teros",
+  "fantech",
+  "aula",
+  "ajazz",
+  "keychron",
+  "akko",
 ];
 
 /**
  * Generic technical specifications and standards that must NEVER be treated as hardware model codes.
  */
 const GENERIC_SPEC_TOKENS = new Set([
-  // Memory types & buses
   "ddr",
   "ddr2",
   "ddr3",
@@ -176,7 +252,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "rom",
   "sodimm",
   "dimm",
-  // USB & connector standards
   "usb",
   "usb1",
   "usb2",
@@ -190,7 +265,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "micro",
   "microusb",
   "otg",
-  // Storage & PCIe
   "sata",
   "sata1",
   "sata2",
@@ -205,7 +279,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "ide",
   "ssd",
   "hdd",
-  // Video & audio
   "hdmi",
   "hdmi2",
   "hdmi20",
@@ -220,7 +293,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "aux",
   "jack",
   "rca",
-  // Resolutions & frequencies
   "4k",
   "2k",
   "8k",
@@ -241,7 +313,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "180hz",
   "240hz",
   "360hz",
-  // Wireless
   "wifi",
   "wifi5",
   "wifi6",
@@ -258,7 +329,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "24ghz",
   "5g",
   "5ghz",
-  // Network cable standards
   "cat5",
   "cat5e",
   "cat6",
@@ -268,7 +338,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "utp",
   "ftp",
   "stp",
-  // Lighting & panel tech
   "rgb",
   "argb",
   "led",
@@ -277,14 +346,12 @@ const GENERIC_SPEC_TOKENS = new Set([
   "tn",
   "oled",
   "amoled",
-  // Form factors
   "atx",
   "matx",
   "microatx",
   "itx",
   "miniitx",
   "sfx",
-  // Generations & tiers
   "gen1",
   "gen2",
   "gen3",
@@ -309,7 +376,6 @@ const GENERIC_SPEC_TOKENS = new Set([
   "r9",
   "core",
   "ryzen",
-  // Common adjectives
   "pro",
   "max",
   "plus",
@@ -322,9 +388,9 @@ const GENERIC_SPEC_TOKENS = new Set([
   "prime",
   "gaming",
   "gamer",
-  // Electrical & capacities
   "32bit",
   "64bit",
+  "360",
   "12v",
   "5v",
   "9v",
@@ -366,12 +432,17 @@ const GENERIC_SPEC_TOKENS = new Set([
   "3m",
   "5m",
   "10m",
-  "15m",
   "20m",
   "25m",
   "30m",
   "50m",
   "100m",
+  "10gbps",
+  "5gbps",
+  "18gbps",
+  "48gbps",
+  "100mbps",
+  "1000mbps",
 ]);
 
 /**
@@ -389,14 +460,16 @@ export function normalizeText(str: string): string {
 }
 
 /**
- * Splits normalized text into distinctive non-stop words.
+ * Splits normalized text into distinctive non-stop words, applying canonical tech synonyms.
  */
 export function extractDistinctiveTokens(str: string): string[] {
   const norm = normalizeText(str);
   if (!norm) return [];
-  return norm
+  const tokens = norm
     .split(" ")
-    .filter((token) => token.length > 0 && !STOP_WORDS.has(token));
+    .filter((token) => token.length > 0 && !STOP_WORDS.has(token))
+    .map((token) => CANONICAL_SYNONYMS[token] ?? token);
+  return Array.from(new Set(tokens));
 }
 
 /**
@@ -430,6 +503,8 @@ export function extractModelCodes(str: string): string[] {
   for (const token of rawTokens) {
     const clean = token.replace(/[^A-Z0-9]/g, "").toLowerCase();
     if (!clean || GENERIC_SPEC_TOKENS.has(clean)) continue;
+    // Skip pure measurements like 15m, 100w, 60hz, 360, etc.
+    if (/^\d+(m|cm|mm|w|v|a|hz|gb|tb|mb|gbps|mbps|p|k)$/.test(clean)) continue;
 
     // Alphanumeric with both letters and numbers, length >= 3 (e.g. WN725N, US320, G502, B450, RTX3060, L3250)
     if (clean.length >= 3 && /[a-z]/.test(clean) && /[0-9]/.test(clean)) {
@@ -446,8 +521,6 @@ export function extractModelCodes(str: string): string[] {
 
 /**
  * Extracts fine-grained hardware and electronics technical specifications.
- * Supports decimal measurements (e.g. 1.5m, 1.8m), protocols (HDMI 2.0 vs 2.1),
- * refresh rates, bandwidths, wattages, and colors.
  */
 export interface TechnicalSpecs {
   lengths: Set<string>;
@@ -460,6 +533,7 @@ export interface TechnicalSpecs {
   capacities: Set<string>;
   colors: Set<string>;
   portCounts: Set<string>;
+  formFactors: Set<string>;
 }
 
 export function extractTechnicalSpecs(text: string): TechnicalSpecs {
@@ -473,6 +547,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
   const capacities = new Set<string>();
   const colors = new Set<string>();
   const portCounts = new Set<string>();
+  const formFactors = new Set<string>();
 
   if (!text) {
     return {
@@ -486,6 +561,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
       capacities,
       colors,
       portCounts,
+      formFactors,
     };
   }
 
@@ -497,7 +573,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
   while ((match = lengthRegex.exec(raw)) !== null) {
     const num = parseFloat(match[1]);
     const unit = match[2].toLowerCase();
-    if (unit.startsWith("m")) {
+    if (unit.startsWith("m") && unit !== "mm") {
       lengths.add(`${num}m`);
     } else if (unit === "cm") {
       lengths.add(`${num}cm`);
@@ -528,7 +604,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     versions.add(`dp_${match[1]}`);
   }
 
-  // 3. Resolutions and refresh rates (4K, 8K, 60Hz, 120Hz, 144Hz, etc.)
+  // 3. Resolutions and refresh rates
   const resRegex = /(?:^|[\s,;([/])(4k|8k|2k|1080p|720p|1440p|fhd|qhd|uhd)(?:$|[\s,;.)\]/])/gi;
   while ((match = resRegex.exec(raw)) !== null) {
     resolutions.add(match[1]);
@@ -538,13 +614,13 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     refreshRates.add(`${match[1]}hz`);
   }
 
-  // 4. Speeds and bandwidths (18Gbps, 48Gbps, 100Mbps, 1000Mbps / 1Gbps, 2.5Gbps)
+  // 4. Speeds and bandwidths
   const speedRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(gbps|mbps)(?:$|[\s,;.)\]/])/gi;
   while ((match = speedRegex.exec(raw)) !== null) {
     speeds.add(`${parseFloat(match[1])}${match[2]}`);
   }
 
-  // 5. Electrical: Wattage and Amperage (20W, 65W, 100W, 2A, 3A, etc.)
+  // 5. Electrical: Wattage and Amperage
   const wRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(w|watts)(?:$|[\s,;.)\]/])/gi;
   while ((match = wRegex.exec(raw)) !== null) {
     wattages.add(`${parseFloat(match[1])}w`);
@@ -560,7 +636,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     capacities.add(`${match[1]}${match[2]}`);
   }
 
-  // 7. Colors (ink cartridges, cables, cases, accessories)
+  // 7. Colors
   const colorRegex = /(?:^|[\s,;([/])(negro|black|cian|cyan|magenta|amarillo|yellow|azul|blue|rojo|red|blanco|white|gris|gray|grey|verde|green)(?:$|[\s,;.)\]/])/gi;
   while ((match = colorRegex.exec(raw)) !== null) {
     const c = match[1].toLowerCase();
@@ -575,10 +651,16 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     else colors.add(c);
   }
 
-  // 8. Port counts (hubs, multiports: 4 en 1, 7 en 1, 4 puertos, 8 puertos)
+  // 8. Port counts (4 en 1, 7 en 1, 4 puertos, 8 puertos)
   const portRegex = /(?:^|[\s,;([/])(\d+)\s*(?:en\s*1|in\s*1|puertos|ports)(?:$|[\s,;.)\]/])/gi;
   while ((match = portRegex.exec(raw)) !== null) {
     portCounts.add(`${match[1]}_ports`);
+  }
+
+  // 9. Disk / Screen form factors (2.5", 3.5", 15.6", 24", 27")
+  const inchRegex = /(?:^|[\s,;([/])(2\.5|3\.5|13\.3|14|15\.6|16|17\.3|21\.5|24|27|32)\s*(?:"|''|pulgadas|inch)(?:$|[\s,;.)\]/])/gi;
+  while ((match = inchRegex.exec(raw)) !== null) {
+    formFactors.add(`${match[1]}_inch`);
   }
 
   return {
@@ -592,14 +674,12 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     capacities,
     colors,
     portCounts,
+    formFactors,
   };
 }
 
 /**
  * Checks if two products have conflicting technical specifications.
- * Evaluates both product name and technical description.
- * If either length, version, refresh rate, speed, wattage, color, or port count
- * is specified in both products and they have no overlap, they are DIFFERENT products.
  */
 export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -609,9 +689,9 @@ export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
   const checkConflict = (setA: Set<string>, setB: Set<string>) => {
     if (setA.size > 0 && setB.size > 0) {
       for (const val of setA) {
-        if (setB.has(val)) return false; // Overlap exists!
+        if (setB.has(val)) return false;
       }
-      return true; // Both specify this characteristic and have zero overlap -> CONFLICT!
+      return true;
     }
     return false;
   };
@@ -626,6 +706,7 @@ export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
   if (checkConflict(sA.capacities, sB.capacities)) return true;
   if (checkConflict(sA.colors, sB.colors)) return true;
   if (checkConflict(sA.portCounts, sB.portCounts)) return true;
+  if (checkConflict(sA.formFactors, sB.formFactors)) return true;
 
   return false;
 }
@@ -675,7 +756,7 @@ export function evaluateDuplicateMatch(
     return {
       isDuplicate: true,
       reason: "exact_name",
-      message: `El producto ya se encuentra en el inventario con el mismo nombre ("${candidate.name}").`,
+      message: `El producto ya se encuentra en la tienda con el mismo nombre ("${candidate.name}").`,
       existingProduct: candidate,
     };
   }
@@ -688,12 +769,12 @@ export function evaluateDuplicateMatch(
     return {
       isDuplicate: true,
       reason: "normalized_name",
-      message: `El producto ya se encuentra en el inventario ("${candidate.name}").`,
+      message: `El producto ya se encuentra en la tienda ("${candidate.name}").`,
       existingProduct: candidate,
     };
   }
 
-  // 4. Conflicting brands check (e.g. Logitech vs Razer, Epson vs HP, Ugreen vs Baseus, ZKTeco vs Philips)
+  // 4. Conflicting brands check (e.g. Logitech vs Razer, Epson vs HP, Ugreen vs Cabletime)
   const brandInput = extractBrand(inputFull);
   const brandCand = extractBrand(candFull);
   if (brandInput && brandCand && brandInput !== brandCand) {
@@ -703,8 +784,7 @@ export function evaluateDuplicateMatch(
   const tokensInput = extractDistinctiveTokens(rawInputName);
   const tokensCand = extractDistinctiveTokens(rawCandName);
 
-  // 6. Word-sorted permutation match (exact same tokens, different word order)
-  // Both must have the same number of tokens so no extra hardware words are ignored.
+  // 5. Canonical word-sorted permutation match
   if (tokensInput.length > 0 && tokensCand.length > 0 && tokensInput.length === tokensCand.length) {
     const sortedInput = [...tokensInput].sort().join(" ");
     const sortedCand = [...tokensCand].sort().join(" ");
@@ -712,61 +792,83 @@ export function evaluateDuplicateMatch(
       return {
         isDuplicate: true,
         reason: "word_permutation",
-        message: `Mismo producto con diferente orden de palabras ("${candidate.name}").`,
+        message: `El producto ya se encuentra en la tienda ("${candidate.name}").`,
         existingProduct: candidate,
       };
     }
   }
 
-  // 7. Specific Model Code matching
-  const modelsInput = extractModelCodes(rawInputName);
-  const modelsCand = extractModelCodes(rawCandName);
+  // 6. Specific Model Code matching (across both name and description)
+  const modelsInputName = extractModelCodes(rawInputName);
+  const modelsCandName = extractModelCodes(rawCandName);
+  const modelsInputAll = extractModelCodes(inputFull);
+  const modelsCandAll = extractModelCodes(candFull);
 
-  // If BOTH specify model codes and share at least one
-  if (modelsInput.length > 0 && modelsCand.length > 0) {
-    for (const mInput of modelsInput) {
-      if (modelsCand.includes(mInput)) {
+  if (modelsInputAll.length > 0 && modelsCandAll.length > 0) {
+    for (const mInput of modelsInputAll) {
+      if (modelsCandAll.includes(mInput)) {
         return {
           isDuplicate: true,
           reason: "model_code",
-          message: `Mismo modelo de producto detectado (${mInput.toUpperCase()}) en "${candidate.name}".`,
+          message: `Mismo modelo exacto detectado (${mInput.toUpperCase()}) en "${candidate.name}".`,
           existingProduct: candidate,
         };
       }
     }
-    // If both specified model codes but have NO overlap (e.g. US320 vs 70444, or G502 vs G203)
-    // they are definitely DIFFERENT products!
+    // If both product NAMES explicitly state different model codes, they are different products
+    if (modelsInputName.length > 0 && modelsCandName.length > 0) {
+      return { isDuplicate: false };
+    }
+  }
+
+  // If one specifies a brand and the other specifies no brand at all, do not match generic vs branded
+  if ((brandInput && !brandCand) || (!brandInput && brandCand)) {
     return { isDuplicate: false };
   }
 
-  // If ONE specified a specific brand or model code, but the other did NOT,
-  // DO NOT treat them as duplicates! (e.g. "Mouse Inalámbrico" vs "Mouse Inalámbrico Logitech M170")
-  if (
-    (modelsInput.length > 0 && modelsCand.length === 0) ||
-    (modelsCand.length > 0 && modelsInput.length === 0) ||
-    (brandInput && !brandCand) ||
-    (!brandInput && brandCand)
-  ) {
-    return { isDuplicate: false };
-  }
-
-  // 8. High token overlap (ONLY when neither has distinct brands/models,
-  // token counts are very close, and Jaccard similarity is >= 85%)
-  if (tokensInput.length >= 4 && tokensCand.length >= 4) {
+  // 7. Token overlap & containment check for repeated AI scans of the same product
+  if (tokensInput.length >= 3 && tokensCand.length >= 3) {
+    const setInput = new Set(tokensInput);
     const setCand = new Set(tokensCand);
-    const setUnion = new Set([...tokensInput, ...tokensCand]);
-    const intersection = tokensInput.filter((t) => setCand.has(t));
-    const jaccard = intersection.length / setUnion.size;
+    const setCandFull = new Set(extractDistinctiveTokens(candFull));
+    const setInputFull = new Set(extractDistinctiveTokens(inputFull));
 
-    // Diff in token count must be at most 1 to prevent short generic matching long specific
-    const lengthDiff = Math.abs(tokensInput.length - tokensCand.length);
-    if (lengthDiff <= 1 && jaccard >= 0.85) {
-      return {
-        isDuplicate: true,
-        reason: "high_similarity",
-        message: `Alta similitud (${Math.round(jaccard * 100)}% coincidencia) con "${candidate.name}".`,
-        existingProduct: candidate,
-      };
+    const intersection = tokensInput.filter((t) => setCand.has(t));
+    const unionSize = new Set([...tokensInput, ...tokensCand]).size;
+    const jaccard = intersection.length / unionSize;
+    const minLen = Math.min(tokensInput.length, tokensCand.length);
+    const containment = intersection.length / minLen;
+
+    // Cross-containment against full description tokens (when AI puts an extra word in description vs title)
+    const inputInCandFull = tokensInput.filter((t) => setCandFull.has(t)).length / tokensInput.length;
+    const candInInputFull = tokensCand.filter((t) => setInputFull.has(t)).length / tokensCand.length;
+
+    // Primary product noun (first token, e.g. "soporte", "caja", "cable", "adaptador", "mouse", "laptop")
+    const samePrimaryType = tokensInput[0] === tokensCand[0] || setCand.has(tokensInput[0]);
+
+    if (brandInput && brandInput === brandCand && samePrimaryType) {
+      if (
+        jaccard >= 0.65 ||
+        (containment >= 0.8 && minLen >= 4) ||
+        (inputInCandFull >= 0.85 && candInInputFull >= 0.75)
+      ) {
+        return {
+          isDuplicate: true,
+          reason: "high_similarity",
+          message: `El producto ya se encuentra en la tienda ("${candidate.name}").`,
+          existingProduct: candidate,
+        };
+      }
+    } else if (!brandInput && !brandCand) {
+      const lengthDiff = Math.abs(tokensInput.length - tokensCand.length);
+      if (lengthDiff <= 1 && jaccard >= 0.85) {
+        return {
+          isDuplicate: true,
+          reason: "high_similarity",
+          message: `El producto ya se encuentra en la tienda ("${candidate.name}").`,
+          existingProduct: candidate,
+        };
+      }
     }
   }
 

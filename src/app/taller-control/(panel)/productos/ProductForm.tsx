@@ -2,21 +2,17 @@
 
 import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { AlertTriangle, AlertCircle } from "lucide-react";
+import { AlertCircle, PlusCircle } from "lucide-react";
 import type { ProductFormState, AdminProduct } from "./actions";
 import { checkDuplicateProduct } from "./actions";
 import { ScannerPanel, type ScanFill } from "./ScannerPanel";
 import { ImageUploadField } from "./ImageUploadField";
 import { ImageGalleryField } from "./ImageGalleryField";
 import { ExistingProductActionCard } from "./ExistingProductActionCard";
-import type { DuplicateDetectionResult } from "@/lib/duplicateDetection";
+import type { DuplicateDetectionResult, ProductSummary } from "@/lib/duplicateDetection";
 
 const initialState: ProductFormState = {};
 
-/** Product.images is stored as a JSON-encoded string (see actions.ts) —
- *  tolerant of null/malformed values since this only ever reads back what
- *  the app itself wrote. */
 function parseImagesJson(value?: string | null): string[] | undefined {
   if (!value) return undefined;
   try {
@@ -70,7 +66,7 @@ export function ProductForm({
 
     try {
       const res = await checkDuplicateProduct(currentName, currentBarcode, product?.id, currentDesc);
-      if (res.isDuplicate) {
+      if (res.isDuplicate && res.existingProduct) {
         setDuplicateWarning(res);
       } else {
         setDuplicateWarning(null);
@@ -87,11 +83,46 @@ export function ProductForm({
     }, 350);
   };
 
+  function applyExistingProductToForm(existing: ProductSummary) {
+    if (nameRef.current) nameRef.current.value = existing.name;
+    if (existing.category && categoryRef.current) categoryRef.current.value = existing.category;
+    if (existing.description && descriptionRef.current) descriptionRef.current.value = existing.description;
+    if (barcodeRef.current) barcodeRef.current.value = existing.barcode ?? "";
+    if (existing.price !== undefined && priceRef.current) {
+      priceRef.current.value = String(existing.price);
+    }
+    if (costPriceRef.current) {
+      costPriceRef.current.value = String(existing.costPrice ?? 0);
+    }
+    if (stockRef.current) {
+      // Default to adding +1 unit to current stock so clicking "Guardar" adds +1 unit
+      stockRef.current.value = String((existing.stock ?? 0) + 1);
+    }
+    if (existing.image) setScannedImagePath(existing.image);
+    const extraImgs = parseImagesJson(existing.images);
+    if (extraImgs) setScannedGalleryImages(extraImgs);
+  }
+
   function handleScanFill(fill: ScanFill) {
+    if (fill.existingProduct) {
+      setDuplicateWarning({
+        isDuplicate: true,
+        reason: "exact_name",
+        message: `El producto "${fill.existingProduct.name}" ya se encuentra en la tienda.`,
+        existingProduct: fill.existingProduct,
+      });
+      applyExistingProductToForm(fill.existingProduct);
+      return;
+    }
+
+    if (fill.existingProduct === null) {
+      setDuplicateWarning(null);
+    }
+
     if (fill.name && nameRef.current) nameRef.current.value = fill.name;
     if (fill.description && descriptionRef.current) descriptionRef.current.value = fill.description;
     if (fill.category && categoryRef.current) categoryRef.current.value = fill.category;
-    if (fill.barcode && barcodeRef.current) barcodeRef.current.value = fill.barcode;
+    if (fill.barcode !== undefined && barcodeRef.current) barcodeRef.current.value = fill.barcode;
     if (fill.price !== undefined && priceRef.current) {
       priceRef.current.value = String(fill.price);
     }
@@ -107,11 +138,15 @@ export function ProductForm({
     performDuplicateCheck(fill.name, fill.barcode, fill.description);
   }
 
+  const matchedProduct = duplicateWarning?.isDuplicate ? duplicateWarning.existingProduct : undefined;
+
   return (
     <div className="max-w-2xl">
       {showScanner && <ScannerPanel onFill={handleScanFill} />}
 
       <form action={formAction} className="space-y-6">
+        <input type="hidden" name="existingProductId" value={matchedProduct?.id ?? ""} />
+
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className={labelClass} htmlFor="name">
@@ -130,13 +165,16 @@ export function ProductForm({
             />
           </div>
 
-          {duplicateWarning?.isDuplicate && duplicateWarning.existingProduct && (
+          {matchedProduct && !product && (
             <div className="sm:col-span-2">
               <ExistingProductActionCard
-                product={duplicateWarning.existingProduct}
+                product={matchedProduct}
                 onFill={handleScanFill}
                 onStockUpdated={(newStock) => {
                   if (stockRef.current) stockRef.current.value = String(newStock);
+                }}
+                onPlannedStockChange={(plannedTotal) => {
+                  if (stockRef.current) stockRef.current.value = String(plannedTotal);
                 }}
               />
             </div>
@@ -166,7 +204,7 @@ export function ProductForm({
 
           <div>
             <label className={labelClass} htmlFor="stock">
-              Stock
+              {matchedProduct && !product ? "Nuevo Stock Total" : "Stock"}
             </label>
             <input
               ref={stockRef}
@@ -175,7 +213,7 @@ export function ProductForm({
               type="number"
               min={0}
               step={1}
-              defaultValue={product?.stock ?? 0}
+              defaultValue={product?.stock ?? 1}
               required
               className={inputClass}
             />
@@ -311,25 +349,23 @@ export function ProductForm({
           </div>
         )}
 
-        {duplicateWarning?.isDuplicate && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs font-bold text-red-600 dark:text-red-400">
-            <AlertTriangle size={16} className="shrink-0 text-red-500" />
-            <span>Guardado bloqueado: este producto ya está en tu inventario (0 margen de error).</span>
-          </div>
-        )}
-
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={isPending || imageUploading || !!duplicateWarning?.isDuplicate}
-            className="rounded-full bg-accent px-7 py-3 text-sm font-bold text-accent-fg transition-opacity disabled:opacity-60"
+            disabled={isPending || imageUploading}
+            className={`inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-bold text-white shadow-sm transition-all disabled:opacity-60 ${
+              matchedProduct && !product
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "bg-accent hover:bg-accent-hover"
+            }`}
           >
-            {duplicateWarning?.isDuplicate
-              ? "🚫 Producto ya en inventario"
-              : isPending
+            {matchedProduct && !product && <PlusCircle size={16} />}
+            {isPending
               ? "Guardando..."
               : imageUploading
               ? "Subiendo imagen..."
+              : matchedProduct && !product
+              ? "Guardar y Actualizar Stock"
               : "Guardar"}
           </button>
           <button

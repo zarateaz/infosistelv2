@@ -6,19 +6,8 @@ import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import sharp from "sharp";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
+import { getImageFallbackUrl } from "@/lib/imageSearch";
 
-// PRODUCT_IMAGES_DIR lets the VPS point this at a location outside
-// .next/standalone (symlinked into its public/img/products at deploy time
-// — see scripts/deploy-vps.sh), so uploaded photos survive every rebuild
-// exactly like data/dev.db does. Unset in local dev: writes straight into
-// the repo's own public/img/products.
-//
-// The `turbopackIgnore` comments below on every fs call using this are
-// deliberate: because it comes from an env var, Turbopack's build-time
-// output tracer can't statically resolve it and — without the hint —
-// falls back to tracing (and bundling into .next/standalone) the ENTIRE
-// project as a worst case. The ignore comment tells it this path is
-// intentionally resolved at runtime, outside anything it needs to trace.
 const UPLOAD_DIR = process.env.PRODUCT_IMAGES_DIR || path.join(process.cwd(), "public", "img", "products");
 const PUBLIC_PREFIX = "/img/products/";
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB raw, before re-encoding
@@ -29,11 +18,13 @@ export interface UploadImageResult {
 }
 
 export async function uploadProductImage(dataUrl: string): Promise<UploadImageResult> {
-  const ip = getClientIP(await headers());
-  const rateCheck = checkRateLimit(rateLimitKey("upload-image", ip), 30, 10 * 60 * 1000);
-  if (!rateCheck.allowed) {
-    return { error: "Demasiadas imágenes subidas seguidas. Espera un momento e intenta de nuevo." };
-  }
+  try {
+    const ip = getClientIP(await headers());
+    const rateCheck = checkRateLimit(rateLimitKey("upload-image", ip), 40, 10 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      return { error: "Demasiadas imágenes subidas seguidas. Espera un momento e intenta de nuevo." };
+    }
+  } catch {}
 
   const match = /^data:image\/(?:png|jpeg|webp);base64,(.+)$/.exec(dataUrl);
   if (!match) {
@@ -44,122 +35,6 @@ export async function uploadProductImage(dataUrl: string): Promise<UploadImageRe
     return { error: "La imagen es muy grande (máximo 8MB)." };
   }
 
-  // mkdir's default mode (0o777) is also reduced by the process umask — a
-  // restrictive umask here would make the directory itself untraversable by
-  // nginx's worker user, independent of the per-file chmod below.
-  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true, mode: 0o755 });
-  await chmod(/*turbopackIgnore: true*/ UPLOAD_DIR, 0o755).catch(() => {});
-  const filename = `${randomUUID()}.webp`;
-
-  try {
-    // Re-encoding through sharp (not just saving the raw upload) does two
-    // things at once: normalizes every product photo to one format/size,
-    // and acts as content validation — a renamed non-image file fails here
-    // instead of ever reaching disk as something with an .webp extension.
-    const processed = await sharp(buffer)
-      .rotate() // applies EXIF orientation, then strips EXIF (metadata is dropped by default on re-encode)
-      .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 82 })
-      .toBuffer();
-    const filePath = path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename);
-    await writeFile(filePath, processed);
-    // writeFile's default mode (0o666) is reduced by the process umask —
-    // on a hardened VPS with a restrictive umask (e.g. 077) that leaves the
-    // file unreadable by nginx's worker user, which serves this directory
-    // directly (see nginx.conf's /img/products/ alias). Force it explicitly
-    // so uploads work regardless of the host's umask.
-    await chmod(filePath, 0o644);
-  } catch {
-    return { error: "No se pudo procesar la imagen. Intenta con otro archivo." };
-  }
-
-  return { path: `${PUBLIC_PREFIX}${filename}` };
-}
-
-/** Same pipeline as uploadProductImage, but the source is a URL from an
- *  external product lookup (e.g. upcitemdb) instead of a file the admin
- *  picked — used by the barcode scanner to fill in a photo automatically
- *  when the manufacturer/listing already has one, so it isn't always a
- *  manual one-by-one step. Best-effort: any failure just leaves the
- *  product without a photo, same as if this had never been attempted. */
-export async function downloadProductImageFromUrl(url: string, fallbackUrl?: string): Promise<UploadImageResult> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return { error: "URL de imagen inválida." };
-  }
-  if (parsed.protocol !== "https:") {
-    return { error: "Solo se acepta HTTPS." };
-  }
-
-  let buffer: Buffer;
-  try {
-    // Same hotlink-protection issue as api/image-proxy/route.ts: a bare
-    // fetch() with no headers gets a 403 from plenty of product-listing
-    // sites. A same-origin Referer + real User-Agent passes that check on
-    // most of them (not all — some also gate on cookies/session).
-    let res = await fetch(parsed, {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
-        referer: `${parsed.origin}/`,
-      },
-    });
-
-    if (!res.ok) {
-      try {
-        const altRes = await fetch(parsed, {
-          signal: AbortSignal.timeout(8000),
-          headers: {
-            "user-agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            accept: "image/*,*/*;q=0.8",
-          },
-        });
-        if (altRes.ok) {
-          res = altRes;
-        }
-      } catch {}
-    }
-
-    if (!res.ok && fallbackUrl && fallbackUrl.startsWith("https://")) {
-      try {
-        const parsedFb = new URL(fallbackUrl);
-        const fbRes = await fetch(parsedFb, {
-          signal: AbortSignal.timeout(8000),
-          headers: {
-            "user-agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.5",
-          },
-        });
-        if (fbRes.ok) {
-          res = fbRes;
-        }
-      } catch {}
-    }
-
-    if (!res.ok) {
-      console.error(`[upload-actions] downloadProductImageFromUrl failed: HTTP ${res.status} for ${parsed.origin}`);
-      return { error: "No se pudo descargar la imagen del proveedor." };
-    }
-    const contentLength = Number(res.headers.get("content-length") ?? 0);
-    if (contentLength > MAX_UPLOAD_BYTES) return { error: "Imagen externa demasiado grande." };
-    const arrayBuffer = await res.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_UPLOAD_BYTES) return { error: "Imagen externa demasiado grande." };
-    buffer = Buffer.from(arrayBuffer);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    console.error(`[upload-actions] downloadProductImageFromUrl threw for ${parsed.origin}: ${reason}`);
-    return { error: "No se pudo descargar la imagen del proveedor." };
-  }
-
-  // mkdir's default mode (0o777) is also reduced by the process umask — a
-  // restrictive umask here would make the directory itself untraversable by
-  // nginx's worker user, independent of the per-file chmod below.
   await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true, mode: 0o755 });
   await chmod(/*turbopackIgnore: true*/ UPLOAD_DIR, 0o755).catch(() => {});
   const filename = `${randomUUID()}.webp`;
@@ -168,7 +43,104 @@ export async function downloadProductImageFromUrl(url: string, fallbackUrl?: str
     const processed = await sharp(buffer)
       .rotate()
       .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 82 })
+      .webp({ quality: 84 })
+      .toBuffer();
+    const filePath = path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename);
+    await writeFile(filePath, processed);
+    await chmod(filePath, 0o644);
+  } catch {
+    return { error: "No se pudo procesar la imagen. Intenta con otro archivo." };
+  }
+
+  return { path: `${PUBLIC_PREFIX}${filename}` };
+}
+
+async function fetchImageBuffer(targetUrl: string): Promise<Buffer | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(targetUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+
+  // Attempt 1: with same-origin Referer
+  try {
+    const res = await fetch(parsed, {
+      signal: AbortSignal.timeout(5500),
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        accept: "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8",
+        referer: `${parsed.origin}/`,
+      },
+    });
+    if (res.ok) {
+      const ab = await res.arrayBuffer();
+      if (ab.byteLength > 300 && ab.byteLength <= MAX_UPLOAD_BYTES) {
+        return Buffer.from(ab);
+      }
+    }
+  } catch {}
+
+  // Attempt 2: without Referer
+  try {
+    const res = await fetch(parsed, {
+      signal: AbortSignal.timeout(5500),
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        accept: "image/*,*/*;q=0.8",
+      },
+    });
+    if (res.ok) {
+      const ab = await res.arrayBuffer();
+      if (ab.byteLength > 300 && ab.byteLength <= MAX_UPLOAD_BYTES) {
+        return Buffer.from(ab);
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+export async function downloadProductImageFromUrl(url: string, fallbackUrl?: string): Promise<UploadImageResult> {
+  const effectiveFallback = fallbackUrl || getImageFallbackUrl(url);
+
+  let buffer = await fetchImageBuffer(url);
+  if (!buffer && effectiveFallback && effectiveFallback.startsWith("https://")) {
+    buffer = await fetchImageBuffer(effectiveFallback);
+  }
+
+  if (!buffer) {
+    return { error: "No se pudo descargar la imagen del proveedor." };
+  }
+
+  await mkdir(/*turbopackIgnore: true*/ UPLOAD_DIR, { recursive: true, mode: 0o755 });
+  await chmod(/*turbopackIgnore: true*/ UPLOAD_DIR, 0o755).catch(() => {});
+  const filename = `${randomUUID()}.webp`;
+
+  try {
+    const img = sharp(buffer);
+    const meta = await img.metadata();
+    // Reject tiny icons/1x1 tracking pixels so every saved product image is a real photo
+    if ((meta.width && meta.width < 100) || (meta.height && meta.height < 100)) {
+      if (effectiveFallback && effectiveFallback !== url) {
+        const fbBuf = await fetchImageBuffer(effectiveFallback);
+        if (fbBuf) {
+          buffer = fbBuf;
+        } else {
+          return { error: "Imagen demasiado pequeña." };
+        }
+      } else {
+        return { error: "Imagen demasiado pequeña." };
+      }
+    }
+
+    const processed = await sharp(buffer)
+      .rotate()
+      .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 84 })
       .toBuffer();
     const filePath = path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename);
     await writeFile(filePath, processed);
@@ -180,9 +152,61 @@ export async function downloadProductImageFromUrl(url: string, fallbackUrl?: str
   return { path: `${PUBLIC_PREFIX}${filename}` };
 }
 
-/** Best-effort cleanup when a product's image is replaced or the product is
- *  deleted — only ever touches files under our own managed upload dir
- *  (randomUUID filenames), never a path someone typed by hand. */
+/**
+ * Automatically downloads and validates up to `targetCount` (default 4) product images
+ * from a candidate pool of URLs. Guarantees that all returned paths are valid local `.webp`
+ * files ready for `image` (cover) and `images` (3 extra gallery photos).
+ * If internet candidates yield fewer than `targetCount` images and `fallbackDataUrl` is provided,
+ * uses the uploaded photo so the product never ends up without photos.
+ */
+export async function downloadTopProductImages(
+  candidateUrls: string[],
+  targetCount = 4,
+  fallbackDataUrl?: string
+): Promise<{
+  cover?: string;
+  gallery: string[];
+  allPaths: string[];
+  validSourceUrls: string[];
+}> {
+  const allPaths: string[] = [];
+  const validSourceUrls: string[] = [];
+
+  // Process candidates in batches of 5 in parallel for speed without overwhelming bandwidth
+  const batchSize = 5;
+  for (let i = 0; i < candidateUrls.length && allPaths.length < targetCount; i += batchSize) {
+    const batch = candidateUrls.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async (url) => {
+        const res = await downloadProductImageFromUrl(url);
+        return { url, path: res.path };
+      })
+    );
+    for (const item of results) {
+      if (item.path && allPaths.length < targetCount) {
+        allPaths.push(item.path);
+        validSourceUrls.push(item.url);
+      }
+    }
+  }
+
+  // If fewer than targetCount images were downloaded and we have the uploaded photo, include it
+  if (allPaths.length < targetCount && fallbackDataUrl) {
+    const uploaded = await uploadProductImage(fallbackDataUrl);
+    if (uploaded.path) {
+      allPaths.push(uploaded.path);
+    }
+  }
+
+  const [cover, ...gallery] = allPaths;
+  return {
+    cover,
+    gallery: gallery.slice(0, 3),
+    allPaths,
+    validSourceUrls,
+  };
+}
+
 export async function deleteProductImageIfManaged(imagePath: string | null): Promise<void> {
   if (!imagePath?.startsWith(PUBLIC_PREFIX)) return;
   const filename = imagePath.slice(PUBLIC_PREFIX.length);
@@ -190,8 +214,5 @@ export async function deleteProductImageIfManaged(imagePath: string | null): Pro
 
   try {
     await unlink(path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, filename));
-  } catch {
-    // Already gone, or a permissions hiccup — not worth failing the
-    // product save/delete over a stale file on disk.
-  }
+  } catch {}
 }

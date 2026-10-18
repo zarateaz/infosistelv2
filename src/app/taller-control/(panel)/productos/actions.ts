@@ -6,6 +6,11 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { deleteProductImageIfManaged } from "./upload-actions";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
+import {
+  evaluateDuplicateMatch,
+  type DuplicateDetectionResult,
+  type ProductSummary,
+} from "@/lib/duplicateDetection";
 
 export interface AdminProduct {
   id: string;
@@ -26,10 +31,6 @@ export interface AdminProduct {
   salePrice: number | null;
 }
 
-// Grouped by category then name — newest-first buried products alphabetically
-// close to nothing else in their own category, so with 247+ products the
-// list read as arbitrary. The admin page groups on this same order to turn
-// it into a real catalog instead of a flat dump.
 export async function getAdminProducts(): Promise<AdminProduct[]> {
   return prisma.product.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] });
 }
@@ -40,6 +41,9 @@ export async function getAdminProduct(id: string): Promise<AdminProduct | null> 
 
 export interface ProductFormState {
   error?: string;
+  successMessage?: string;
+  updatedProductId?: string;
+  newStock?: number;
 }
 
 const MAX_EXTRA_IMAGES = 3;
@@ -66,35 +70,32 @@ const productSchema = z.object({
     .transform((v) => (v ? v : null)),
 });
 
-/** Keeps the Category table in sync with standard Spanish categories — this is
- *  what makes /tienda's filter chips and the scanner's category dropdown
- *  pick up a brand-new category with zero extra steps. */
-async function upsertCategory(name: string): Promise<string> {
-  const normalized = translateCategoryToSpanish(name);
-  await prisma.category.upsert({ where: { name: normalized }, update: {}, create: { name: normalized } });
+async function upsertCategory(name: string, productName?: string): Promise<string> {
+  const normalized = translateCategoryToSpanish(name, productName);
+  await prisma.category.upsert({
+    where: { name: normalized },
+    update: {},
+    create: { name: normalized },
+  });
   return normalized;
 }
 
 function parseProductForm(formData: FormData) {
-  // Same convention as the single `image` hidden input, just JSON-encoded
-  // since a plain <input> can't hold an array — ImageGalleryField writes it.
   const imagesRaw = formData.get("images");
   let images: string[] | undefined;
   if (typeof imagesRaw === "string" && imagesRaw) {
     try {
       const decoded = JSON.parse(imagesRaw);
       if (Array.isArray(decoded)) images = decoded.filter((v) => typeof v === "string");
-    } catch {
-      // Malformed value from a hand-crafted request — ignore rather than
-      // fail the whole save over an optional field.
-    }
+    } catch {}
   }
 
+  const rawName = typeof formData.get("productName") === "string" ? (formData.get("productName") as string) : "";
   const rawCategory = typeof formData.get("category") === "string" ? (formData.get("category") as string) : "";
-  const translatedCategory = rawCategory ? translateCategoryToSpanish(rawCategory) : "";
+  const translatedCategory = rawCategory ? translateCategoryToSpanish(rawCategory, rawName) : "";
 
   const parsed = productSchema.safeParse({
-    name: formData.get("productName"),
+    name: rawName,
     category: translatedCategory,
     description: formData.get("description"),
     price: formData.get("price"),
@@ -116,13 +117,23 @@ function parseProductForm(formData: FormData) {
     return { error: "El precio de oferta debe ser mayor a 0 y menor al precio normal." } as const;
   }
 
-  return { data: { ...parsed.data, isFeatured, onSale, salePrice } } as const;
+  const existingProductId =
+    typeof formData.get("existingProductId") === "string"
+      ? (formData.get("existingProductId") as string).trim()
+      : "";
+
+  return {
+    data: { ...parsed.data, isFeatured, onSale, salePrice },
+    existingProductId: existingProductId || undefined,
+  } as const;
 }
 
-/** Prisma's unique-constraint error code — see
- *  https://www.prisma.io/docs/orm/reference/error-reference#p2002 */
 function isUniqueConstraintError(err: unknown): boolean {
   return typeof err === "object" && err !== null && "code" in err && err.code === "P2002";
+}
+
+function serializeExtraImages(images?: string[]): string | null {
+  return images && images.length > 0 ? JSON.stringify(images) : null;
 }
 
 export async function createProduct(
@@ -132,21 +143,82 @@ export async function createProduct(
   const result = parseProductForm(formData);
   if ("error" in result) return { error: result.error };
 
+  // If the admin scanned/uploaded a product that already exists in the store and chose to
+  // add stock & save ("Guardar"), update the existing product in place instead of creating a duplicate!
+  let targetExistingId = result.existingProductId;
+  if (!targetExistingId) {
+    const dupCheck = await checkDuplicateProduct(
+      result.data.name,
+      result.data.barcode,
+      undefined,
+      result.data.description
+    );
+    if (dupCheck.isDuplicate && dupCheck.existingProduct) {
+      targetExistingId = dupCheck.existingProduct.id;
+    }
+  }
+
+  if (targetExistingId) {
+    const existing = await prisma.product.findUnique({
+      where: { id: targetExistingId },
+      select: { id: true, name: true, stock: true, image: true, images: true },
+    });
+    if (existing) {
+      const category = await upsertCategory(result.data.category, result.data.name);
+      const { images, ...rest } = result.data;
+      const newStock = Math.max(0, rest.stock);
+      const delta = newStock - existing.stock;
+
+      await prisma.product.update({
+        where: { id: existing.id },
+        data: {
+          price: rest.price,
+          costPrice: rest.costPrice,
+          stock: newStock,
+          category,
+          description: rest.description || undefined,
+          barcode: rest.barcode || undefined,
+          image: rest.image || existing.image,
+          images: images && images.length > 0 ? serializeExtraImages(images) : existing.images,
+          isFeatured: rest.isFeatured,
+          onSale: rest.onSale,
+          salePrice: rest.salePrice,
+        },
+      });
+
+      if (delta !== 0) {
+        await prisma.stockMovement
+          .create({
+            data: {
+              productId: existing.id,
+              quantity: delta,
+              type: delta > 0 ? "INGRESO" : "AJUSTE",
+              description:
+                delta > 0
+                  ? `Ingreso de +${delta} u. a producto existente desde Productos`
+                  : `Ajuste de ${delta} u. en producto existente`,
+            },
+          })
+          .catch(() => {});
+      }
+
+      revalidatePath("/taller-control/productos");
+      revalidatePath("/taller-control/inventario");
+      revalidatePath("/taller-control/seguimiento-stock");
+      revalidatePath("/tienda");
+      redirect("/taller-control/productos");
+    }
+  }
+
   const error = await insertProduct(result.data);
   if (error) return { error };
 
   revalidatePath("/taller-control/productos");
+  revalidatePath("/taller-control/inventario");
+  revalidatePath("/taller-control/seguimiento-stock");
   revalidatePath("/tienda");
   redirect("/taller-control/productos");
 }
-
-/** Product.images is a single TEXT column (String?) — arrays go in/out as a
- *  JSON-encoded string, never as raw values Prisma would understand. */
-function serializeExtraImages(images?: string[]): string | null {
-  return images && images.length > 0 ? JSON.stringify(images) : null;
-}
-
-import { evaluateDuplicateMatch, type DuplicateDetectionResult, type ProductSummary } from "@/lib/duplicateDetection";
 
 /** Check if a product with the same barcode or same name already exists in inventory (0 error margin) */
 export async function checkDuplicateProduct(
@@ -186,7 +258,7 @@ export async function checkDuplicateProduct(
       return {
         isDuplicate: true,
         reason: "barcode",
-        message: `El producto ya se encuentra en el inventario con este código de barras ("${existingByBarcode.name}").`,
+        message: `El producto ya se encuentra en la tienda con este código de barras ("${existingByBarcode.name}").`,
         existingProduct: existingByBarcode,
       };
     }
@@ -230,20 +302,38 @@ export async function adjustProductStock(
   try {
     const prod = await prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, stock: true },
+      select: { id: true, stock: true, name: true },
     });
     if (!prod) return { success: false, error: "Producto no encontrado." };
 
     const newStock = Math.max(0, prod.stock + delta);
+    const actualDelta = newStock - prod.stock;
     const updated = await prisma.product.update({
       where: { id: productId },
       data: { stock: newStock },
       select: { id: true, stock: true },
     });
 
+    if (actualDelta !== 0) {
+      await prisma.stockMovement
+        .create({
+          data: {
+            productId: prod.id,
+            quantity: actualDelta,
+            type: actualDelta > 0 ? "INGRESO" : "AJUSTE",
+            description:
+              actualDelta > 0
+                ? `Ingreso rápido de +${actualDelta} u. por detección de producto existente`
+                : `Ajuste rápido de ${actualDelta} u.`,
+          },
+        })
+        .catch(() => {});
+    }
+
     revalidatePath("/taller-control/productos");
     revalidatePath("/tienda");
     revalidatePath("/taller-control/inventario");
+    revalidatePath("/taller-control/seguimiento-stock");
     return { success: true, newStock: updated.stock };
   } catch (err) {
     console.error("[actions] adjustProductStock error:", err);
@@ -261,6 +351,12 @@ export async function updateExistingProductStockAndPrice(
   }
 ): Promise<{ success: boolean; newStock?: number; newPrice?: number; error?: string }> {
   try {
+    const existing = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, stock: true },
+    });
+    if (!existing) return { success: false, error: "Producto no encontrado." };
+
     const updated = await prisma.product.update({
       where: { id: productId },
       data: {
@@ -271,9 +367,27 @@ export async function updateExistingProductStockAndPrice(
       select: { id: true, stock: true, price: true },
     });
 
+    const delta = updated.stock - existing.stock;
+    if (delta !== 0) {
+      await prisma.stockMovement
+        .create({
+          data: {
+            productId,
+            quantity: delta,
+            type: delta > 0 ? "INGRESO" : "AJUSTE",
+            description:
+              delta > 0
+                ? `Ingreso de +${delta} u. en producto existente`
+                : `Ajuste de ${delta} u. en producto existente`,
+          },
+        })
+        .catch(() => {});
+    }
+
     revalidatePath("/taller-control/productos");
     revalidatePath("/tienda");
     revalidatePath("/taller-control/inventario");
+    revalidatePath("/taller-control/seguimiento-stock");
     return { success: true, newStock: updated.stock, newPrice: updated.price };
   } catch (err) {
     console.error("[actions] updateExistingProductStockAndPrice error:", err);
@@ -282,17 +396,34 @@ export async function updateExistingProductStockAndPrice(
 }
 
 async function insertProduct(data: z.infer<typeof productSchema>): Promise<string | null> {
-  const dupCheck = await checkDuplicateProduct(data.name, data.barcode);
+  const dupCheck = await checkDuplicateProduct(data.name, data.barcode, undefined, data.description);
   if (dupCheck.isDuplicate && dupCheck.message) {
     return dupCheck.message;
   }
 
-  const category = await upsertCategory(data.category);
+  const category = await upsertCategory(data.category, data.name);
   const { images, ...rest } = data;
   try {
-    const maxItem = await prisma.product.findFirst({ orderBy: { itemNumber: 'desc' }, select: { itemNumber: true } });
+    const maxItem = await prisma.product.findFirst({
+      orderBy: { itemNumber: "desc" },
+      select: { itemNumber: true },
+    });
     const itemNumber = (maxItem?.itemNumber ?? 0) + 1;
-    await prisma.product.create({ data: { ...rest, category, images: serializeExtraImages(images), itemNumber } });
+    const created = await prisma.product.create({
+      data: { ...rest, category, images: serializeExtraImages(images), itemNumber },
+    });
+    if (created.stock > 0) {
+      await prisma.stockMovement
+        .create({
+          data: {
+            productId: created.id,
+            quantity: created.stock,
+            type: "INGRESO",
+            description: `Stock inicial al registrar producto #${itemNumber}`,
+          },
+        })
+        .catch(() => {});
+    }
     return null;
   } catch (err) {
     if (isUniqueConstraintError(err)) {
@@ -302,10 +433,6 @@ async function insertProduct(data: z.infer<typeof productSchema>): Promise<strin
   }
 }
 
-/** Same validation/insert path as createProduct, but takes a plain object
- *  instead of FormData and never redirects — the Alta Rápida scanner stays
- *  on its own page and resets for the next scan instead of navigating away,
- *  since the whole point of that flow is scanning several items in a row. */
 export async function createProductQuick(input: {
   name: string;
   category: string;
@@ -338,15 +465,23 @@ export async function updateProduct(
   const result = parseProductForm(formData);
   if ("error" in result) return { error: result.error };
 
-  const dupCheck = await checkDuplicateProduct(result.data.name, result.data.barcode, id);
+  const dupCheck = await checkDuplicateProduct(
+    result.data.name,
+    result.data.barcode,
+    id,
+    result.data.description
+  );
   if (dupCheck.isDuplicate && dupCheck.message) {
     return { error: dupCheck.message };
   }
 
-  const category = await upsertCategory(result.data.category);
+  const category = await upsertCategory(result.data.category, result.data.name);
   const { images, ...rest } = result.data;
   const newImagesJson = serializeExtraImages(images);
-  const previous = await prisma.product.findUnique({ where: { id }, select: { image: true, images: true } });
+  const previous = await prisma.product.findUnique({
+    where: { id },
+    select: { image: true, images: true },
+  });
   try {
     await prisma.product.update({
       where: { id },
@@ -359,9 +494,6 @@ export async function updateProduct(
     throw err;
   }
 
-  // Only clean up once the new row is safely saved, and only for files that
-  // actually left the product (cover or gallery) — otherwise re-saving with
-  // the same photos would delete files the product still points to.
   const keptImages = new Set([rest.image, ...(images ?? [])].filter((v): v is string => !!v));
   const removedPaths = [previous?.image, ...parseExtraImages(previous?.images ?? null)].filter(
     (v): v is string => !!v && !keptImages.has(v)
@@ -373,8 +505,6 @@ export async function updateProduct(
   redirect("/taller-control/productos");
 }
 
-/** Inverse of serializeExtraImages — tolerant of null/malformed values
- *  since this only ever reads back what the app itself wrote. */
 function parseExtraImages(images: string | null): string[] {
   if (!images) return [];
   try {
@@ -386,7 +516,10 @@ function parseExtraImages(images: string | null): string[] {
 }
 
 export async function deleteProduct(id: string) {
-  const product = await prisma.product.findUnique({ where: { id }, select: { image: true, images: true } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    select: { image: true, images: true },
+  });
   await prisma.product.delete({ where: { id } });
   const paths = [product?.image, ...parseExtraImages(product?.images ?? null)].filter(
     (v): v is string => !!v

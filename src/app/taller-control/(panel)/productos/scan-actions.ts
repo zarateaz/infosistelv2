@@ -7,8 +7,13 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
-import { evaluateDuplicateMatch, type ProductSummary } from "@/lib/duplicateDetection";
+import {
+  evaluateDuplicateMatch,
+  haveConflictingTechnicalSpecs,
+  type ProductSummary,
+} from "@/lib/duplicateDetection";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
+import { downloadTopProductImages } from "./upload-actions";
 
 export interface BarcodeLookupResult {
   existingProductId?: string;
@@ -18,6 +23,11 @@ export interface BarcodeLookupResult {
     name?: string;
     description?: string;
     category?: string;
+    price?: number;
+    costPrice?: number;
+    stock?: number;
+    image?: string;
+    images?: string[];
     imageUrl?: string;
     imageOptions?: string[];
   };
@@ -29,19 +39,20 @@ export interface BarcodeLookupResult {
 function guessCategory(text: string, categories: string[]): string | undefined {
   const normalized = text.toLowerCase();
   const rules: [RegExp, string[]][] = [
-    [/laptop|notebook/, ["LAPTOPS"]],
-    [/mouse|mice/, ["TECLADOS Y MOUSE", "MOUSE"]],
+    [/laptop|notebook|portatil|portátil/, ["LAPTOPS"]],
+    [/mouse|mice|raton|ratón/, ["TECLADOS Y MOUSE", "MOUSE"]],
     [/keyboard|teclado/, ["TECLADOS Y MOUSE", "TECLADO"]],
     [/monitor|display|pantalla/, ["MONITORES Y PANTALLAS", "MONITORES"]],
-    [/printer|impresora/, ["IMPRESORAS"]],
+    [/printer|impresora|multifuncional/, ["IMPRESORAS"]],
     [/\bink\b|toner|cartridge|tinta|tóner|cartucho/, ["TINTAS Y TÓNERS", "TINTAS", "TINTA Y TONER", "CARTUCHOS"]],
-    [/memory|ram|dimm/, ["COMPONENTES DE PC", "RAM", "MEMORIAS RAM"]],
-    [/ssd|solid state|nvme|hard drive|disco duro/, ["ALMACENAMIENTO", "SSD"]],
+    [/memory|ram|dimm|sodimm/, ["COMPONENTES DE PC", "RAM", "MEMORIAS RAM"]],
+    [/ssd|solid state|nvme|hard drive|disco duro|enclosure|case.*2\.5|caja.*disco/, ["ALMACENAMIENTO", "SSD"]],
     [/\bpc\b|desktop|computer tower|computadora/, ["COMPUTADORAS Y PC", "PC"]],
-    [/cable|adapter|adaptador|hdmi|vga|usb-c/, ["CABLES Y ADAPTADORES"]],
-    [/router|switch|wifi|redes|ethernet/, ["REDES Y CONECTIVIDAD"]],
-    [/charger|cargador|bateria|battery|power/, ["CARGADORES Y ENERGÍA"]],
-    [/audio|headphone|auricular|audifono|parlante|speaker/, ["AUDIO Y SONIDO"]],
+    [/cable|adapter|adaptador|hdmi|vga|usb-c|hub|convertidor/, ["CABLES Y ADAPTADORES"]],
+    [/router|switch|wifi|redes|ethernet|access point|repetidor/, ["REDES Y CONECTIVIDAD"]],
+    [/charger|cargador|bateria|battery|power|ups|estabilizador|fuente/, ["CARGADORES Y ENERGÍA"]],
+    [/audio|headphone|auricular|audifono|parlante|speaker|microfono/, ["AUDIO Y SONIDO"]],
+    [/soporte|stand|holder|funda|mochila|maletin|pad/, ["ACCESORIOS"]],
   ];
   for (const [pattern, candidates] of rules) {
     if (pattern.test(normalized)) {
@@ -54,72 +65,81 @@ function guessCategory(text: string, categories: string[]): string | undefined {
 }
 
 /** Translates raw external category breadcrumbs to standardized Spanish. */
-function extractCategoryGuess(rawCategory: string | undefined): string | undefined {
-  if (!rawCategory) return undefined;
+function extractCategoryGuess(rawCategory: string | undefined, productName?: string): string | undefined {
+  if (!rawCategory && !productName) return undefined;
+  if (!rawCategory) return translateCategoryToSpanish("ACCESORIOS", productName);
   const segments = rawCategory.split(">").map((s) => s.trim()).filter(Boolean);
   const last = segments[segments.length - 1];
-  return last ? translateCategoryToSpanish(last) : undefined;
+  return translateCategoryToSpanish(last || rawCategory, productName);
 }
 
-/** Public UPC listings are almost always in English (upcitemdb is a US-
- *  centric database) — raw title/category keyword matches in guessCategory
- *  already come out in Spanish when they hit, but the listing's own
- *  description never does, and a fallback category (extractCategoryGuess)
- *  stayed in English too. This asks the same DeepSeek account already used
- *  elsewhere (text-only model, no vision needed) to translate+shorten the
- *  description to one plain Spanish sentence and, only when nothing already
- *  matched, propose a short Spanish category. Best-effort: any failure here
- *  just falls back to the raw listing text rather than blocking the lookup
- *  the admin is waiting on. */
 async function translateListingToSpanish(
   title: string,
   rawDescription: string,
   guessedCategory: string | undefined,
   categories: string[]
-): Promise<{ description: string; category?: string }> {
+): Promise<{
+  name: string;
+  description: string;
+  category?: string;
+  suggestedPrice?: number;
+  suggestedCostPrice?: number;
+}> {
   try {
-    // A schema property whose zod type varies (e.g. z.undefined() when
-    // guessedCategory is already set) doesn't translate to valid JSON
-    // Schema for the provider's structured-output call — it silently
-    // fails the whole request rather than just omitting that field. Keep
-    // `category` structurally always-optional instead, and steer whether
-    // the model actually fills it purely through the prompt text below.
     const { object } = await generateObject({
       model: deepseek("deepseek-v4-flash"),
       schema: z.object({
+        name: z
+          .string()
+          .describe(
+            "Nombre comercial técnico en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo + Especificaciones clave como longitud, capacidad, versión o color)."
+          ),
         description: z
           .string()
-          .describe("Descripción breve (una sola frase) en español, basada en el título y la descripción original."),
+          .describe(
+            "Descripción comercial y técnica completa en español (2 frases claras y directas para catálogo de tienda tecnológica), basada en el título y descripción original."
+          ),
         category: z
           .string()
           .optional()
           .describe(
             guessedCategory
               ? "No se usa — omite este campo."
-              : "Categoría del producto en español: usa una de las existentes si encaja bien; si ninguna encaja, propone una nueva categoría corta (2-3 palabras), siempre en español."
+              : "Categoría del producto en español y en mayúsculas."
           ),
+        suggestedPrice: z
+          .number()
+          .positive()
+          .describe("Precio de venta minorista estimado en Soles peruanos (S/.) en el mercado de Perú."),
+        suggestedCostPrice: z
+          .number()
+          .nonnegative()
+          .describe("Precio de costo mayorista estimado en Soles peruanos (S/.), aprox. 70-75% del precio de venta."),
       }),
       messages: [
         {
           role: "user",
-          content: `Título del producto: ${title}
-Descripción original (puede estar en inglés, es de una base pública de códigos de barra): ${rawDescription.slice(0, 800)}
+          content: `Título original del producto: ${title}
+Descripción original: ${rawDescription.slice(0, 800)}
 ${
   guessedCategory
     ? ""
-    : `Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.`
+    : `Categorías existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna)"}.`
 }
-Traduce y resume la descripción en una sola frase en español, sin inventar datos que no estén en el texto original.`,
+Traduce y estandariza el nombre y la descripción al español para la tienda tecnológica INFOSISTEL en Perú, e incluye un precio de venta y costo estimado en Soles (PEN).`,
         },
       ],
     });
-    return { description: object.description, category: object.category };
+    return {
+      name: object.name || title,
+      description: object.description,
+      category: object.category,
+      suggestedPrice: object.suggestedPrice,
+      suggestedCostPrice: object.suggestedCostPrice,
+    };
   } catch (err) {
-    // Best-effort by design (never block the lookup over this), but silent
-    // failures here are exactly what let the z.undefined() schema bug ship
-    // unnoticed — this makes the next one visible in `pm2 logs` instead.
     console.error("[scan-actions] translateListingToSpanish failed:", err);
-    return { description: rawDescription };
+    return { name: title, description: rawDescription };
   }
 }
 
@@ -148,40 +168,38 @@ async function lookupExternalUPC(
       guessedCategory,
       categories
     );
-    const rawCategory = guessedCategory ?? translated.category ?? extractCategoryGuess(item.category);
-    const category = rawCategory ? translateCategoryToSpanish(rawCategory) : undefined;
-    // upcitemdb mixes http:// and https:// sources in the same array —
-    // downloadProductImageFromUrl only accepts https, so pick the first
-    // one that qualifies instead of always trying images[0].
-    const imageUrl: string | undefined = Array.isArray(item.images)
-      ? item.images.find((img: unknown) => typeof img === "string" && img.startsWith("https://"))
-      : undefined;
+    const finalName = translated.name.slice(0, 150).toUpperCase();
+    const rawCategory = guessedCategory ?? translated.category ?? extractCategoryGuess(item.category, finalName);
+    const category = translateCategoryToSpanish(rawCategory, finalName);
 
-    // The listing itself has no photo (the common case — see the comment
-    // on guessCategory: most of this store's inventory has no public UPC
-    // listing at all, and even a matched listing often lacks images). Fall
-    // back to an image search instead of leaving the admin to always find
-    // a photo by hand. Appending the category (when known) disambiguates a
-    // bare model number that's reused across unrelated product lines — see
-    // the same fix in recognizeProductImage below.
-    const searchQuery = category ? `${title} ${category}` : title;
-    const imageOptions = imageUrl
-      ? undefined
-      : await searchProductImages(searchQuery, 4, category ? title : undefined);
+    const listingImages: string[] = Array.isArray(item.images)
+      ? item.images.filter((img: unknown): img is string => typeof img === "string" && img.startsWith("https://"))
+      : [];
+
+    const searchedImages = await searchProductImages({
+      queries: [title, `${title} product`, finalName],
+      max: 8,
+    });
+
+    const combinedCandidates = Array.from(new Set([...listingImages, ...searchedImages]));
+    const downloaded = await downloadTopProductImages(combinedCandidates, 4);
 
     return {
       source: "external",
       suggestion: {
-        name: title.slice(0, 150).toUpperCase(),
+        name: finalName,
         description: translated.description.slice(0, 500).toUpperCase(),
         category,
-        imageUrl,
-        imageOptions: imageOptions && imageOptions.length > 0 ? imageOptions : undefined,
+        price: translated.suggestedPrice ? Math.round(translated.suggestedPrice) : undefined,
+        costPrice: translated.suggestedCostPrice ? Math.round(translated.suggestedCostPrice) : undefined,
+        stock: 1,
+        image: downloaded.cover,
+        images: downloaded.gallery,
+        imageUrl: listingImages[0],
+        imageOptions: combinedCandidates.length > 0 ? combinedCandidates : undefined,
       },
     };
   } catch {
-    // Network hiccup, timeout, or the trial endpoint's rate limit — this
-    // path is best-effort by design, never block on it.
     return { notFound: true, source: "external" };
   }
 }
@@ -229,7 +247,8 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
   if (externalResult.suggestion?.name) {
     const existingByName = await findExistingProductByName(
       externalResult.suggestion.name,
-      externalResult.suggestion.description
+      externalResult.suggestion.description,
+      clean
     );
     if (existingByName) {
       return {
@@ -248,6 +267,16 @@ export interface RecognizeImageResult {
   name?: string;
   description?: string;
   category?: string;
+  barcode?: string;
+  price?: number;
+  costPrice?: number;
+  stock?: number;
+  /** Pre-downloaded cover photo (/img/products/<uuid>.webp) */
+  image?: string;
+  /** Pre-downloaded 3 extra gallery photos (/img/products/<uuid>.webp) */
+  images?: string[];
+  /** All 4 local paths [cover, ...gallery] */
+  appliedLocalImages?: string[];
   imageOptions?: string[];
   existingProductId?: string;
   existingProductName?: string;
@@ -258,29 +287,34 @@ export interface RecognizeImageResult {
 /** Comprehensive zero-margin-of-error duplicate match across catalog products */
 async function findExistingProductByName(
   name: string,
-  description?: string
+  description?: string,
+  barcode?: string,
+  preloadedCandidates?: ProductSummary[]
 ): Promise<ProductSummary | null> {
   const cleanName = name.trim();
-  if (!cleanName) return null;
+  const cleanBarcode = barcode?.trim();
+  if (!cleanName && !cleanBarcode) return null;
 
-  const candidates: ProductSummary[] = await prisma.product.findMany({
-    select: {
-      id: true,
-      name: true,
-      barcode: true,
-      category: true,
-      price: true,
-      costPrice: true,
-      stock: true,
-      image: true,
-      images: true,
-      description: true,
-    },
-  });
+  const candidates: ProductSummary[] =
+    preloadedCandidates ??
+    (await prisma.product.findMany({
+      select: {
+        id: true,
+        name: true,
+        barcode: true,
+        category: true,
+        price: true,
+        costPrice: true,
+        stock: true,
+        image: true,
+        images: true,
+        description: true,
+      },
+    }));
 
   for (const cand of candidates) {
     const match = evaluateDuplicateMatch(
-      { name: cleanName, description },
+      { name: cleanName, description, barcode: cleanBarcode },
       cand
     );
     if (match.isDuplicate && match.existingProduct) {
@@ -298,15 +332,11 @@ export async function recognizeProductImage(
     return { error: "El reconocimiento por IA no está configurado (falta DEEPSEEK_API_KEY)." };
   }
 
-  // This is behind admin auth (proxy.ts), but each call still costs real
-  // money — a stuck client-side retry loop shouldn't be able to run it
-  // unbounded. Same defense as the public chat endpoint, generous limit
-  // since it's a trusted, low-volume user.
   let ip = "127.0.0.1";
   try {
     ip = getClientIP(await headers());
   } catch {}
-  const rateCheck = checkRateLimit(rateLimitKey("recognize-product", ip), 20, 5 * 60 * 1000);
+  const rateCheck = checkRateLimit(rateLimitKey("recognize-product", ip), 30, 5 * 60 * 1000);
   if (!rateCheck.allowed) {
     return { error: "Demasiadas fotos procesadas seguidas. Intenta de nuevo en unos minutos." };
   }
@@ -318,41 +348,95 @@ export async function recognizeProductImage(
   const [, mimeType, base64] = match;
 
   try {
-    const categories = (await prisma.category.findMany({ select: { name: true } })).map((c) => c.name);
+    const [categoriesRows, existingProducts] = await Promise.all([
+      prisma.category.findMany({ select: { name: true } }),
+      prisma.product.findMany({
+        select: {
+          id: true,
+          name: true,
+          barcode: true,
+          category: true,
+          price: true,
+          costPrice: true,
+          stock: true,
+          image: true,
+          images: true,
+          description: true,
+        },
+        orderBy: { itemNumber: "asc" },
+      }),
+    ]);
+
+    const categories = categoriesRows.map((c) => c.name);
+
+    // Build a compact catalog digest so the AI Vision model can directly recognize
+    // if the uploaded photo is already in the store's catalog with 0 margin of error!
+    const catalogDigest = existingProducts
+      .slice(0, 250)
+      .map(
+        (p) =>
+          `[${p.id}] ${p.name} | Cat:${p.category}${p.barcode ? ` | Cod:${p.barcode}` : ""}`
+      )
+      .join("\n");
 
     const { object } = await generateObject({
-      // deepseek-v4-flash-vision-exp reuses the same DEEPSEEK_API_KEY
-      // already configured for the public chatbot (src/app/api/chat) —
-      // no separate account/key needed for this admin-only feature.
-      // "-exp" (experimental) in the model id is DeepSeek's own naming,
-      // not a signal to avoid it for real use.
       model: deepseek("deepseek-v4-flash-vision-exp"),
       schema: z.object({
+        matchedExistingProductId: z
+          .string()
+          .optional()
+          .describe(
+            "Si el producto de la foto YA SE ENCUENTRA en la lista del catálogo actual de la tienda (misma marca, mismo tipo de producto y mismas especificaciones/medidas sin diferencias), coloca aquí el ID exacto que aparece entre corchetes [id]. Si no está en la lista o tiene diferente medida/capacidad/modelo, déjalo vacío."
+          ),
         name: z
           .string()
           .describe(
-            "Nombre comercial exacto en español para catálogo (máximo 140 caracteres). OBLIGATORIO: Marca + Producto + Versión/Protocolo si aplica (ej: 2.0, 3.0, Cat6) + Medida/Longitud exacta si es cable (ej: 1.5M, 2M, 3M, 5M) + Resolución/Velocidad si aplica (ej: 4K@60Hz, 18Gbps, 1000Mbps) + Capacidad/Color si aplica. Ejemplo: 'CABLE HDMI 2.0 4K@60HZ 18GBPS ZKTECO 1.5M'. NUNCA omitas la longitud ni la versión porque hay productos idénticos que solo varían en esas medidas."
+            "Nombre comercial exacto en español y en MAYÚSCULAS para catálogo (máx. 140 caracteres). Estructura obligatoria: TIPO DE PRODUCTO + MARCA + MODELO EXACTO + ESPECIFICACIONES CLAVE (medida/longitud si es cable, versión HDMI/USB/Cat, resolución/velocidad, capacidad GB/TB o color). Si coincide con un producto del catálogo actual, usa exactamente el nombre del catálogo."
           ),
         description: z
           .string()
           .describe(
-            "Descripción técnica minuciosa en español (1-3 frases) basada estrictamente en lo que dice la caja o etiqueta: lista marca, modelo exacto, longitud de cable, velocidad/ancho de banda (ej: 18Gbps), resolución (ej: 4K@60Hz), versión de puerto (ej: HDMI 2.0) y compatibilidad."
+            "Descripción comercial y técnica profesional en español y en MAYÚSCULAS (2 a 3 frases listas para publicar en la tienda). Incluye marca, modelo, características técnicas completas, puertos/conectores, medidas y compatibilidad. PROHIBIDO escribir frases como 'la imagen muestra', 'en la foto se observa' o 'no se aprecian etiquetas'."
           ),
         category: z
           .string()
           .describe(
-            "Categoría del producto: OBLIGATORIO SIEMPRE EN ESPAÑOL y en mayúsculas (ej: 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'ALMACENAMIENTO', 'TECLADOS Y MOUSE', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'AUDIO Y SONIDO', 'CARGADORES Y ENERGÍA', 'COMPUTADORAS Y PC', 'LAPTOPS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC'). Si existe una en el catálogo que encaje úsala; si no, propón una categoría estándar en español."
+            "Categoría exacta en ESPAÑOL y en MAYÚSCULAS: 'LAPTOPS', 'COMPUTADORAS Y PC', 'MONITORES Y PANTALLAS', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'ALMACENAMIENTO', 'COMPONENTES DE PC', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'REDES Y CONECTIVIDAD', 'CABLES Y ADAPTADORES', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'ACCESORIOS' o 'PERIFÉRICOS'."
           ),
+        barcode: z
+          .string()
+          .optional()
+          .describe(
+            "Si en la foto aparece impreso un código de barras (EAN-13, UPC o SKU numérico legible), extrae solo los dígitos exactos. Si no hay código de barras legible, déjalo vacío."
+          ),
+        suggestedPrice: z
+          .number()
+          .positive()
+          .describe(
+            "Precio de venta al público en Soles peruanos (S/.). Si hay una etiqueta de precio visible en la foto úsala; si no, estima con precisión el precio comercial real en tiendas tecnológicas de Perú."
+          ),
+        suggestedCostPrice: z
+          .number()
+          .nonnegative()
+          .describe(
+            "Precio de costo o compra mayorista en Soles peruanos (S/.). Si no está impreso en la foto, estima el costo mayorista real en Perú (aprox. 70% al 75% del precio de venta)."
+          ),
+        detectedStock: z
+          .number()
+          .int()
+          .positive()
+          .default(1)
+          .describe("Cantidad de unidades para ingresar a stock (por defecto 1)."),
         searchQueries: z
           .array(z.string())
           .describe(
-            "2 a 3 consultas de búsqueda priorizadas en inglés o términos internacionales de catálogo para encontrar fotos del producto IDÉNTICO en internet (marca + modelo exacto si se conoce + formato físico exacto)."
+            "3 consultas de búsqueda ultra específicas (combinando Marca + Código de modelo/SKU exacto + nombre de producto en inglés y español) para encontrar las 4 mejores fotos oficiales de catálogo con fondo limpio."
           ),
         negativeKeywords: z
           .array(z.string())
           .optional()
           .describe(
-            "Palabras clave de productos similares pero incorrectos que deben descartarse de los resultados (ej: ['hub', 'dock', 'multiport', 'cable 2m', 'cable 1.5m', 'pigtail'])."
+            "Palabras clave de productos parecidos pero incorrectos que deben filtrarse."
           ),
       }),
       messages: [
@@ -361,63 +445,118 @@ export async function recognizeProductImage(
           content: [
             {
               type: "text",
-              text: `Esta es una foto de la caja, etiqueta o producto de una tienda de tecnología. Lee la marca, modelo y TODAS LAS ESPECIFICACIONES TÉCNICAS IMPRESAS con CERO MARGEN DE ERROR.
+              text: `Eres el sistema experto de catalogación e inventario con IA de INFOSISTEL (Huancayo, Perú).
+Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa todos los datos:
 
-¡CRÍTICO!: En la tienda hay productos muy similares que solo varían en pequeñas características. Debes leer y plasmar CADA detalle en 'name' y 'description':
-1. Longitud / Medida exacta de cable: Si la caja indica una medida (ej: 1m, 1.5m, 1.8m, 2m, 3m, 5m, 10m, 15m, 20cm), ES OBLIGATORIO incluirla en el nombre y descripción.
-2. Versión y tecnología: Si es HDMI 2.0 vs 2.1, USB 2.0 vs 3.0 vs 3.2, Cat5e vs Cat6, Bluetooth 5.0 vs 5.3, etc.
-3. Velocidad, Resolución y Potencia: Si dice 4K@60Hz, 4K@30Hz, 8K, 18Gbps, 48Gbps, 100Mbps, 1000Mbps Gigabit, 20W, 65W, 100W, etc.
-4. Forma física: Distingue entre adaptador rígido sin cable (direct plug), dongle chicote con cable corto, cable largo, o hub multipuerto.
-5. Si es tinta, tóner o cartucho: el color exacto (Negro/Cian/Magenta/Amarillo) es OBLIGATORIO al final de 'name'.
-6. La categoría DEBE ser 100% en español (ej: CABLES Y ADAPTADORES, ALMACENAMIENTO, etc.).
+1. DETECCIÓN DE DUPLICADOS EN CATÁLOGO ACTUAL:
+Revisa primero si este mismo producto ya existe en el catálogo actual de la tienda:
+${catalogDigest || "(Catálogo vacío)"}
+- Si el producto de la foto es el MISMO producto de la lista (misma marca, mismo producto y mismas especificaciones técnicas sin conflicto de medidas ni modelos), devuelve su ID en 'matchedExistingProductId' y su nombre en 'name'.
+- Si varía en longitud (ej: 1.5m vs 3m), capacidad (8GB vs 16GB), versión o modelo, NO es el mismo producto (deja 'matchedExistingProductId' vacío).
 
-Categorías ya existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna todavía)"}.`,
+2. PRECISIÓN DE CAMPOS (0 MARGEN DE ERROR):
+- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo + Medida/Capacidad/Color/Versión).
+- 'category': Categoría exacta en español ('LAPTOPS' si es laptop/notebook, 'ACCESORIOS' si es soporte/funda/mochila/pad, 'ALMACENAMIENTO' si es SSD/disco duro/pendrive/caja o case de disco, 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC').
+- 'description': Redacción comercial y técnica impecable en español para la ficha del producto. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
+- 'suggestedPrice' y 'suggestedCostPrice': Precios reales en Soles (S/.) para el mercado peruano.
+- 'barcode': Si se ven los números bajo un código de barras, extráelos.
+- 'searchQueries': 3 búsquedas precisas (ej: "UGREEN LP130 car phone mount", "UGREEN Desktop Laptop Stand", etc.) para obtener 4 fotos profesionales del producto.`,
             },
-            // "image" content parts are deprecated in ai@7 — "file" with a
-            // bare base64 `data` is the replacement (see @ai-sdk/provider-utils).
             { type: "file", data: base64, mediaType: mimeType },
           ],
         },
       ],
     });
 
-    const categoryInSpanish = translateCategoryToSpanish(object.category);
+    const cleanName = object.name.trim().toUpperCase();
+    const cleanDescription = object.description.trim().toUpperCase();
+    const cleanBarcode = object.barcode?.replace(/[^0-9A-Za-z-]/g, "").trim() || undefined;
+    const categoryInSpanish = translateCategoryToSpanish(object.category, cleanName);
 
-    // Catch a re-scan of a box already in the catalog before spending time
-    // on a product that's just going to get flagged as a duplicate anyway.
-    const existing = await findExistingProductByName(object.name, object.description);
-    if (existing) {
+    // 1. Check AI's direct catalog match (verified against technical spec conflicts)
+    let matchedExisting: ProductSummary | null = null;
+    if (object.matchedExistingProductId) {
+      const candidateById = existingProducts.find(
+        (p) => p.id === object.matchedExistingProductId?.trim()
+      );
+      if (candidateById) {
+        const hasConflict = haveConflictingTechnicalSpecs(
+          `${cleanName} ${cleanDescription}`,
+          `${candidateById.name} ${candidateById.description ?? ""}`
+        );
+        if (!hasConflict) {
+          matchedExisting = candidateById;
+        }
+      }
+    }
+
+    // 2. Deterministic duplicate check across all existing products
+    if (!matchedExisting) {
+      matchedExisting = await findExistingProductByName(
+        cleanName,
+        cleanDescription,
+        cleanBarcode,
+        existingProducts
+      );
+    }
+
+    if (matchedExisting) {
       return {
-        name: existing.name,
-        description: existing.description ?? object.description.toUpperCase(),
-        category: existing.category ?? categoryInSpanish,
-        existingProductId: existing.id,
-        existingProductName: existing.name,
-        existingProduct: existing,
+        name: matchedExisting.name,
+        description: matchedExisting.description ?? cleanDescription,
+        category: matchedExisting.category ?? categoryInSpanish,
+        barcode: matchedExisting.barcode ?? cleanBarcode,
+        price: matchedExisting.price,
+        costPrice: matchedExisting.costPrice ?? 0,
+        stock: matchedExisting.stock ?? 0,
+        existingProductId: matchedExisting.id,
+        existingProductName: matchedExisting.name,
+        existingProduct: matchedExisting,
       };
     }
 
-    // Precise image search using AI-generated search queries + negative keyword filtering
-    const imageOptions = await searchProductImages({
-      queries: object.searchQueries && object.searchQueries.length > 0
-        ? object.searchQueries
-        : [object.name, `${object.name} ${categoryInSpanish}`],
+    // 3. New product: Search and automatically download 4 valid crisp product images!
+    const queries = [
+      ...(object.searchQueries ?? []),
+      `${cleanName} product`,
+      cleanName,
+    ].filter(Boolean);
+
+    const candidateUrls = await searchProductImages({
+      queries,
       negativeKeywords: object.negativeKeywords,
-      max: 6,
+      max: 10,
     }).catch((err) => {
       console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
       return [];
     });
 
+    // Pre-download top 4 valid images through sharp right away (with uploaded photo as fallback)
+    const downloaded = await downloadTopProductImages(candidateUrls, 4, dataUrl);
+
+    const suggestedPrice =
+      object.suggestedPrice && object.suggestedPrice > 0
+        ? Math.round(object.suggestedPrice * 100) / 100
+        : undefined;
+    const suggestedCostPrice =
+      object.suggestedCostPrice !== undefined && object.suggestedCostPrice >= 0
+        ? Math.round(object.suggestedCostPrice * 100) / 100
+        : undefined;
+
     return {
-      name: object.name.toUpperCase(),
-      description: object.description.toUpperCase(),
+      name: cleanName,
+      description: cleanDescription,
       category: categoryInSpanish,
-      imageOptions: imageOptions.length > 0 ? imageOptions : undefined,
+      barcode: cleanBarcode,
+      price: suggestedPrice,
+      costPrice: suggestedCostPrice,
+      stock: object.detectedStock ?? 1,
+      image: downloaded.cover,
+      images: downloaded.gallery,
+      appliedLocalImages: downloaded.allPaths,
+      imageOptions: candidateUrls.length > 0 ? candidateUrls : undefined,
     };
   } catch (err) {
-    // Logged (never silent) so a DeepSeek outage/auth/quota failure shows
-    // up in `pm2 logs` instead of just being a generic error on screen.
     console.error("[scan-actions] recognizeProductImage failed:", err);
     return { error: "No se pudo procesar la imagen. Intenta con otra foto más clara." };
   }
@@ -437,7 +576,7 @@ export async function searchImagesManually(query: string): Promise<string[]> {
   if (!rateCheck.allowed) return [];
 
   return searchProductImages({
-    query: clean,
-    max: 6,
+    queries: [`${clean} product`, clean],
+    max: 8,
   }).catch(() => []);
 }
