@@ -2,19 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const EYE_RADIUS = 28;
-const PUPIL_MAX_OFFSET = 9;
+const EYE_RADIUS = 24;
+const PUPIL_MAX_OFFSET = 7;
 
 /** A pair of eyes that track the mouse cursor around the page while the
  *  admin is typing their username, and shut when the password field gets
  *  focus — nobody's peeking while you type your password. Pure CSS/SVG,
  *  no new dependency. Purely decorative (aria-hidden) — never blocks
- *  keyboard-only login.
- *
- *  Sized and contrasted deliberately high (thick dark ring, solid white
- *  sclera, drop shadow) — the first version blended into the light
- *  glass-panel background and read as "gone" at normal viewing distance,
- *  not just on close zoom. */
+ *  keyboard-only login. */
 export function CuriousEyes({ closed }: { closed: boolean }) {
   const leftEyeRef = useRef<HTMLDivElement>(null);
   const rightEyeRef = useRef<HTMLDivElement>(null);
@@ -72,7 +67,7 @@ export function CuriousEyes({ closed }: { closed: boolean }) {
   return (
     <div
       aria-hidden
-      className="relative mx-auto flex w-fit items-center justify-center gap-4 rounded-full border border-orange-500/30 bg-[#0d0614]/85 px-5 py-2.5 shadow-[0_0_35px_rgba(255,110,20,0.3),inset_0_1px_1px_rgba(255,255,255,0.08)] backdrop-blur-xl ring-1 ring-purple-500/20"
+      className="relative mx-auto flex w-fit items-center justify-center gap-3.5 rounded-full border border-[#0a5fdb]/20 bg-[#eaf1ff] px-5 py-2.5 shadow-[0_8px_24px_-6px_rgba(10,95,219,0.18),inset_0_1px_0_rgba(255,255,255,0.9)]"
     >
       <Eye eyeRef={leftEyeRef} pupil={leftPupil} closed={isClosed} />
       <Eye eyeRef={rightEyeRef} pupil={rightPupil} closed={isClosed} />
@@ -92,30 +87,30 @@ function Eye({
   return (
     <div
       ref={eyeRef}
-      className="relative overflow-hidden rounded-full shadow-[0_0_22px_rgba(255,120,20,0.7),inset_0_0_12px_rgba(194,65,12,0.6)]"
+      className="relative overflow-hidden rounded-full bg-white shadow-[0_2px_8px_rgba(11,18,48,0.12),inset_0_2px_4px_rgba(11,18,48,0.06)]"
       style={{
         width: EYE_RADIUS * 2,
         height: EYE_RADIUS * 2,
-        border: "2.5px solid #ff7a18",
-        background: "radial-gradient(circle at 40% 40%, #fff7c2 0%, #ffd34d 35%, #ff9a1a 70%, #c2410c 100%)",
+        border: "2.5px solid #0b1230",
       }}
     >
-      {/* Cat-like slit pupil */}
+      {/* Iris & Pupil in Infosistel corporate blue & navy */}
       <div
-        className="absolute rounded-full bg-[#0a0410] transition-transform duration-75 ease-out shadow-[0_0_8px_rgba(10,4,16,0.9)]"
+        className="absolute flex items-center justify-center rounded-full bg-[#0a5fdb] transition-transform duration-75 ease-out"
         style={{
-          width: 9,
-          height: 26,
+          width: 20,
+          height: 20,
           left: "50%",
           top: "50%",
           transform: `translate(calc(-50% + ${pupil.x}px), calc(-50% + ${pupil.y}px))`,
         }}
       >
-        <div className="absolute left-0.5 top-1.5 h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_3px_#fff]" />
+        <div className="h-2.5 w-2.5 rounded-full bg-[#0b1230]" />
+        <div className="absolute left-1 top-1 h-1.5 w-1.5 rounded-full bg-white/90" />
       </div>
-      {/* Eyelid — slides down from the top on password focus, with a glowing orange rim */}
+      {/* Eyelid — slides down from the top on password focus */}
       <div
-        className="absolute inset-x-0 top-0 origin-top bg-gradient-to-b from-[#0a0410] via-[#1a0b2e] to-[#3b1446] border-b-2 border-orange-500 shadow-[0_2px_12px_rgba(255,110,20,0.8)] transition-transform duration-200 ease-in-out"
+        className="absolute inset-x-0 top-0 origin-top border-b-2 border-[#0a5fdb] bg-gradient-to-b from-[#0b1230] to-[#162454] transition-transform duration-200 ease-in-out"
         style={{ height: "100%", transform: closed ? "scaleY(1)" : "scaleY(0)" }}
       />
     </div>
