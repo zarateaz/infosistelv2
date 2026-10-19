@@ -19,6 +19,8 @@ import { MonthSelector } from "./MonthSelector";
 import { MonthlyReportsArchive } from "./MonthlyReportsArchive";
 import { DownloadHistoryPdfButton } from "./DownloadHistoryPdfButton";
 import { StatCard, type StatTint } from "../StatCard";
+import { CobranzaInternet } from "./CobranzaInternet";
+import { getInternetClients } from "./internetActions";
 
 const METHOD_ICON: Record<(typeof PAYMENT_METHODS)[number], typeof Banknote> = {
   EFECTIVO: Banknote,
@@ -46,12 +48,13 @@ export default async function AdminCashboxPage({
   const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : monthKey();
   const showAll = view === "all";
 
-  const [transactions, monthTransactions, period, availableMonths, monthsSummary] = await Promise.all([
+  const [transactions, monthTransactions, period, availableMonths, monthsSummary, internetClients] = await Promise.all([
     getCashboxTransactions(),
     getCashboxTransactionsForMonth(month),
     getCashboxPeriod(month),
     listCashboxMonths(),
     getCashboxMonthsSummary(),
+    getInternetClients(),
   ]);
 
   const displayedTransactions = showAll ? transactions : monthTransactions;
@@ -150,6 +153,8 @@ export default async function AdminCashboxPage({
         <div className="mt-8">
           <AddTransactionForm month={month} />
         </div>
+
+        <CobranzaInternet clients={internetClients} />
       </div>
 
       <div className="print:hidden mt-10 flex flex-wrap items-center justify-between gap-3">

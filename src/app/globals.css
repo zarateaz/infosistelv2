@@ -331,3 +331,12 @@ body {
     print-color-adjust: exact;
   }
 }
+
+/* Cobranza de internet — notificación roja tipo YouTube/TikTok: entra deslizando desde la derecha. */
+@keyframes cobranza-toast-in {
+  from { opacity: 0; transform: translateX(120%) scale(0.95); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+.cobranza-toast {
+  animation: cobranza-toast-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

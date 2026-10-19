@@ -286,6 +286,25 @@ model CashboxPeriod {
 }
 
 /**
+ * Cobranza de internet — clientes con servicio mensual. `nextPaymentDate` es
+ * la próxima fecha de pago (calendario, anclada en UTC como las fechas de
+ * Caja, ver caja/month.ts); al marcar "Pagó" se corre un mes. Vencido /
+ * por vencer se deriva en el cliente contra la fecha de hoy, nunca se guarda.
+ */
+model InternetClient {
+  id              String   @id @default(cuid())
+  clientName      String
+  whatsapp        String // solo dígitos, con código de país (ej. 51964648202)
+  startDate       DateTime
+  nextPaymentDate DateTime
+  amount          Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([nextPaymentDate])
+}
+
+/**
  * Cuentas por cobrar — dinero que un cliente todavía debe por una venta o
  * servicio ya facturado. `collected` se actualiza con cada abono parcial;
  * saldo, estado (VENCIDO/PENDIENTE/PAGADO) y días vencidos se derivan en
