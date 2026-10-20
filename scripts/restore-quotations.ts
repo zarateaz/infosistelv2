@@ -297,6 +297,16 @@ async function main() {
       q.deletedAt = null;
       q.includeIgv = q.includeIgv ? 1 : 0;
 
+      // Los respaldos anteriores a la migración de fotos no traen la columna
+      // `images` (ni otras opcionales): better-sqlite3 exige todos los
+      // parámetros nombrados, así que se rellenan con null.
+      for (const key of [
+        "clientDocType", "clientDocNum", "clientPhone", "clientEmail", "clientAddress",
+        "attentionTo", "deliveryTime", "paymentMethod", "warranty", "notes", "images",
+      ]) {
+        if (q[key as keyof typeof q] === undefined) (q as Record<string, unknown>)[key] = null;
+      }
+
       insertQuote.run(q);
 
       for (const it of data.items) {
