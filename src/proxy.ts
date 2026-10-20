@@ -15,7 +15,16 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 // style attributes, and CSS-injection risk here is far lower than script
 // injection) — also logged in hardening-log.md.
 export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
+
+  // OWASP ASVS V5: Detección Temprana y Mitigación de Inyección SQL (SQLi)
+  const sqlInjectionPattern = /(%27)|(')|(--)|(%23)|(#)|(\/\*)|(union\s+select)|(drop\s+table)|(insert\s+into)|(update\s+.*set)|(delete\s+from)|(information_schema)|(benchmark\s*\()|(sleep\s*\()/i;
+  if (sqlInjectionPattern.test(decodeURIComponent(search || ""))) {
+    return new NextResponse(
+      JSON.stringify({ error: "Solicitud bloqueada por control de seguridad ASVS V5 (SQLi Detection)." }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   // Fase 3 — panel admin: everything under /taller-control except the login page
   // itself requires a valid session JWT. Uses `jose` (WebCrypto), not

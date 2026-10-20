@@ -49,7 +49,7 @@ function PaymentMethodBadge({ method }: { method: string }) {
   if (method === "YAPE 1") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-md bg-[#742284]/10 dark:bg-[#742284]/25 px-2 py-0.5 text-xs font-semibold text-[#742284] dark:text-[#c084fc] border border-[#742284]/20 shadow-xs">
-        <YapeIcon className="h-3.5 w-3.5 shrink-0" />
+        <YapeIcon size={16} className="rounded-xs" />
         <span>Yape 1</span>
         <span className="text-[10px] opacity-75 font-normal">(Edgar)</span>
       </span>
@@ -58,7 +58,7 @@ function PaymentMethodBadge({ method }: { method: string }) {
   if (method === "YAPE 2") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-md bg-[#742284]/10 dark:bg-[#742284]/25 px-2 py-0.5 text-xs font-semibold text-[#742284] dark:text-[#c084fc] border border-[#742284]/20 shadow-xs">
-        <YapeIcon className="h-3.5 w-3.5 shrink-0" />
+        <YapeIcon size={16} className="rounded-xs" />
         <span>Yape 2</span>
         <span className="text-[10px] opacity-75 font-normal">(Caja)</span>
       </span>
