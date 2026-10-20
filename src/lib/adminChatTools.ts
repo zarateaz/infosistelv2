@@ -1,32 +1,123 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { revalidatePath } from "next/cache";
+
+/**
+ * Resuelve un producto en el inventario de forma infalible buscando por:
+ * 1. Número de producto (itemNumber, ej: 14, "#14", "producto 14")
+ * 2. ID directo de base de datos (cuid)
+ * 3. Código de barras exacto
+ * 4. Nombre exacto (case-insensitive)
+ * 5. Nombre aproximado o palabras clave
+ */
+export async function findAdminProduct(query: string | number) {
+  if (typeof query === "number") {
+    return prisma.product.findUnique({ where: { itemNumber: query } });
+  }
+
+  const clean = String(query).trim();
+  if (!clean) return null;
+
+  // 1. Si es número o tiene formato "#14", "producto 14", "n° 14"
+  const matchNum = clean.match(/^(?:#|producto\s*|n[°º.]*\s*|item\s*)?(\d+)$/i);
+  if (matchNum) {
+    const num = parseInt(matchNum[1], 10);
+    const byNum = await prisma.product.findUnique({ where: { itemNumber: num } });
+    if (byNum) return byNum;
+  }
+
+  // 2. ID directo (cuid)
+  const byId = await prisma.product.findUnique({ where: { id: clean } }).catch(() => null);
+  if (byId) return byId;
+
+  // 3. Código de barras exacto
+  const byBarcode = await prisma.product.findFirst({ where: { barcode: clean } });
+  if (byBarcode) return byBarcode;
+
+  // 4. Búsqueda por nombre en catálogo
+  const all = await prisma.product.findMany({
+    select: {
+      id: true,
+      itemNumber: true,
+      name: true,
+      category: true,
+      price: true,
+      costPrice: true,
+      stock: true,
+      barcode: true,
+      onSale: true,
+      salePrice: true,
+    },
+  });
+
+  const cleanLower = clean.toLowerCase();
+  // Coincidencia exacta de nombre
+  const exact = all.find((p) => p.name.toLowerCase() === cleanLower);
+  if (exact) return exact;
+
+  // Coincidencia de subcadena única
+  const contains = all.filter((p) => p.name.toLowerCase().includes(cleanLower));
+  if (contains.length === 1) return contains[0];
+
+  // Coincidencia por tokens relevantes (ej. "Kingston NV2", "IdeaPad Slim")
+  const tokens = cleanLower
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !["producto", "item", "el", "la", "de", "del", "un", "una", "por"].includes(t));
+
+  if (tokens.length > 0) {
+    const scored = all
+      .map((p) => {
+        const pLower = p.name.toLowerCase();
+        const matches = tokens.filter((t) => pLower.includes(t)).length;
+        return { product: p, score: matches };
+      })
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length > 0 && scored[0].score >= Math.ceil(tokens.length * 0.6)) {
+      return scored[0].product;
+    }
+  }
+
+  return contains[0] ?? null;
+}
 
 export const buscarProductoAdmin = tool({
   description:
-    "Busca un producto en el inventario por nombre, categoría, código de barras o número de producto. " +
-    "Úsala para encontrar el ID del producto y su stock actual antes de descontarlo o aumentarlo.",
+    "Busca productos en el inventario por número de producto (# ítem ej: 14 o #14), nombre, categoría o código de barras. " +
+    "Úsala para encontrar el ID del producto, su número (#) y su stock actual.",
   inputSchema: z.object({
     consulta: z
       .string()
       .min(1)
-      .describe('Nombre del producto, código de barras o número (ej. "teclado", "123456789", "15").'),
+      .describe('Nombre del producto, número de producto (#14 o 14), código de barras o categoría.'),
   }),
   execute: async ({ consulta }) => {
-    const num = parseInt(consulta, 10);
+    const clean = consulta.trim();
+    const matchNum = clean.match(/^(?:#|producto\s*|n[°º.]*\s*)?(\d+)$/i);
+    const num = matchNum ? parseInt(matchNum[1], 10) : NaN;
     const isNum = !isNaN(num);
 
     const products = await prisma.product.findMany({
       where: {
         OR: [
-          { name: { contains: consulta } },
-          { barcode: { equals: consulta } },
-          { category: { contains: consulta } },
+          { name: { contains: clean } },
+          { barcode: { equals: clean } },
+          { category: { contains: clean } },
           ...(isNum ? [{ itemNumber: num }] : []),
         ],
       },
-      select: { id: true, itemNumber: true, name: true, stock: true, barcode: true, price: true },
-      take: 5,
+      select: {
+        id: true,
+        itemNumber: true,
+        name: true,
+        stock: true,
+        barcode: true,
+        price: true,
+        category: true,
+      },
+      take: 8,
     });
     return { encontrados: products.length, productos: products };
   },
@@ -34,19 +125,30 @@ export const buscarProductoAdmin = tool({
 
 export const registrarVentaAdmin = tool({
   description:
-    "Descuenta stock de un producto registrando una venta. " +
-    "Debes proporcionar el ID del producto, la cantidad a descontar y el origen de la venta (WEB o FISICA). " +
-    "Por defecto asume FISICA si el usuario no especifica.",
+    "Descuenta stock de un producto registrando una venta física o web. " +
+    "Puedes proporcionar el número de producto (ej: 14 o #14), el nombre del producto, el código de barras o el ID del producto, y la cantidad a descontar.",
   inputSchema: z.object({
-    productId: z.string().describe("El ID del producto a descontar."),
-    cantidad: z.number().int().positive().describe("Cantidad de unidades a descontar."),
-    origen: z.enum(["WEB", "FISICA"]).describe("Origen de la venta."),
+    producto: z
+      .string()
+      .optional()
+      .describe("Número de producto (ej: 14 o #14), nombre del producto, código de barras o ID."),
+    productId: z
+      .string()
+      .optional()
+      .describe("ID del producto (opcional si se pasa 'producto')."),
+    cantidad: z.number().int().positive().describe("Cantidad de unidades a descontar por la venta."),
+    origen: z.enum(["WEB", "FISICA"]).default("FISICA").describe("Origen de la venta (por defecto FISICA)."),
   }),
-  execute: async ({ productId, cantidad, origen }) => {
-    const product = await prisma.product.findUnique({ where: { id: productId } });
-    if (!product) return { error: "Producto no encontrado." };
+  execute: async ({ producto, productId, cantidad, origen = "FISICA" }) => {
+    const target = producto || productId;
+    if (!target) return { error: "Debes especificar qué producto descontar (número, nombre o ID)." };
+
+    const product = await findAdminProduct(target);
+    if (!product) {
+      return { error: `No se encontró ningún producto con "${target}". Puedes buscarlo primero con buscarProductoAdmin.` };
+    }
     if (product.stock < cantidad) {
-      return { error: `Stock insuficiente. Solo quedan ${product.stock} unidades.` };
+      return { error: `Stock insuficiente para [#${product.itemNumber}] ${product.name}. Solo quedan ${product.stock} unidades.` };
     }
 
     const unitPrice = product.onSale && product.salePrice ? product.salePrice : product.price;
@@ -55,7 +157,7 @@ export const registrarVentaAdmin = tool({
     const totalCost = unitCost * cantidad;
     const totalProfit = totalPrice - totalCost;
 
-    const [sale, updatedProduct, movement] = await prisma.$transaction([
+    const [, updatedProduct] = await prisma.$transaction([
       prisma.sale.create({
         data: {
           productId: product.id,
@@ -68,53 +170,94 @@ export const registrarVentaAdmin = tool({
           origin: origen,
         },
       }),
-      prisma.product.update({ where: { id: product.id }, data: { stock: { decrement: cantidad } } }),
+      prisma.product.update({
+        where: { id: product.id },
+        data: { stock: { decrement: cantidad } },
+        select: { id: true, itemNumber: true, name: true, stock: true },
+      }),
       prisma.stockMovement.create({
         data: {
           productId: product.id,
           quantity: -cantidad,
           type: `VENTA_${origen}`,
-          description: `Venta registrada mediante chatbot`,
-        }
-      })
+          description: `Venta registrada mediante chatbot admin (-${cantidad} u.)`,
+        },
+      }),
     ]);
 
-    return { 
-      exito: true, 
-      mensaje: `Venta registrada correctamente. Stock descontado.`, 
-      stockRestante: updatedProduct.stock 
+    try {
+      revalidatePath("/taller-control/productos");
+      revalidatePath("/taller-control/inventario");
+      revalidatePath("/taller-control/seguimiento-stock");
+      revalidatePath("/tienda");
+    } catch {}
+
+    return {
+      exito: true,
+      itemNumber: updatedProduct.itemNumber,
+      nombre: updatedProduct.name,
+      unidadesVendidas: cantidad,
+      stockRestante: updatedProduct.stock,
+      mensaje: `Venta de ${cantidad} u. registrada correctamente para [#${updatedProduct.itemNumber}] ${updatedProduct.name}. Stock restante en tienda: ${updatedProduct.stock} unidades.`,
     };
   },
 });
 
 export const ajustarStockAdmin = tool({
   description:
-    "Añade stock a un producto cuando llega nueva mercadería. " +
-    "Debes proporcionar el ID del producto y la cantidad a añadir.",
+    "Añade o incrementa el stock de un producto cuando llega nueva mercadería o se repone inventario. " +
+    "Puedes proporcionar el número de producto (ej: 14 o #14), el nombre del producto, el código de barras o el ID del producto, y la cantidad a añadir.",
   inputSchema: z.object({
-    productId: z.string().describe("El ID del producto a reabastecer."),
-    cantidad: z.number().int().positive().describe("Cantidad de unidades a añadir."),
+    producto: z
+      .string()
+      .optional()
+      .describe("Número de producto (ej: 14 o #14), nombre del producto (ej: 'Kingston NV2'), código de barras o ID."),
+    productId: z
+      .string()
+      .optional()
+      .describe("ID del producto (opcional si se pasa 'producto')."),
+    cantidad: z.number().int().positive().describe("Cantidad de unidades a añadir al stock."),
   }),
-  execute: async ({ productId, cantidad }) => {
-    const product = await prisma.product.findUnique({ where: { id: productId } });
-    if (!product) return { error: "Producto no encontrado." };
+  execute: async ({ producto, productId, cantidad }) => {
+    const target = producto || productId;
+    if (!target) return { error: "Debes especificar qué producto reabastecer (número, nombre o ID)." };
 
-    const [updatedProduct, movement] = await prisma.$transaction([
-      prisma.product.update({ where: { id: product.id }, data: { stock: { increment: cantidad } } }),
+    const product = await findAdminProduct(target);
+    if (!product) {
+      return { error: `No se encontró ningún producto con "${target}". Puedes buscarlo primero con buscarProductoAdmin.` };
+    }
+
+    const [updatedProduct] = await prisma.$transaction([
+      prisma.product.update({
+        where: { id: product.id },
+        data: { stock: { increment: cantidad } },
+        select: { id: true, itemNumber: true, name: true, stock: true },
+      }),
       prisma.stockMovement.create({
         data: {
           productId: product.id,
           quantity: cantidad,
           type: "INGRESO",
-          description: `Ingreso de stock mediante chatbot`,
-        }
-      })
+          description: `Ingreso de stock mediante chatbot admin (+${cantidad} u.)`,
+        },
+      }),
     ]);
 
-    return { 
-      exito: true, 
-      mensaje: `Stock añadido correctamente.`, 
-      stockRestante: updatedProduct.stock 
+    try {
+      revalidatePath("/taller-control/productos");
+      revalidatePath("/taller-control/inventario");
+      revalidatePath("/taller-control/seguimiento-stock");
+      revalidatePath("/tienda");
+    } catch {}
+
+    return {
+      exito: true,
+      itemNumber: updatedProduct.itemNumber,
+      nombre: updatedProduct.name,
+      unidadesAgregadas: cantidad,
+      stockAnterior: product.stock,
+      nuevoStock: updatedProduct.stock,
+      mensaje: `Stock añadido con éxito: Se sumaron +${cantidad} u. a [#${updatedProduct.itemNumber}] ${updatedProduct.name}. Nuevo stock en tienda: ${updatedProduct.stock} unidades.`,
     };
   },
 });

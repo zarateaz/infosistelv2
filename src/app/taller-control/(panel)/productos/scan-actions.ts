@@ -9,7 +9,6 @@ import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
 import {
   evaluateDuplicateMatch,
-  haveConflictingTechnicalSpecs,
   type ProductSummary,
 } from "@/lib/duplicateDetection";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
@@ -369,29 +368,13 @@ export async function recognizeProductImage(
 
     const categories = categoriesRows.map((c) => c.name);
 
-    // Build a compact catalog digest so the AI Vision model can directly recognize
-    // if the uploaded photo is already in the store's catalog with 0 margin of error!
-    const catalogDigest = existingProducts
-      .slice(0, 250)
-      .map(
-        (p) =>
-          `[${p.id}] ${p.name} | Cat:${p.category}${p.barcode ? ` | Cod:${p.barcode}` : ""}`
-      )
-      .join("\n");
-
     const { object } = await generateObject({
       model: deepseek("deepseek-v4-flash-vision-exp"),
       schema: z.object({
-        matchedExistingProductId: z
-          .string()
-          .optional()
-          .describe(
-            "Si el producto de la foto YA SE ENCUENTRA en la lista del catálogo actual de la tienda (misma marca, mismo tipo de producto y mismas especificaciones/medidas sin diferencias), coloca aquí el ID exacto que aparece entre corchetes [id]. Si no está en la lista o tiene diferente medida/capacidad/modelo, déjalo vacío."
-          ),
         name: z
           .string()
           .describe(
-            "Nombre comercial exacto en español y en MAYÚSCULAS para catálogo (máx. 140 caracteres). Estructura obligatoria: TIPO DE PRODUCTO + MARCA + MODELO EXACTO + ESPECIFICACIONES CLAVE (medida/longitud si es cable, versión HDMI/USB/Cat, resolución/velocidad, capacidad GB/TB o color). Si coincide con un producto del catálogo actual, usa exactamente el nombre del catálogo."
+            "Nombre comercial exacto en español y en MAYÚSCULAS para catálogo (máx. 140 caracteres). Estructura obligatoria: TIPO DE PRODUCTO + MARCA + MODELO EXACTO + ESPECIFICACIONES CLAVE (medida/longitud si es cable, versión HDMI/USB/Cat, resolución/velocidad, capacidad GB/TB o color)."
           ),
         description: z
           .string()
@@ -448,19 +431,13 @@ export async function recognizeProductImage(
               text: `Eres el sistema experto de catalogación e inventario con IA de INFOSISTEL (Huancayo, Perú).
 Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa todos los datos:
 
-1. DETECCIÓN DE DUPLICADOS EN CATÁLOGO ACTUAL:
-Revisa primero si este mismo producto ya existe en el catálogo actual de la tienda:
-${catalogDigest || "(Catálogo vacío)"}
-- Si el producto de la foto es el MISMO producto de la lista (misma marca, mismo producto y mismas especificaciones técnicas sin conflicto de medidas ni modelos), devuelve su ID en 'matchedExistingProductId' y su nombre en 'name'.
-- Si varía en longitud (ej: 1.5m vs 3m), capacidad (8GB vs 16GB), versión o modelo, NO es el mismo producto (deja 'matchedExistingProductId' vacío).
-
-2. PRECISIÓN DE CAMPOS (0 MARGEN DE ERROR):
-- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo + Medida/Capacidad/Color/Versión).
-- 'category': Categoría exacta en español ('LAPTOPS' si es laptop/notebook, 'ACCESORIOS' si es soporte/funda/mochila/pad, 'ALMACENAMIENTO' si es SSD/disco duro/pendrive/caja o case de disco, 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC').
+1. PRECISIÓN DE RECONOCIMIENTO (0 MARGEN DE ERROR):
+- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo exacto + Medida/Capacidad/Color/Versión). Ejemplos: "MOUSE LOGITECH G203 LIGHTSYNC RGB NEGRO", "CABLE UGREEN USB-C A USB-C 100W 1M", "MEMORIA RAM KINGSTON FURY BEAST 16GB DDR4 3200MHZ".
+- 'category': Categoría exacta en español ${categories.length > 0 ? `(elige entre: ${categories.join(", ")})` : "('LAPTOPS', 'ACCESORIOS', 'ALMACENAMIENTO', 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC')"}.
 - 'description': Redacción comercial y técnica impecable en español para la ficha del producto. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
 - 'suggestedPrice' y 'suggestedCostPrice': Precios reales en Soles (S/.) para el mercado peruano.
-- 'barcode': Si se ven los números bajo un código de barras, extráelos.
-- 'searchQueries': 3 búsquedas precisas (ej: "UGREEN LP130 car phone mount", "UGREEN Desktop Laptop Stand", etc.) para obtener 4 fotos profesionales del producto.`,
+- 'barcode': Si se ven los números bajo un código de barras, extráelos exactamente.
+- 'searchQueries': 3 búsquedas precisas (ej: "UGREEN LP130 car phone mount", "Logitech G203 mouse", etc.) para obtener 4 fotos profesionales del producto.`,
             },
             { type: "file", data: base64, mediaType: mimeType },
           ],
@@ -473,32 +450,14 @@ ${catalogDigest || "(Catálogo vacío)"}
     const cleanBarcode = object.barcode?.replace(/[^0-9A-Za-z-]/g, "").trim() || undefined;
     const categoryInSpanish = translateCategoryToSpanish(object.category, cleanName);
 
-    // 1. Check AI's direct catalog match (verified against technical spec conflicts)
-    let matchedExisting: ProductSummary | null = null;
-    if (object.matchedExistingProductId) {
-      const candidateById = existingProducts.find(
-        (p) => p.id === object.matchedExistingProductId?.trim()
-      );
-      if (candidateById) {
-        const hasConflict = haveConflictingTechnicalSpecs(
-          `${cleanName} ${cleanDescription}`,
-          `${candidateById.name} ${candidateById.description ?? ""}`
-        );
-        if (!hasConflict) {
-          matchedExisting = candidateById;
-        }
-      }
-    }
-
-    // 2. Deterministic duplicate check across all existing products
-    if (!matchedExisting) {
-      matchedExisting = await findExistingProductByName(
-        cleanName,
-        cleanDescription,
-        cleanBarcode,
-        existingProducts
-      );
-    }
+    // Verificación determinística de duplicados con 0 margen de error:
+    // Solo marca duplicado si coincide el código de barras exacto, el nombre exacto/normalizado o el modelo exacto en el título.
+    const matchedExisting = await findExistingProductByName(
+      cleanName,
+      cleanDescription,
+      cleanBarcode,
+      existingProducts
+    );
 
     if (matchedExisting) {
       return {

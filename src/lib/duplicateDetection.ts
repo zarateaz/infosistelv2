@@ -798,78 +798,35 @@ export function evaluateDuplicateMatch(
     }
   }
 
-  // 6. Specific Model Code matching (across both name and description)
+  // 6. Specific Model Code matching IN PRODUCT NAMES
+  // Crucial: Only compare model codes found in the PRODUCT NAMES, never in descriptions.
+  // Descriptions contain compatible models, OS versions, chipsets, etc. that cause false positives.
   const modelsInputName = extractModelCodes(rawInputName);
   const modelsCandName = extractModelCodes(rawCandName);
-  const modelsInputAll = extractModelCodes(inputFull);
-  const modelsCandAll = extractModelCodes(candFull);
 
-  if (modelsInputAll.length > 0 && modelsCandAll.length > 0) {
-    for (const mInput of modelsInputAll) {
-      if (modelsCandAll.includes(mInput)) {
-        return {
-          isDuplicate: true,
-          reason: "model_code",
-          message: `Mismo modelo exacto detectado (${mInput.toUpperCase()}) en "${candidate.name}".`,
-          existingProduct: candidate,
-        };
-      }
-    }
-    // If both product NAMES explicitly state different model codes, they are different products
-    if (modelsInputName.length > 0 && modelsCandName.length > 0) {
+  if (modelsInputName.length > 0 && modelsCandName.length > 0) {
+    const sharedModels = modelsInputName.filter((m) => modelsCandName.includes(m));
+    const differentModels = modelsInputName.filter((m) => !modelsCandName.includes(m));
+
+    // If both product names explicitly have different model codes (e.g. G203 vs G502, NV2 vs A400, M170 vs M185):
+    if (differentModels.length > 0 && sharedModels.length === 0) {
       return { isDuplicate: false };
+    }
+
+    // If they share the exact model code in the title and have the same brand:
+    if (sharedModels.length > 0 && (!brandInput || !brandCand || brandInput === brandCand)) {
+      return {
+        isDuplicate: true,
+        reason: "model_code",
+        message: `Mismo modelo exacto detectado (${sharedModels[0].toUpperCase()}) en "${candidate.name}".`,
+        existingProduct: candidate,
+      };
     }
   }
 
   // If one specifies a brand and the other specifies no brand at all, do not match generic vs branded
   if ((brandInput && !brandCand) || (!brandInput && brandCand)) {
     return { isDuplicate: false };
-  }
-
-  // 7. Token overlap & containment check for repeated AI scans of the same product
-  if (tokensInput.length >= 3 && tokensCand.length >= 3) {
-    const setInput = new Set(tokensInput);
-    const setCand = new Set(tokensCand);
-    const setCandFull = new Set(extractDistinctiveTokens(candFull));
-    const setInputFull = new Set(extractDistinctiveTokens(inputFull));
-
-    const intersection = tokensInput.filter((t) => setCand.has(t));
-    const unionSize = new Set([...tokensInput, ...tokensCand]).size;
-    const jaccard = intersection.length / unionSize;
-    const minLen = Math.min(tokensInput.length, tokensCand.length);
-    const containment = intersection.length / minLen;
-
-    // Cross-containment against full description tokens (when AI puts an extra word in description vs title)
-    const inputInCandFull = tokensInput.filter((t) => setCandFull.has(t)).length / tokensInput.length;
-    const candInInputFull = tokensCand.filter((t) => setInputFull.has(t)).length / tokensCand.length;
-
-    // Primary product noun (first token, e.g. "soporte", "caja", "cable", "adaptador", "mouse", "laptop")
-    const samePrimaryType = tokensInput[0] === tokensCand[0] || setCand.has(tokensInput[0]);
-
-    if (brandInput && brandInput === brandCand && samePrimaryType) {
-      if (
-        jaccard >= 0.65 ||
-        (containment >= 0.8 && minLen >= 4) ||
-        (inputInCandFull >= 0.85 && candInInputFull >= 0.75)
-      ) {
-        return {
-          isDuplicate: true,
-          reason: "high_similarity",
-          message: `El producto ya se encuentra en la tienda ("${candidate.name}").`,
-          existingProduct: candidate,
-        };
-      }
-    } else if (!brandInput && !brandCand) {
-      const lengthDiff = Math.abs(tokensInput.length - tokensCand.length);
-      if (lengthDiff <= 1 && jaccard >= 0.85) {
-        return {
-          isDuplicate: true,
-          reason: "high_similarity",
-          message: `El producto ya se encuentra en la tienda ("${candidate.name}").`,
-          existingProduct: candidate,
-        };
-      }
-    }
   }
 
   return { isDuplicate: false };

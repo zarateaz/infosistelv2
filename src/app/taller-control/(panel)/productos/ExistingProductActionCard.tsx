@@ -24,12 +24,14 @@ interface ExistingProductActionCardProps {
   onFill?: (fill: ScanFill) => void;
   onStockUpdated?: (newStock: number) => void;
   onPlannedStockChange?: (plannedTotalStock: number) => void;
+  onDismissExisting?: () => void;
 }
 
 export function ExistingProductActionCard({
   product,
   onStockUpdated,
   onPlannedStockChange,
+  onDismissExisting,
 }: ExistingProductActionCardProps) {
   const router = useRouter();
   const [currentStock, setCurrentStock] = useState<number>(product.stock ?? 0);
@@ -109,14 +111,26 @@ export function ExistingProductActionCard({
           </div>
         </div>
 
-        <Link
-          href={`/taller-control/productos/${product.id}`}
-          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-600/30 bg-white px-2.5 py-1 text-xs font-bold text-[#0a5fdb] shadow-2xs transition-colors hover:bg-amber-50"
-        >
-          <Edit3 size={12} />
-          <span>Editar ficha completa</span>
-          <ExternalLink size={11} />
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {onDismissExisting && (
+            <button
+              type="button"
+              onClick={onDismissExisting}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-600/40 bg-white px-2.5 py-1 text-xs font-bold text-amber-950 shadow-2xs transition-colors hover:bg-amber-100/70"
+            >
+              <span>Registrar como producto nuevo</span>
+            </button>
+          )}
+
+          <Link
+            href={`/taller-control/productos/${product.id}`}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-600/30 bg-white px-2.5 py-1 text-xs font-bold text-[#0a5fdb] shadow-2xs transition-colors hover:bg-amber-50"
+          >
+            <Edit3 size={12} />
+            <span>Editar ficha completa</span>
+            <ExternalLink size={11} />
+          </Link>
+        </div>
       </div>
 
       {/* Datos del producto encontrado */}

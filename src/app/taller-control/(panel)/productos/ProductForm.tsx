@@ -135,7 +135,9 @@ export function ProductForm({
     if (fill.image) setScannedImagePath(fill.image);
     if (fill.images) setScannedGalleryImages(fill.images);
 
-    performDuplicateCheck(fill.name, fill.barcode, fill.description);
+    if (fill.existingProduct !== null) {
+      performDuplicateCheck(fill.name, fill.barcode, fill.description);
+    }
   }
 
   const matchedProduct = duplicateWarning?.isDuplicate ? duplicateWarning.existingProduct : undefined;
@@ -175,6 +177,9 @@ export function ProductForm({
                 }}
                 onPlannedStockChange={(plannedTotal) => {
                   if (stockRef.current) stockRef.current.value = String(plannedTotal);
+                }}
+                onDismissExisting={() => {
+                  setDuplicateWarning(null);
                 }}
               />
             </div>
