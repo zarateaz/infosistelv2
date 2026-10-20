@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { decryptPII, blindIndex } from "@/lib/crypto";
@@ -68,6 +69,7 @@ export async function getAdminOrders(phoneQuery?: string): Promise<AdminOrder[]>
 }
 
 export async function retryOrderInvoice(invoiceId: string): Promise<void> {
-  await retryInvoiceEmission(invoiceId);
+  const safeInvoiceId = z.string().trim().min(1, "Identificador de factura inválido").parse(invoiceId);
+  await retryInvoiceEmission(safeInvoiceId);
   revalidatePath("/taller-control/pedidos");
 }

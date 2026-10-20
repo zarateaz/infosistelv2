@@ -1,10 +1,19 @@
 "use server";
 
+import { z } from "zod";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { blindIndex } from "@/lib/crypto";
 import { digitsOnly } from "@/lib/sanitize";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
+
+const dniLookupSchema = z
+  .string()
+  .trim()
+  .transform((val) => digitsOnly(val))
+  .refine((val) => val.length === 8 && /^\d{8}$/.test(val), {
+    message: "Ingresa tu DNI completo (8 dígitos).",
+  });
 
 export interface PublicRepairStatus {
   code: string;
@@ -35,10 +44,11 @@ export async function trackRepairsByDni(dniInput: string): Promise<TrackRepairsR
     return { error: "Demasiadas búsquedas seguidas. Intenta de nuevo en unos minutos." };
   }
 
-  const dni = digitsOnly(dniInput);
-  if (dni.length !== 8) {
-    return { error: "Ingresa tu DNI completo (8 dígitos)." };
+  const parsed = dniLookupSchema.safeParse(dniInput);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "DNI inválido." };
   }
+  const dni = parsed.data;
 
   const rows = await prisma.repair.findMany({
     where: { dniIndex: blindIndex(dni) },

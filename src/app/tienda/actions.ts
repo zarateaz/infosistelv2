@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -33,15 +34,47 @@ export async function getCategories(): Promise<Category[]> {
   return prisma.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
 }
 
-interface CreateOrderInput {
-  customerName: string;
-  customerPhone: string;
-  items: { productId: string; quantity: number }[];
-  // Fase 5 — facturación electrónica. Todos opcionales: sin ellos igual se
-  // emite una boleta "sin documento" (sin envío automático por correo).
-  docNumber?: string;
-  customerEmail?: string;
-}
+const createOrderSchema = z.object({
+  customerName: z
+    .string()
+    .trim()
+    .default("Cliente Web")
+    .transform((val) => sanitizeName(val, 80) || "Cliente Web"),
+  customerPhone: z
+    .string()
+    .trim()
+    .transform((val) => {
+      const digits = digitsOnly(sanitizePhone(val));
+      return digits.length === 11 && digits.startsWith("51") ? digits.slice(2) : digits;
+    })
+    .refine((val) => val.length === 9 && val.startsWith("9"), {
+      message: "Celular inválido (9 dígitos, ej. 987654321)",
+    }),
+  customerEmail: z
+    .string()
+    .trim()
+    .optional()
+    .refine((val) => !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), {
+      message: "Correo inválido",
+    }),
+  docNumber: z
+    .string()
+    .trim()
+    .optional()
+    .transform((val) => (val ? digitsOnly(val) : ""))
+    .refine((val) => !val || val.length === 8 || val.length === 11, {
+      message: "DNI (8 dígitos) o RUC (11 dígitos) inválido",
+    }),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().trim().min(1, "ID de producto inválido"),
+        quantity: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
+      })
+    )
+    .min(1, "El carrito está vacío")
+    .max(50, "Demasiados productos en el pedido"),
+});
 
 export async function createOrder(input: unknown) {
   // Order creation is public (no login yet) and cheap to spam — same
@@ -52,35 +85,12 @@ export async function createOrder(input: unknown) {
     throw new Error("Demasiadas solicitudes. Intenta de nuevo en unos minutos.");
   }
 
-  const data = input as Partial<CreateOrderInput>;
-  const customerName = sanitizeName(data.customerName, 80) || "Cliente Web";
-
-  // Mismo criterio que el CartDrawer (defensa en profundidad: el cliente
-  // nunca es el único que valida esto): celular peruano de 9 dígitos
-  // empezando en 9, tolerando el prefijo internacional "51".
-  const rawPhoneDigits = digitsOnly(sanitizePhone(data.customerPhone));
-  const customerPhone =
-    rawPhoneDigits.length === 11 && rawPhoneDigits.startsWith("51") ? rawPhoneDigits.slice(2) : rawPhoneDigits;
-  if (customerPhone.length !== 9 || !customerPhone.startsWith("9")) {
-    throw new Error("Celular inválido (9 dígitos, ej. 987654321)");
+  const parsed = createOrderSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Datos del pedido inválidos.");
   }
 
-  const rawEmail = typeof data.customerEmail === "string" ? data.customerEmail.trim() : "";
-  if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
-    throw new Error("Correo inválido");
-  }
-
-  const docDigits = digitsOnly(typeof data.docNumber === "string" ? data.docNumber : "");
-  if (docDigits && docDigits.length !== 8 && docDigits.length !== 11) {
-    throw new Error("DNI (8 dígitos) o RUC (11 dígitos) inválido");
-  }
-
-  if (!Array.isArray(data.items) || data.items.length === 0) {
-    throw new Error("El carrito está vacío");
-  }
-  if (data.items.length > 50) {
-    throw new Error("Demasiados productos en el pedido");
-  }
+  const { customerName, customerPhone, customerEmail, docNumber: docDigits, items } = parsed.data;
 
   // SECURITY: the total is NEVER taken from the client — every line's price
   // is looked up fresh from the database right here, at order time.
@@ -97,9 +107,9 @@ export async function createOrder(input: unknown) {
   }[] = [];
   const lowStockAlerts: { id: string; name: string; remainingStock: number }[] = [];
 
-  for (const rawItem of data.items) {
+  for (const rawItem of items) {
     const quantity = sanitizeInt(rawItem?.quantity, 1, 99) ?? 1;
-    const productId = typeof rawItem?.productId === "string" ? rawItem.productId : "";
+    const productId = rawItem.productId;
     const product = await prisma.product.findUnique({
       where: { id: productId },
       select: { id: true, name: true, category: true, price: true, salePrice: true, onSale: true, stock: true, costPrice: true },
@@ -198,7 +208,7 @@ export async function createOrder(input: unknown) {
     orderId: order.id,
     docNumber: docDigits || undefined,
     nombre: customerName,
-    email: rawEmail || undefined,
+    email: customerEmail || undefined,
     total: order.total,
     items: orderItems.map((item) => ({
       descripcion: item.name,

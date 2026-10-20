@@ -1,8 +1,11 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { retryInvoiceEmission } from "@/lib/invoicing";
+
+const idSchema = z.string().trim().min(1, "Identificador inválido.");
 
 export interface SaleStatBucket {
   total: number;
@@ -109,13 +112,15 @@ export async function getDeletedSales(): Promise<DeletedSale[]> {
 // no way back (reported directly). `date` is never touched, so a restored
 // sale reappears under its real, original sale date, not today's.
 export async function deleteSale(id: string): Promise<void> {
-  await prisma.sale.update({ where: { id }, data: { deletedAt: new Date() } });
+  const safeId = idSchema.parse(id);
+  await prisma.sale.update({ where: { id: safeId }, data: { deletedAt: new Date() } });
   revalidatePath("/taller-control/ventas");
   revalidatePath("/taller-control/papelera");
 }
 
 export async function restoreSale(id: string): Promise<void> {
-  await prisma.sale.update({ where: { id }, data: { deletedAt: null } });
+  const safeId = idSchema.parse(id);
+  await prisma.sale.update({ where: { id: safeId }, data: { deletedAt: null } });
   revalidatePath("/taller-control/ventas");
   revalidatePath("/taller-control/papelera");
 }
@@ -126,11 +131,13 @@ export async function restoreSale(id: string): Promise<void> {
 // optional relation), so this never fails because a SUNAT receipt still
 // points at the sale.
 export async function permanentlyDeleteSale(id: string): Promise<void> {
-  await prisma.sale.delete({ where: { id } });
+  const safeId = idSchema.parse(id);
+  await prisma.sale.delete({ where: { id: safeId } });
   revalidatePath("/taller-control/papelera");
 }
 
 export async function retrySaleInvoice(invoiceId: string): Promise<void> {
-  await retryInvoiceEmission(invoiceId);
+  const safeInvoiceId = idSchema.parse(invoiceId);
+  await retryInvoiceEmission(safeInvoiceId);
   revalidatePath("/taller-control/ventas");
 }
