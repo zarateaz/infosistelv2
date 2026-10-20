@@ -9,6 +9,15 @@ const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm tex
 
 type Method = "margen" | "recargo";
 
+function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-border/50 py-2 text-sm last:border-0">
+      <span className="text-fg-muted">{k}</span>
+      <span className={strong ? "font-bold text-fg" : "font-semibold text-fg"}>{v}</span>
+    </div>
+  );
+}
+
 const money = (n: number, symbol = "S/") => `${symbol} ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num = (v: string) => {
   const n = parseFloat(v.replace(",", "."));
@@ -80,13 +89,6 @@ export function PriceCalculator() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
-
-  const Row = ({ k, v, strong }: { k: string; v: string; strong?: boolean }) => (
-    <div className="flex items-baseline justify-between gap-3 border-b border-border/50 py-2 text-sm last:border-0">
-      <span className="text-fg-muted">{k}</span>
-      <span className={strong ? "font-bold text-fg" : "font-semibold text-fg"}>{v}</span>
-    </div>
-  );
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
