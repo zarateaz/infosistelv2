@@ -38,6 +38,12 @@ export async function getCashboxTransactions(): Promise<AdminTransaction[]> {
   return rows as AdminTransaction[];
 }
 
+export async function getCashboxTransactionsCount(): Promise<number> {
+  return prisma.cashboxTransaction.count({
+    where: { deletedAt: null },
+  });
+}
+
 // UTC-anchored, matching how transaction dates are stored (see month.ts's
 // parseDateInput) — a local-time boundary here would exclude/include rows
 // near the 1st incorrectly whenever this runs somewhere other than UTC

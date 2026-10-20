@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { Printer, Download, Calendar, ArrowRight } from "lucide-react";
-import type { AdminTransaction, AdminCashboxPeriod, CashboxMonthSummary } from "./actions";
+import { getCashboxTransactionsForMonth, type AdminTransaction, type AdminCashboxPeriod, type CashboxMonthSummary } from "./actions";
 import { MonthlyReportRow } from "./MonthlyReportRow";
 import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
 import { monthKeyUTC } from "./month";
@@ -108,17 +108,23 @@ export function MonthlyReport({
   if (transactions.length === 0) {
     const latestClosedMonth = monthsSummary?.find((m) => !m.isCurrent && m.count > 0);
 
-    const handleDownloadPreviousMonth = () => {
+    const handleDownloadPreviousMonth = async () => {
       if (!latestClosedMonth) return;
-      const txs = allTransactions
-        ? allTransactions.filter((t) => monthKeyUTC(t.date) === latestClosedMonth.month)
-        : [];
-      generateCashboxReportPDF({
-        month: latestClosedMonth.month,
-        monthLabel: latestClosedMonth.label,
-        responsible: latestClosedMonth.responsible || undefined,
-        transactions: txs,
-      });
+      try {
+        const txs =
+          allTransactions && allTransactions.length > 0
+            ? allTransactions.filter((t) => monthKeyUTC(t.date) === latestClosedMonth.month)
+            : await getCashboxTransactionsForMonth(latestClosedMonth.month);
+        generateCashboxReportPDF({
+          month: latestClosedMonth.month,
+          monthLabel: latestClosedMonth.label,
+          responsible: latestClosedMonth.responsible || undefined,
+          transactions: txs,
+        });
+      } catch (err) {
+        console.error("Error al descargar reporte de mes anterior:", err);
+        alert("Ocurrió un problema al generar el PDF del mes anterior.");
+      }
     };
 
     return (

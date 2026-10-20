@@ -13,13 +13,13 @@ import {
   ArrowUpRight,
   Loader2,
 } from "lucide-react";
-import type { AdminTransaction, CashboxMonthSummary } from "./actions";
+import { getCashboxTransactionsForMonth, type AdminTransaction, type CashboxMonthSummary } from "./actions";
 import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
 import { monthKeyUTC } from "./month";
 
 interface MonthlyReportsArchiveProps {
   monthsSummary: CashboxMonthSummary[];
-  allTransactions: AdminTransaction[];
+  allTransactions?: AdminTransaction[];
   currentSelectedMonth: string;
 }
 
@@ -33,10 +33,13 @@ export function MonthlyReportsArchive({
   // Filter months to show: closed months or months that have transactions
   const pastMonths = monthsSummary.filter((m) => !m.isCurrent || m.count > 0);
 
-  const handleDownload = (m: CashboxMonthSummary) => {
+  const handleDownload = async (m: CashboxMonthSummary) => {
     try {
       setDownloadingMonth(m.month);
-      const txs = allTransactions.filter((t) => monthKeyUTC(t.date) === m.month);
+      const txs =
+        allTransactions && allTransactions.length > 0
+          ? allTransactions.filter((t) => monthKeyUTC(t.date) === m.month)
+          : await getCashboxTransactionsForMonth(m.month);
 
       generateCashboxReportPDF({
         month: m.month,

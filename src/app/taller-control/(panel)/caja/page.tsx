@@ -4,8 +4,8 @@ import {
   getCashboxTransactions,
   getCashboxTransactionsForMonth,
   getCashboxPeriod,
-  listCashboxMonths,
   getCashboxMonthsSummary,
+  getCashboxTransactionsCount,
 } from "./actions";
 import { monthKey } from "./month";
 import { PAYMENT_METHODS } from "./constants";
@@ -46,14 +46,17 @@ export default async function AdminCashboxPage({
   const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : monthKey();
   const showAll = view === "all";
 
-  const [transactions, monthTransactions, period, availableMonths, monthsSummary] = await Promise.all([
-    getCashboxTransactions(),
+  // Execute essential month queries in parallel.
+  // Note: We only fetch the full historical table if showAll === true.
+  const [monthTransactions, period, monthsSummary, totalCount] = await Promise.all([
     getCashboxTransactionsForMonth(month),
     getCashboxPeriod(month),
-    listCashboxMonths(),
     getCashboxMonthsSummary(),
+    getCashboxTransactionsCount(),
   ]);
 
+  const transactions = showAll ? await getCashboxTransactions() : monthTransactions;
+  const availableMonths = monthsSummary.map((m) => m.month);
   const displayedTransactions = showAll ? transactions : monthTransactions;
 
   // Monthly balance starts from 0 for each month! When viewing a specific month,
@@ -183,14 +186,14 @@ export default async function AdminCashboxPage({
           period={period}
           transactions={monthTransactions}
           monthsSummary={monthsSummary}
-          allTransactions={transactions}
+          allTransactions={showAll ? transactions : undefined}
         />
       </div>
 
       <div className="print:hidden mt-8">
         <MonthlyReportsArchive
           monthsSummary={monthsSummary}
-          allTransactions={transactions}
+          allTransactions={showAll ? transactions : undefined}
           currentSelectedMonth={month}
         />
       </div>
@@ -226,7 +229,7 @@ export default async function AdminCashboxPage({
                   : "border border-border bg-bg-alt text-fg-muted hover:text-fg"
               }`}
             >
-              Ver todo ({transactions.length})
+              Ver todo ({totalCount})
             </Link>
             <DownloadHistoryPdfButton
               transactions={displayedTransactions}

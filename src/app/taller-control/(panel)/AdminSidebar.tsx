@@ -129,8 +129,9 @@ export function AdminSidebar({
                 <Link
                   key={link.href}
                   href={link.href}
+                  prefetch={true}
                   onClick={() => setMobileOpen(false)}
-                  className={`group relative flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm font-semibold transition-all duration-200 ${
+                  className={`group relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-semibold transition-all duration-150 touch-manipulation active:scale-[0.98] ${
                     active
                       ? "bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 text-white shadow-[0_4px_16px_-2px_rgba(10,95,219,0.45)] translate-x-0.5"
                       : "text-fg/80 hover:translate-x-1 hover:bg-bg-raised/90 hover:text-fg hover:shadow-sm"
@@ -140,9 +141,9 @@ export function AdminSidebar({
                     <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white shadow-[0_0_10px_2px_rgba(255,255,255,0.9)]" />
                   )}
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-200 group-hover:scale-105 ${
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-150 group-hover:scale-105 ${
                       active
-                        ? "border-white/30 bg-white/20 shadow-inner backdrop-blur-sm"
+                        ? "border-white/30 bg-white/20 shadow-inner"
                         : "border-border/60 bg-bg-surface/90 shadow-[0_1px_3px_rgba(0,0,0,0.05)] group-hover:border-border-strong group-hover:bg-bg-surface"
                     }`}
                   >
@@ -161,7 +162,7 @@ export function AdminSidebar({
   return (
     <>
       {/* Mobile top bar — sidebar is off-canvas below md */}
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/60 bg-bg-alt/90 px-4 py-3 shadow-[0_4px_20px_-8px_rgba(10,30,80,0.15)] backdrop-blur-md md:hidden">
+      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/60 bg-bg-alt/95 px-4 py-3 shadow-[0_4px_20px_-8px_rgba(10,30,80,0.12)] backdrop-blur-md md:hidden">
         <Image
           src="/brand/infosistel-logo-v3.png"
           alt="Infosistel"
@@ -174,17 +175,20 @@ export function AdminSidebar({
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Abrir menú"
-          className="rounded-lg border border-border-strong p-2 text-fg transition-colors hover:border-accent hover:text-accent"
+          className="rounded-xl border border-border-strong p-2 text-fg transition-transform duration-100 touch-manipulation active:scale-95 hover:border-accent hover:text-accent"
         >
-          <Menu size={18} />
+          <Menu size={20} />
         </button>
       </div>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-fg/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="admin-sidebar absolute inset-y-0 left-0 flex w-72 flex-col shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border/60 px-5 py-5">
+          <div
+            className="absolute inset-0 bg-slate-950/60 transition-opacity duration-200"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="admin-sidebar absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col shadow-2xl transition-transform duration-200 ease-out will-change-transform">
+            <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
               <Image
                 src="/brand/infosistel-logo-v3.png"
                 alt="Infosistel"
@@ -196,9 +200,9 @@ export function AdminSidebar({
               <button
                 onClick={() => setMobileOpen(false)}
                 aria-label="Cerrar menú"
-                className="rounded-lg p-1.5 text-fg-muted transition-colors hover:text-fg"
+                className="rounded-lg p-2 text-fg-muted transition-transform duration-100 touch-manipulation active:scale-95 hover:text-fg"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
             {NavList}
