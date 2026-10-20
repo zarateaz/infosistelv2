@@ -47,7 +47,7 @@ import {
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
 import { getPeruTodayString, toDateInputValue } from "@/lib/quotationDates";
 import { QuotationPhotosField } from "./QuotationPhotosField";
-import { StoreCatalogModal } from "./StoreCatalogModal";
+import { StoreCatalogModal, type SelectedCatalogItem } from "./StoreCatalogModal";
 
 /** Optimiza y reduce la foto antes de enviarla al modelo de IA */
 async function resizeImageForRecognition(file: File, maxDim = 1600, quality = 0.85): Promise<string> {
@@ -550,10 +550,59 @@ export function CotizacionFormModal({
   };
 
   const handleOpenCatalogForNewItem = () => {
-    const lastItem = items[items.length - 1];
-    const isLastEmpty = items.length === 1 && !lastItem.description.trim() && lastItem.unitPrice === 0;
-    setTargetItemIndexForCatalog(isLastEmpty ? 0 : items.length);
+    setTargetItemIndexForCatalog(null);
     setShowStoreCatalog(true);
+  };
+
+  const handleAddMultipleProducts = (selectedList: SelectedCatalogItem[]) => {
+    if (!selectedList || selectedList.length === 0) return;
+
+    setItems((prev) => {
+      let next = [...prev];
+      // Si el primer o único ítem existente está completamente vacío, lo reemplazamos
+      const isOnlyItemBlank = next.length === 1 && !next[0].description.trim() && next[0].unitPrice === 0;
+      if (isOnlyItemBlank) {
+        next = [];
+      }
+
+      for (const item of selectedList) {
+        const p = item.product;
+        const qty = item.quantity > 0 ? item.quantity : 1;
+        const cost = p.costPrice ?? 0;
+        const price = p.price;
+        const margin = cost > 0 && price > 0 ? computeMarginFromPrice(cost, price, marginMode) : 0;
+        const { brand, model } = extractBrandAndModel(p.name, p.category);
+
+        next.push({
+          productId: p.id,
+          description: p.name,
+          brand,
+          model,
+          quantity: qty,
+          unitPrice: price,
+          costPrice: cost,
+          marginPercent: margin,
+          total: Number((qty * price).toFixed(2)),
+          notes: p.description || "",
+          image: p.image || null,
+        });
+      }
+      return next;
+    });
+
+    // Añadir automáticamente las fotos de todos los productos seleccionados al anexo fotográfico
+    setImages((prev) => {
+      const nextImgs = [...prev];
+      for (const item of selectedList) {
+        if (item.product.image && !nextImgs.includes(item.product.image)) {
+          nextImgs.push(item.product.image);
+        }
+      }
+      return nextImgs;
+    });
+
+    setShowStoreCatalog(false);
+    setTargetItemIndexForCatalog(null);
   };
 
   // Efecto visual de simulación de progreso para reconocimiento IA
@@ -1029,11 +1078,14 @@ export function CotizacionFormModal({
                 <button
                   type="button"
                   onClick={handleOpenCatalogForNewItem}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-all shadow-xs hover:scale-[1.02]"
-                  title="Explora y agrega productos directamente del inventario de la tienda con fotos y precios"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-1.5 text-xs font-black shadow-md shadow-emerald-600/30 hover:scale-[1.03] active:scale-95 transition-all cursor-pointer ring-2 ring-emerald-400/40"
+                  title="Abre el catálogo completo de la tienda para seleccionar uno o varios productos a la vez"
                 >
-                  <ShoppingBag size={13} />
-                  <span>Catálogo Tienda</span>
+                  <ShoppingBag size={14} className="animate-pulse" />
+                  <span>🛍️ Elegir de Tienda (Catálogo)</span>
+                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider backdrop-blur-xs">
+                    Múltiple
+                  </span>
                 </button>
 
                 <button
@@ -1323,6 +1375,34 @@ export function CotizacionFormModal({
               </div>
             )}
 
+            {/* Banner de Catálogo Rápido con Selección Múltiple */}
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-2xl border-2 border-dashed border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-950/20 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-500/30">
+                  <ShoppingBag size={20} />
+                </div>
+                <div>
+                  <div className="text-xs font-black text-fg flex items-center gap-2">
+                    <span>¿Cotizando productos del inventario de la tienda?</span>
+                    <span className="rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5">
+                      Con Fotos y Precios
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-fg-muted mt-0.5">
+                    Puedes elegir <strong>múltiples productos a la vez</strong> de la tienda para que se agreguen automáticamente con sus fotos, marcas, modelos y precios oficiales a la cotización.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenCatalogForNewItem}
+                className="inline-flex items-center gap-2 shrink-0 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-4 py-2 text-xs font-black shadow-md shadow-emerald-600/30 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer ring-1 ring-emerald-400/40"
+              >
+                <Plus size={15} />
+                <span>Elegir Varios Productos de Tienda</span>
+              </button>
+            </div>
+
             {/* Items list */}
             <div className="mt-4 space-y-4">
               {items.map((it, idx) => {
@@ -1433,10 +1513,11 @@ export function CotizacionFormModal({
                                   setTargetItemIndexForCatalog(idx);
                                   setShowStoreCatalog(true);
                                 }}
-                                className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
-                                title="Ver catálogo visual de la tienda"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/50 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-3 py-1 text-xs font-black shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer ring-1 ring-emerald-500/30"
+                                title="Ver catálogo visual de la tienda para este ítem"
                               >
-                                <ShoppingBag size={11} /> Elegir de Tienda
+                                <ShoppingBag size={13} className="text-emerald-600 dark:text-emerald-400" />
+                                <span>🛍️ Elegir de Tienda</span>
                               </button>
                             </div>
                           </div>
@@ -2179,14 +2260,19 @@ export function CotizacionFormModal({
           </div>
         </div>
 
-        {/* Modal de Catálogo Completo de la Tienda */}
+        {/* Modal de Catálogo Completo de la Tienda (Selección Múltiple y Unitaria) */}
         <StoreCatalogModal
           isOpen={showStoreCatalog}
-          onClose={() => setShowStoreCatalog(false)}
+          onClose={() => {
+            setShowStoreCatalog(false);
+            setTargetItemIndexForCatalog(null);
+          }}
           currencySymbol={currSymbol}
+          targetItemIndex={targetItemIndexForCatalog}
           onSelectProduct={(product) => {
             handleSelectProduct(targetItemIndexForCatalog ?? items.length, product);
           }}
+          onAddMultipleProducts={handleAddMultipleProducts}
         />
       </div>
     </div>
