@@ -21,6 +21,7 @@ export interface QuotationItemData {
   notes?: string | null;
   costPrice?: number | null;
   marginPercent?: number | null;
+  image?: string | null;
 }
 
 export interface QuotationRecord {
@@ -58,6 +59,11 @@ export interface CatalogProductResult {
   costPrice: number | null;
   stock: number;
   category: string | null;
+  description?: string | null;
+  image?: string | null;
+  images?: string | null;
+  itemNumber?: number | null;
+  barcode?: string | null;
 }
 
 export interface RecognizeQuotationItemResult {
@@ -181,6 +187,7 @@ const itemSchema = z.object({
   notes: z.string().nullish(),
   costPrice: z.coerce.number().nullish().optional(),
   marginPercent: z.coerce.number().nullish().optional(),
+  image: z.string().nullish(),
 });
 
 const quotationInputSchema = z.object({
@@ -235,6 +242,7 @@ export async function createQuotation(
         notes: it.notes || null,
         costPrice: it.costPrice !== undefined && it.costPrice !== null ? Number(it.costPrice) : 0,
         marginPercent: it.marginPercent !== undefined && it.marginPercent !== null ? Number(it.marginPercent) : 0,
+        image: it.image || null,
       };
     });
 
@@ -325,6 +333,7 @@ export async function updateQuotation(
         notes: it.notes || null,
         costPrice: it.costPrice !== undefined && it.costPrice !== null ? Number(it.costPrice) : 0,
         marginPercent: it.marginPercent !== undefined && it.marginPercent !== null ? Number(it.marginPercent) : 0,
+        image: it.image || null,
       };
     });
 
@@ -452,9 +461,9 @@ export async function unDeleteAllQuotations(): Promise<{ count: number; error?: 
 export async function searchCatalogProducts(query: string): Promise<CatalogProductResult[]> {
   const q = query.trim();
   if (!q) {
-    // Return latest 15 products with stock
+    // Return latest 30 products
     const products = await prisma.product.findMany({
-      take: 15,
+      take: 30,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -463,6 +472,11 @@ export async function searchCatalogProducts(query: string): Promise<CatalogProdu
         costPrice: true,
         stock: true,
         category: true,
+        description: true,
+        image: true,
+        images: true,
+        itemNumber: true,
+        barcode: true,
       },
     });
     return products;
@@ -476,7 +490,7 @@ export async function searchCatalogProducts(query: string): Promise<CatalogProdu
         { description: { contains: q } },
       ],
     },
-    take: 20,
+    take: 30,
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -485,6 +499,11 @@ export async function searchCatalogProducts(query: string): Promise<CatalogProdu
       costPrice: true,
       stock: true,
       category: true,
+      description: true,
+      image: true,
+      images: true,
+      itemNumber: true,
+      barcode: true,
     },
   });
 

@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Upload,
+  ShoppingBag,
 } from "lucide-react";
 import {
   createQuotation,
@@ -46,6 +47,7 @@ import {
 import { generateQuotationPDF } from "@/lib/quotationPdfGenerator";
 import { getPeruTodayString, toDateInputValue } from "@/lib/quotationDates";
 import { QuotationPhotosField } from "./QuotationPhotosField";
+import { StoreCatalogModal } from "./StoreCatalogModal";
 
 /** Optimiza y reduce la foto antes de enviarla al modelo de IA */
 async function resizeImageForRecognition(file: File, maxDim = 1600, quality = 0.85): Promise<string> {
@@ -119,6 +121,36 @@ function computeMarginFromPrice(cost: number, unitPrice: number, mode: "MARKUP" 
   }
 }
 
+function extractBrandAndModel(name: string, category?: string | null): { brand: string; model: string } {
+  const commonBrands = [
+    "LOGITECH", "LENOVO", "HP", "DELL", "ASUS", "ACER", "EPSON", "CANON",
+    "RAZER", "REDRAGON", "KINGSTON", "WESTERN DIGITAL", "SEAGATE", "SAMSUNG",
+    "XIAOMI", "APPLE", "INTEL", "AMD", "CORSAIR", "MSI", "GIGABYTE", "TEROS",
+    "HALION", "MICRONICS", "ANTRYX", "TP-LINK", "TENDA", "MERCUSYS", "DAHUA", "HIKVISION"
+  ];
+  const upper = (name || "").toUpperCase();
+  let foundBrand = "";
+  for (const b of commonBrands) {
+    if (upper.includes(b)) {
+      foundBrand = b;
+      break;
+    }
+  }
+  if (!foundBrand && category) {
+    foundBrand = category.toUpperCase();
+  }
+
+  let model = "";
+  if (foundBrand) {
+    const after = name.replace(new RegExp(foundBrand, "i"), "").trim();
+    model = after.slice(0, 30).trim();
+  } else {
+    model = (name || "").slice(0, 25).trim();
+  }
+
+  return { brand: foundBrand, model };
+}
+
 interface CotizacionFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -188,6 +220,14 @@ export function CotizacionFormModal({
   const [searchResults, setSearchResults] = useState<CatalogProductResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
+
+  // Store Catalog Modal & Live Autocomplete states
+  const [showStoreCatalog, setShowStoreCatalog] = useState(false);
+  const [targetItemIndexForCatalog, setTargetItemIndexForCatalog] = useState<number | null>(null);
+  const [liveSuggestionsIndex, setLiveSuggestionsIndex] = useState<number | null>(null);
+  const [liveSuggestions, setLiveSuggestions] = useState<CatalogProductResult[]>([]);
+  const [isLiveSearching, setIsLiveSearching] = useState(false);
+  const liveSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isPending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -427,27 +467,93 @@ export function CotizacionFormModal({
     }
   };
 
+  const handleLiveSearch = (index: number, val: string) => {
+    if (liveSearchTimeoutRef.current) clearTimeout(liveSearchTimeoutRef.current);
+    const q = val.trim();
+    if (q.length < 2) {
+      setLiveSuggestionsIndex(null);
+      setLiveSuggestions([]);
+      return;
+    }
+
+    setLiveSuggestionsIndex(index);
+    setIsLiveSearching(true);
+    liveSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const results = await searchCatalogProducts(q);
+        setLiveSuggestions(results || []);
+      } catch {
+        setLiveSuggestions([]);
+      } finally {
+        setIsLiveSearching(false);
+      }
+    }, 180);
+  };
+
   const handleSelectProduct = (index: number, product: CatalogProductResult) => {
     const cost = product.costPrice ?? 0;
     const price = product.price;
-    const margin = cost > 0 ? computeMarginFromPrice(cost, price, marginMode) : 0;
+    const margin = cost > 0 && price > 0 ? computeMarginFromPrice(cost, price, marginMode) : 0;
+    const { brand, model } = extractBrandAndModel(product.name, product.category);
 
     setItems((prev) => {
       const next = [...prev];
-      next[index] = {
-        ...next[index],
-        productId: product.id,
-        description: product.name,
-        unitPrice: price,
-        costPrice: cost,
-        marginPercent: margin,
-        total: Number((next[index].quantity * price).toFixed(2)),
-      };
+      if (index >= next.length) {
+        next.push({
+          productId: product.id,
+          description: product.name,
+          brand,
+          model,
+          quantity: 1,
+          unitPrice: price,
+          costPrice: cost,
+          marginPercent: margin,
+          total: Number(price.toFixed(2)),
+          notes: product.description || "",
+          image: product.image || null,
+        });
+      } else {
+        const currentQty = next[index]?.quantity || 1;
+        next[index] = {
+          ...next[index],
+          productId: product.id,
+          description: product.name,
+          brand: brand || next[index]?.brand || "",
+          model: model || next[index]?.model || "",
+          quantity: currentQty,
+          unitPrice: price,
+          costPrice: cost,
+          marginPercent: margin,
+          total: Number((currentQty * price).toFixed(2)),
+          notes: product.description || next[index]?.notes || "",
+          image: product.image || next[index]?.image || null,
+        };
+      }
       return next;
     });
+
+    // Auto-attach product image to quotation photos gallery if present and not already there
+    if (product.image) {
+      setImages((prev) => {
+        if (!prev.includes(product.image!)) {
+          return [...prev, product.image!];
+        }
+        return prev;
+      });
+    }
+
+    setLiveSuggestionsIndex(null);
+    setLiveSuggestions([]);
     setActiveItemIndex(null);
     setSearchQuery("");
     setSearchResults([]);
+  };
+
+  const handleOpenCatalogForNewItem = () => {
+    const lastItem = items[items.length - 1];
+    const isLastEmpty = items.length === 1 && !lastItem.description.trim() && lastItem.unitPrice === 0;
+    setTargetItemIndexForCatalog(isLastEmpty ? 0 : items.length);
+    setShowStoreCatalog(true);
   };
 
   // Efecto visual de simulación de progreso para reconocimiento IA
@@ -922,6 +1028,16 @@ export function CotizacionFormModal({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={handleOpenCatalogForNewItem}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-all shadow-xs hover:scale-[1.02]"
+                  title="Explora y agrega productos directamente del inventario de la tienda con fotos y precios"
+                >
+                  <ShoppingBag size={13} />
+                  <span>Catálogo Tienda</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setShowAiScanner((prev) => !prev)}
                   className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
                     showAiScanner
@@ -1275,6 +1391,34 @@ export function CotizacionFormModal({
                     </div>
 
                     <div className="mt-3.5 space-y-3">
+                      {/* Miniatura de foto vinculada de tienda si existe */}
+                      {it.image && (
+                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden bg-white border border-border/80 p-1 shadow-xs flex items-center justify-center">
+                              <img src={it.image} alt={it.description} className="h-full w-full object-contain" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
+                                  Foto Oficial de Producto Vinculada
+                                </span>
+                                <span className="text-[10px] text-fg-muted font-medium">Se incluirá en el PDF</span>
+                              </div>
+                              <p className="text-xs font-bold text-fg truncate mt-0.5">{it.description}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(idx, "image", null)}
+                            className="text-[11px] font-semibold text-fg-muted hover:text-rose-500 px-2.5 py-1 transition-colors"
+                            title="Quitar foto de este ítem"
+                          >
+                            Quitar foto
+                          </button>
+                        </div>
+                      )}
+
                       {/* Fila 1: Descripción, Marca y Modelo */}
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
                         <div className="relative sm:col-span-12 lg:col-span-6">
@@ -1282,71 +1426,138 @@ export function CotizacionFormModal({
                             <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
                               Descripción del producto o servicio *
                             </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (activeItemIndex === idx) {
-                                  setActiveItemIndex(null);
-                                  setSearchQuery("");
-                                } else {
-                                  setActiveItemIndex(idx);
-                                  setSearchQuery("");
-                                }
-                              }}
-                              className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1"
-                            >
-                              <Search size={11} /> Buscar en inventario
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTargetItemIndexForCatalog(idx);
+                                  setShowStoreCatalog(true);
+                                }}
+                                className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                                title="Ver catálogo visual de la tienda"
+                              >
+                                <ShoppingBag size={11} /> Elegir de Tienda
+                              </button>
+                            </div>
                           </div>
 
                           <textarea
                             rows={2}
-                            placeholder="Ej. PORTATIL LENOVO V15 G5 / I3-1315U / 8GB DDR5 / SSD 512GB (soporta texto multilínea completo)"
+                            placeholder="Ej. Mouse Inalámbrico, Laptop Lenovo V15... (escribe para autocompletar)"
                             value={it.description}
-                            onChange={(e) => handleItemChange(idx, "description", e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleItemChange(idx, "description", val);
+                              handleLiveSearch(idx, val);
+                            }}
+                            onFocus={() => {
+                              if (it.description && it.description.trim().length >= 2) {
+                                handleLiveSearch(idx, it.description);
+                              }
+                            }}
                             className="admin-field w-full rounded-xl px-3.5 py-2.5 text-xs font-medium text-fg resize-y min-h-[58px]"
                           />
 
-                          {/* Dropdown for catalog search */}
-                          {activeItemIndex === idx && (
-                            <div className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-2xl border border-border bg-bg p-2 shadow-xl">
-                              <div className="flex items-center gap-2 border-b border-border px-2 pb-2">
-                                <Search size={14} className="text-fg-muted" />
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  placeholder="Escribe nombre o marca del producto..."
-                                  value={searchQuery}
-                                  onChange={(e) => setSearchQuery(e.target.value)}
-                                  className="w-full bg-transparent text-xs text-fg outline-none"
-                                />
-                                {isSearching && <Loader2 size={13} className="animate-spin text-accent" />}
+                          {/* Menú flotante de autocompletado en vivo al escribir */}
+                          {liveSuggestionsIndex === idx && (
+                            <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-2xl border border-accent/40 bg-bg-surface/98 backdrop-blur-md p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+                              <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border text-[11px] font-bold text-fg-muted">
+                                <span className="flex items-center gap-1.5 text-accent">
+                                  <Package size={13} />
+                                  <span>Productos en Tienda ({liveSuggestions.length})</span>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTargetItemIndexForCatalog(idx);
+                                      setShowStoreCatalog(true);
+                                      setLiveSuggestionsIndex(null);
+                                    }}
+                                    className="text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-bold"
+                                  >
+                                    <ShoppingBag size={11} /> Ver catálogo completo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setLiveSuggestionsIndex(null)}
+                                    className="text-fg-muted hover:text-fg font-bold"
+                                    title="Cerrar sugerencias"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
                               </div>
 
                               <div className="mt-1 space-y-1">
-                                {searchResults.map((p) => (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    onClick={() => handleSelectProduct(idx, p)}
-                                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs hover:bg-accent/10"
-                                  >
-                                    <div>
-                                      <p className="font-semibold text-fg">{p.name}</p>
-                                      <p className="text-[10px] text-fg-muted">
-                                        Cat: {p.category || "General"} · Stock: {p.stock} u.
-                                        {p.costPrice ? ` · Costo: ${currSymbol} ${p.costPrice.toFixed(2)}` : ""}
-                                      </p>
-                                    </div>
-                                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                      {currSymbol} {p.price.toFixed(2)}
-                                    </span>
-                                  </button>
-                                ))}
-                                {searchQuery.trim() && searchResults.length === 0 && !isSearching && (
-                                  <p className="p-3 text-center text-xs text-fg-muted">
-                                    No se encontraron productos. Puedes escribir el ítem manualmente.
-                                  </p>
+                                {isLiveSearching ? (
+                                  <div className="py-4 text-center text-xs text-fg-muted flex items-center justify-center gap-2">
+                                    <Loader2 size={14} className="animate-spin text-accent" />
+                                    <span>Buscando en la tienda…</span>
+                                  </div>
+                                ) : liveSuggestions.length === 0 ? (
+                                  <div className="py-3 px-2 text-center text-xs text-fg-muted">
+                                    No hay productos con este nombre. Puedes continuar escribiendo libremente.
+                                  </div>
+                                ) : (
+                                  liveSuggestions.map((p) => (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      onClick={() => handleSelectProduct(idx, p)}
+                                      className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-accent/10 active:bg-accent/20 group"
+                                    >
+                                      {/* Miniatura de imagen de producto */}
+                                      <div className="relative h-12 w-12 shrink-0 rounded-lg overflow-hidden bg-white border border-border/70 p-0.5 flex items-center justify-center shadow-xs">
+                                        {p.image ? (
+                                          <img src={p.image} alt={p.name} className="h-full w-full object-contain" />
+                                        ) : (
+                                          <Package size={20} className="text-fg-muted/40" />
+                                        )}
+                                      </div>
+
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-bold text-xs text-fg leading-tight truncate group-hover:text-accent transition-colors">
+                                          {p.name}
+                                        </p>
+                                        <div className="flex items-center gap-2 text-[10px] text-fg-muted mt-1">
+                                          {p.category && (
+                                            <span className="rounded bg-bg-alt px-1.5 py-0.5 font-semibold">
+                                              {p.category}
+                                            </span>
+                                          )}
+                                          <span
+                                            className={
+                                              p.stock > 0
+                                                ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                                                : "text-rose-500 font-bold"
+                                            }
+                                          >
+                                            Stock: {p.stock} u.
+                                          </span>
+                                        </div>
+                                        {p.description && (
+                                          <p className="text-[10px] text-fg-muted/80 truncate mt-0.5">
+                                            {p.description}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      <div className="text-right shrink-0">
+                                        <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 block">
+                                          {currSymbol} {p.price.toFixed(2)}
+                                        </span>
+                                        {p.costPrice ? (
+                                          <span className="text-[10px] text-fg-muted block">
+                                            Costo: {currSymbol} {p.costPrice.toFixed(2)}
+                                          </span>
+                                        ) : null}
+                                        <span className="text-[9px] font-bold text-accent group-hover:underline">
+                                          + Auto-rellenar
+                                        </span>
+                                      </div>
+                                    </button>
+                                  ))
                                 )}
                               </div>
                             </div>
@@ -1967,6 +2178,16 @@ export function CotizacionFormModal({
             </button>
           </div>
         </div>
+
+        {/* Modal de Catálogo Completo de la Tienda */}
+        <StoreCatalogModal
+          isOpen={showStoreCatalog}
+          onClose={() => setShowStoreCatalog(false)}
+          currencySymbol={currSymbol}
+          onSelectProduct={(product) => {
+            handleSelectProduct(targetItemIndexForCatalog ?? items.length, product);
+          }}
+        />
       </div>
     </div>
   );

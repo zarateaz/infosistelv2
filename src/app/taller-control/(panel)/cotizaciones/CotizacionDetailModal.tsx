@@ -261,13 +261,24 @@ export function CotizacionDetailModal({
                     <td className="px-3.5 py-2.5 text-center font-bold text-fg-muted">{idx + 1}</td>
                     <td className="px-3.5 py-2.5 text-center font-bold text-fg">{it.quantity}</td>
                     <td className="px-3.5 py-2.5">
-                      <p className="font-semibold text-fg whitespace-pre-line">{it.description}</p>
-                      {(it.brand || it.model) && (
-                        <p className="text-[10px] text-fg-muted">
-                          {[it.brand, it.model].filter(Boolean).join(" - ")}
-                        </p>
-                      )}
-                      {it.notes && <p className="text-[10px] text-accent/80 whitespace-pre-line mt-0.5">{it.notes}</p>}
+                      <div className="flex items-start gap-2.5">
+                        {it.image && (
+                          <img
+                            src={it.image}
+                            alt={it.description}
+                            className="h-10 w-10 shrink-0 rounded-lg object-contain bg-white border border-border p-0.5 shadow-xs"
+                          />
+                        )}
+                        <div>
+                          <p className="font-semibold text-fg whitespace-pre-line">{it.description}</p>
+                          {(it.brand || it.model) && (
+                            <p className="text-[10px] text-fg-muted">
+                              {[it.brand, it.model].filter(Boolean).join(" - ")}
+                            </p>
+                          )}
+                          {it.notes && <p className="text-[10px] text-accent/80 whitespace-pre-line mt-0.5">{it.notes}</p>}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-3.5 py-2.5 text-right font-medium text-fg">
                       {currSymbol} {it.unitPrice.toFixed(2)}
