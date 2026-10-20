@@ -220,7 +220,7 @@ export function MonthlyReport({
         <thead>
           <tr className="admin-thead text-[10px] font-bold uppercase tracking-wider text-fg-muted">
             <th className="px-2 py-2">Fecha</th>
-            <th className="px-2 py-2">Concepto</th>
+            <th className="px-2 py-2 min-w-[170px]">Concepto</th>
             <th className="px-2 py-2 text-right">Ing. total</th>
             <th className="px-2 py-2 text-right">Ing. Yape 1</th>
             <th className="px-2 py-2 text-right">Ing. Yape 2</th>

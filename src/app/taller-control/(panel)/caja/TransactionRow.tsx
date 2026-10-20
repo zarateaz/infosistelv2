@@ -8,6 +8,7 @@ import { YapeIcon } from "@/components/icons/YapeIcon";
 import { dateToInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { AutoGrowInput } from "../AutoGrowInput";
+import { CajaHoverTooltip } from "./CajaHoverTooltip";
 
 const fieldClass = "admin-field mt-1 w-full rounded-lg px-3 py-1.5 text-sm text-fg";
 const fieldLabel = "text-[10px] font-bold uppercase tracking-wider text-fg-muted";
@@ -256,7 +257,20 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
           {transaction.type === "INCOME" ? "Ingreso" : "Gasto"}
         </span>
       </td>
-      <td className="px-5 py-2.5 font-semibold text-fg">{transaction.description}</td>
+      <td className="px-5 py-2.5 font-semibold text-fg">
+        <CajaHoverTooltip
+          content={transaction.description}
+          title="Concepto del Movimiento"
+          type={transaction.type}
+          amount={transaction.amount}
+          paymentMethod={transaction.paymentMethod}
+          date={dateToInputValue(new Date(transaction.date))}
+          notes={transaction.notes}
+          minLength={16}
+        >
+          <span className="cursor-help hover:text-accent transition-colors">{transaction.description}</span>
+        </CajaHoverTooltip>
+      </td>
       <td className="px-5 py-2.5">
         <PaymentMethodBadge method={transaction.paymentMethod} />
       </td>

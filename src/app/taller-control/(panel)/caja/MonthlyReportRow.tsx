@@ -6,6 +6,7 @@ import { updateTransaction, deleteTransaction, type AdminTransaction } from "./a
 import { PAYMENT_METHODS } from "./constants";
 import { dateToInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { CajaHoverTooltip } from "./CajaHoverTooltip";
 
 // UTC getters — see dateToInputValue's comment in month.ts for why: this
 // reads a STORED transaction date, and local getters here would show a
@@ -107,14 +108,25 @@ export function MonthlyReportRow({
           title={dateValid ? formatDate(transaction.date) : "Fecha inválida"}
         />
       </td>
-      <td className="px-2 py-1.5">
-        <input
-          value={draft.description}
-          onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-          disabled={isPending}
-          maxLength={200}
-          className={`${cellInputClass} min-w-[140px] font-medium text-fg ${descValid ? "" : "border-red-400"}`}
-        />
+      <td className="px-2 py-1.5 min-w-[160px]">
+        <CajaHoverTooltip
+          content={draft.description}
+          title="Concepto del Movimiento"
+          type={transaction.type}
+          amount={draft.amount}
+          paymentMethod={draft.paymentMethod}
+          date={formatDate(transaction.date)}
+          notes={transaction.notes}
+          minLength={12}
+        >
+          <input
+            value={draft.description}
+            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            disabled={isPending}
+            maxLength={200}
+            className={`${cellInputClass} min-w-[150px] font-medium text-fg ${descValid ? "" : "border-red-400"}`}
+          />
+        </CajaHoverTooltip>
       </td>
       <td className="px-2 py-1.5 text-right font-semibold text-accent">{isIncome ? money(draft.amount) : ""}</td>
       <td className="px-2 py-1.5 text-right">{isIncome && draft.paymentMethod === "YAPE 1" ? money(draft.amount) : ""}</td>
@@ -125,7 +137,22 @@ export function MonthlyReportRow({
       <td className="px-2 py-1.5 text-right">{!isIncome && draft.paymentMethod === "YAPE 2" ? money(draft.amount) : ""}</td>
       <td className="px-2 py-1.5 text-right">{!isIncome && draft.paymentMethod === "EFECTIVO" ? money(draft.amount) : ""}</td>
       <td className="px-2 py-1.5 text-right font-bold text-fg">{money(running)}</td>
-      <td className="px-2 py-1.5 text-fg-muted">{transaction.notes ?? ""}</td>
+      <td className="px-2 py-1.5 text-fg-muted max-w-[130px]">
+        {transaction.notes && transaction.notes.trim() ? (
+          <CajaHoverTooltip
+            content={transaction.notes.trim()}
+            title="Nota de Caja"
+            date={formatDate(transaction.date)}
+            minLength={6}
+          >
+            <span className="truncate block cursor-help underline decoration-dotted decoration-border/80 hover:decoration-accent hover:text-fg transition-colors">
+              {transaction.notes.trim()}
+            </span>
+          </CajaHoverTooltip>
+        ) : (
+          <span></span>
+        )}
+      </td>
       <td className="print:hidden px-2 py-1.5">
         <div className="flex items-center gap-1.5">
           <select
