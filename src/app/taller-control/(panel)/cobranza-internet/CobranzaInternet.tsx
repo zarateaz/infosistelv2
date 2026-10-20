@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { BellRing, MessageCircle, Wifi, X, Check, Trash2 } from "lucide-react";
+import { BellRing, MessageCircle, Wifi, X, Check, Trash2, Users, AlertTriangle } from "lucide-react";
 import { createInternetClient, markInternetPaid, deleteInternetClient, type InternetFormState } from "./internetActions";
 import { cobranzaState, daysUntil, whatsappLink, type InternetClientRow } from "./cobranza";
 
@@ -25,13 +25,12 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
   const [state, formAction, isPending] = useActionState(createInternetClient, initialState);
   const [, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
-  const [dismissed, setDismissed] = useState<string[]>([]);
-  const [visible, setVisible] = useState(0);
+  const [dismissed, setDismissed] = useState<boolean>(false);
+  const [tab, setTab] = useState<"all" | "deudores">("all");
   // `today` se fija tras montar para no desfasar hidratación (servidor en UTC, navegador en Lima).
   const [today, setToday] = useState<Date | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToday(new Date());
   }, []);
 
@@ -46,56 +45,110 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
       })
     : [];
   const alerts = rows.filter((r) => r.st !== "ok");
-  const toasts = alerts.filter((r) => !dismissed.includes(`${r.c.id}:${r.c.nextPaymentDate}`));
 
-  // Entrada escalonada de las notificaciones, como un feed de YouTube/TikTok.
-  const toastCount = toasts.length;
+  // Auto-desaparecer la notificación flotante luego de 3 segundos exactos
   useEffect(() => {
-    if (visible >= toastCount) return;
-    const t = setTimeout(() => setVisible((v) => v + 1), 450);
-    return () => clearTimeout(t);
-  }, [visible, toastCount]);
+    if (alerts.length === 0 || dismissed) return;
+    const timer = setTimeout(() => {
+      setDismissed(true);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [alerts.length, dismissed]);
 
-  const dismiss = (r: (typeof rows)[number]) => setDismissed((d) => [...d, `${r.c.id}:${r.c.nextPaymentDate}`]);
+  // Si el usuario agrega un cliente nuevo o cambia el estado, reabrir toast brevemente
+  const prevAlertsLength = useRef(alerts.length);
+  useEffect(() => {
+    if (alerts.length > prevAlertsLength.current) {
+      setDismissed(false);
+    }
+    prevAlertsLength.current = alerts.length;
+  }, [alerts.length]);
+
+  const displayedRows = tab === "deudores" ? alerts : rows;
+  const singleAlert = alerts.length === 1 ? alerts[0] : null;
 
   return (
     <section id="cobranza-internet" className="print:hidden mt-10 scroll-mt-6">
-      {/* Notificaciones flotantes rojas */}
-      <div className="pointer-events-none fixed right-4 top-4 z-50 flex w-[min(92vw,360px)] flex-col gap-2">
-        {toasts.slice(0, Math.min(visible, 5)).map((r) => (
-          <div
-            key={r.c.id}
-            role="alert"
-            className="cobranza-toast pointer-events-auto flex items-start gap-3 rounded-2xl border border-red-400/50 bg-red-600 p-3.5 text-white shadow-2xl shadow-red-900/30"
-          >
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
-              <BellRing size={18} className="animate-pulse" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold">{r.c.clientName}</p>
-              <p className="text-xs text-white/90">
-                {r.st === "vencido" ? "Ya se venció su fecha de pago" : "Se acerca su fecha de pago"} · {dayText(r.days)}
-              </p>
-              <a
-                href={whatsappLink(r.c, r.days)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-50"
-              >
-                <MessageCircle size={13} /> Cobrar por WhatsApp
-              </a>
-            </div>
-            <button
-              type="button"
-              aria-label="Cerrar notificación"
-              onClick={() => dismiss(r)}
-              className="rounded-full p-1 text-white/80 hover:bg-white/20 hover:text-white"
+      {/* Notificación flotante con auto-cierre en 3 segundos */}
+      {!dismissed && alerts.length > 0 && (
+        <div className="pointer-events-none fixed right-4 top-4 z-50 flex w-[min(92vw,380px)] flex-col gap-2">
+          {alerts.length === 1 && singleAlert ? (
+            <div
+              role="alert"
+              className="cobranza-toast pointer-events-auto relative overflow-hidden flex items-start gap-3 rounded-2xl border border-red-400/50 bg-red-600 p-4 text-white shadow-2xl shadow-red-900/40"
             >
-              <X size={16} />
-            </button>
-          </div>
-        ))}
-      </div>
+              {/* Barra de progreso de 3 segundos */}
+              <div className="absolute bottom-0 left-0 h-1 bg-white/60 animate-dismiss-bar" />
+
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
+                <BellRing size={18} className="animate-pulse" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold">{singleAlert.c.clientName}</p>
+                <p className="text-xs text-white/90">
+                  {singleAlert.st === "vencido" ? "Ya se venció su fecha de pago" : "Se acerca su fecha de pago"} · {dayText(singleAlert.days)}
+                </p>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <a
+                    href={whatsappLink(singleAlert.c, singleAlert.days)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-50 shadow-sm"
+                  >
+                    <MessageCircle size={13} /> Cobrar por WhatsApp
+                  </a>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar notificación"
+                onClick={() => setDismissed(true)}
+                className="rounded-full p-1 text-white/80 hover:bg-white/20 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            /* Si hay 2 o más deudores: notificación limpia consolidada que no tapa la pantalla */
+            <div
+              role="alert"
+              className="cobranza-toast pointer-events-auto relative overflow-hidden flex items-start gap-3 rounded-2xl border border-red-400/50 bg-red-600 p-4 text-white shadow-2xl shadow-red-900/40"
+            >
+              {/* Barra de progreso de 3 segundos */}
+              <div className="absolute bottom-0 left-0 h-1 bg-white/60 animate-dismiss-bar" />
+
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
+                <AlertTriangle size={18} className="animate-pulse" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">Lista de deudores ({alerts.length})</p>
+                <p className="text-xs text-white/90 mt-0.5">
+                  Hay {alerts.length} clientes con fecha de pago vencida o por vencer.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("deudores");
+                    setDismissed(true);
+                    document.getElementById("tabla-cobranza")?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-50 shadow-sm"
+                >
+                  <Users size={13} /> Ver lista de deudores
+                </button>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar notificación"
+                onClick={() => setDismissed(true)}
+                className="rounded-full p-1 text-white/80 hover:bg-white/20 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="admin-glass rounded-[var(--radius-lg)] p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -103,9 +156,17 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
             <Wifi size={20} className="text-accent" /> Cobranza de internet
           </h2>
           {alerts.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white">
-              <BellRing size={13} /> {alerts.length} por cobrar
-            </span>
+            <button
+              type="button"
+              onClick={() => setTab((prev) => (prev === "deudores" ? "all" : "deudores"))}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-transform active:scale-95 ${
+                tab === "deudores"
+                  ? "bg-red-600 text-white shadow-md ring-2 ring-red-400"
+                  : "bg-red-600/10 text-red-600 border border-red-500/30 hover:bg-red-600 hover:text-white"
+              }`}
+            >
+              <BellRing size={13} /> {alerts.length} en lista de deudores
+            </button>
           )}
         </div>
 
@@ -142,7 +203,41 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
           </div>
         </form>
 
-        <div className="mt-6 overflow-x-auto">
+        {/* Pestañas de filtro limpias: Todos vs Lista de Deudores */}
+        <div id="tabla-cobranza" className="mt-8 flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTab("all")}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+                tab === "all"
+                  ? "bg-accent text-accent-fg shadow-sm"
+                  : "border border-border/80 bg-bg-surface/80 text-fg-muted hover:text-fg"
+              }`}
+            >
+              Todos los clientes ({rows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("deudores")}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all flex items-center gap-1.5 ${
+                tab === "deudores"
+                  ? "bg-red-600 text-white shadow-sm"
+                  : "border border-red-500/40 bg-red-500/5 text-red-600 hover:bg-red-500/10"
+              }`}
+            >
+              <AlertTriangle size={13} /> Lista de deudores ({alerts.length})
+            </button>
+          </div>
+
+          {tab === "deudores" && alerts.length > 0 && (
+            <p className="text-xs font-semibold text-red-600">
+              Mostrando únicamente clientes con cobro pendiente o vencido
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
@@ -154,7 +249,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ c, days, st }) => (
+              {displayedRows.map(({ c, days, st }) => (
                 <tr key={c.id} className={st === "ok" ? "" : "bg-red-500/10"}>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-fg">{c.clientName}</p>
@@ -209,10 +304,12 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                   </td>
                 </tr>
               ))}
-              {clients.length === 0 && (
+              {displayedRows.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-fg-muted">
-                    Aún no hay clientes de internet registrados.
+                    {tab === "deudores"
+                      ? "¡Excelente! No hay clientes con cobro pendiente o vencido. Todos están al día."
+                      : "Aún no hay clientes de internet registrados."}
                   </td>
                 </tr>
               )}
