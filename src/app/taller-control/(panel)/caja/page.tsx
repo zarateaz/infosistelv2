@@ -8,7 +8,7 @@ import {
   getCashboxTransactionsCount,
 } from "./actions";
 import { monthKey } from "./month";
-import { PAYMENT_METHODS } from "./constants";
+import { PAYMENT_METHODS, type PaymentMethodType } from "./constants";
 import { AddTransactionForm } from "./AddTransactionForm";
 import { AddTransactionRow } from "./AddTransactionRow";
 import { CajaChart } from "./CajaChart";
@@ -18,6 +18,7 @@ import { MonthlyReport } from "./MonthlyReport";
 import { MonthSelector } from "./MonthSelector";
 import { MonthlyReportsArchive } from "./MonthlyReportsArchive";
 import { DownloadHistoryPdfButton } from "./DownloadHistoryPdfButton";
+import { CashboxMethodCards } from "./CashboxMethodCards";
 import { StatCard, type StatTint } from "../StatCard";
 
 const METHOD_ICON: Record<(typeof PAYMENT_METHODS)[number], typeof Banknote> = {
@@ -73,7 +74,7 @@ export default async function AdminCashboxPage({
         .filter((t) => t.paymentMethod === method)
         .reduce((sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount), 0),
     ])
-  );
+  ) as Record<PaymentMethodType, number>;
 
   const [yearStr, monthStr] = month.split("-");
   const monthIndex = parseInt(monthStr, 10) - 1;
@@ -124,16 +125,11 @@ export default async function AdminCashboxPage({
           </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {PAYMENT_METHODS.map((method) => (
-            <StatCard
-              key={method}
-              icon={METHOD_ICON[method]}
-              label={`${method} (${showAll ? "Total" : monthLabel})`}
-              value={`S/. ${totalsByMethod[method].toFixed(2)}`}
-              tint={METHOD_TINT[method]}
-            />
-          ))}
+        <div className="mt-8">
+          <CashboxMethodCards
+            totals={totalsByMethod}
+            periodLabel={showAll ? "Historial Completo" : monthLabel}
+          />
         </div>
 
         <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">

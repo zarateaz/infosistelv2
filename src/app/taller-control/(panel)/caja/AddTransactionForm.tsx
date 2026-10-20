@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createTransaction, type TransactionFormState } from "./actions";
-import { PAYMENT_METHODS } from "./constants";
+import { PAYMENT_METHODS, PAYMENT_METHOD_INFO } from "./constants";
 import { todayInputValue } from "./month";
 import { AutoGrowInput } from "../AutoGrowInput";
 
@@ -110,7 +110,7 @@ export function AddTransactionForm({ month }: { month?: string }) {
           <select id="paymentMethod" name="paymentMethod" defaultValue={PAYMENT_METHODS[0]} className={inputClass}>
             {PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {PAYMENT_METHOD_INFO[m]?.labelSelect || m}
               </option>
             ))}
           </select>

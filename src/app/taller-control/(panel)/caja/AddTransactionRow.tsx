@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { Plus, ShieldCheck } from "lucide-react";
 import { createTransactionRecord } from "./actions";
-import { PAYMENT_METHODS } from "./constants";
+import { PAYMENT_METHODS, PAYMENT_METHOD_INFO } from "./constants";
 import { todayInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { AutoGrowInput } from "../AutoGrowInput";
@@ -152,7 +152,7 @@ export function AddTransactionRow() {
             >
               {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m}>
-                  {m}
+                  {PAYMENT_METHOD_INFO[m]?.labelSelect || m}
                 </option>
               ))}
             </select>

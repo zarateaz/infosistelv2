@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Trash2, Pencil, ShieldCheck } from "lucide-react";
+import { Trash2, Pencil, ShieldCheck, Banknote } from "lucide-react";
 import { updateTransaction, deleteTransaction, type AdminTransaction } from "./actions";
-import { PAYMENT_METHODS } from "./constants";
+import { PAYMENT_METHODS, PAYMENT_METHOD_INFO } from "./constants";
+import { YapeIcon } from "@/components/icons/YapeIcon";
 import { dateToInputValue, parseDateInput } from "./month";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { AutoGrowInput } from "../AutoGrowInput";
@@ -42,6 +43,36 @@ function validate(draft: Draft): Partial<Record<keyof Draft, string>> {
   if (!parseDateInput(draft.date)) errors.date = "Fecha inválida.";
   if (draft.notes.trim().length > 500) errors.notes = "Máximo 500 caracteres.";
   return errors;
+}
+
+function PaymentMethodBadge({ method }: { method: string }) {
+  if (method === "YAPE 1") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-[#742284]/10 dark:bg-[#742284]/25 px-2 py-0.5 text-xs font-semibold text-[#742284] dark:text-[#c084fc] border border-[#742284]/20 shadow-xs">
+        <YapeIcon className="h-3.5 w-3.5 shrink-0" />
+        <span>Yape 1</span>
+        <span className="text-[10px] opacity-75 font-normal">(Edgar)</span>
+      </span>
+    );
+  }
+  if (method === "YAPE 2") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-[#742284]/10 dark:bg-[#742284]/25 px-2 py-0.5 text-xs font-semibold text-[#742284] dark:text-[#c084fc] border border-[#742284]/20 shadow-xs">
+        <YapeIcon className="h-3.5 w-3.5 shrink-0" />
+        <span>Yape 2</span>
+        <span className="text-[10px] opacity-75 font-normal">(Caja)</span>
+      </span>
+    );
+  }
+  if (method === "EFECTIVO") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 shadow-xs">
+        <Banknote size={13} className="shrink-0" />
+        <span>Efectivo</span>
+      </span>
+    );
+  }
+  return <span className="text-xs text-fg-muted font-medium">{method}</span>;
 }
 
 export function TransactionRow({ transaction }: { transaction: AdminTransaction }) {
@@ -143,7 +174,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
               >
                 {PAYMENT_METHODS.map((m) => (
                   <option key={m} value={m}>
-                    {m}
+                    {PAYMENT_METHOD_INFO[m]?.labelSelect || m}
                   </option>
                 ))}
               </select>
@@ -226,7 +257,9 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
         </span>
       </td>
       <td className="px-5 py-2.5 font-semibold text-fg">{transaction.description}</td>
-      <td className="px-5 py-2.5 text-fg-muted">{transaction.paymentMethod}</td>
+      <td className="px-5 py-2.5">
+        <PaymentMethodBadge method={transaction.paymentMethod} />
+      </td>
       <td className={`px-5 py-2.5 font-bold ${transaction.type === "INCOME" ? "text-accent" : "text-red-600"}`}>
         S/. {transaction.amount.toFixed(2)}
       </td>
