@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calculator, Copy, Check, RotateCcw, ReceiptText, ShieldCheck } from "lucide-react";
+import { Calculator, Copy, Check, RotateCcw } from "lucide-react";
 
 const IGV_RATE = 0.18;
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -10,15 +10,25 @@ const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm tex
 type Method = "margen" | "recargo";
 type SaleView = "con_igv" | "sin_igv";
 
-function Row({ k, v, strong, highlight }: { k: string; v: string; strong?: boolean; highlight?: "emerald" | "blue" }) {
+function Row({
+  k,
+  v,
+  strong,
+  accent,
+}: {
+  k: string;
+  v: string;
+  strong?: boolean;
+  accent?: "green" | "blue";
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-border/50 py-2 text-sm last:border-0">
-      <span className="text-fg-muted">{k}</span>
+    <div className="flex items-baseline justify-between gap-3 border-b border-border/50 py-2.5 text-sm last:border-0">
+      <span className="text-fg-muted font-medium">{k}</span>
       <span
         className={`${
-          strong ? "font-bold text-fg" : "font-semibold text-fg"
-        } ${highlight === "emerald" ? "text-emerald-600 dark:text-emerald-400 font-bold" : ""} ${
-          highlight === "blue" ? "text-blue-600 dark:text-blue-400 font-bold" : ""
+          strong ? "font-bold text-fg text-base" : "font-semibold text-fg"
+        } ${accent === "green" ? "!text-emerald-600 dark:!text-emerald-400 font-bold" : ""} ${
+          accent === "blue" ? "!text-blue-600 dark:!text-blue-400 font-bold" : ""
         }`}
       >
         {v}
@@ -40,22 +50,24 @@ export function PriceCalculator() {
   const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
   const [fx, setFx] = useState("3.75");
   const [buy, setBuy] = useState("");
-  const [costHasCredit, setCostHasCredit] = useState(false); // Por defecto: costo directo pagado de bolsillo
+  const [costHasCredit, setCostHasCredit] = useState(false);
   const [method, setMethod] = useState<Method>("margen");
   const [percent, setPercent] = useState("15");
   const [extra, setExtra] = useState("0");
   const [qty, setQty] = useState("1");
   const [roundUp, setRoundUp] = useState(false);
-  const [activeSaleView, setActiveSaleView] = useState<SaleView>("con_igv");
-  const [copiedMode, setCopiedMode] = useState<string | null>(null);
+  const [saleMode, setSaleMode] = useState<SaleView>("con_igv");
+  const [copied, setCopied] = useState(false);
 
   const r = useMemo(() => {
     const rate = currency === "USD" ? num(fx) : 1;
     const buyPen = num(buy) * rate;
-    // Si la empresa deduce crédito fiscal a la compra, descuenta el 18%.
-    // Si no (estándar para comercio/taller), el costo es el monto pagado directo.
+
+    // Costo de compra:
+    // - Si deduce crédito fiscal comercial: descuenta el 18% a la compra.
+    // - Si compra normal directo (lo que salió del bolsillo): el costo es el monto pagado.
     const netBuy = costHasCredit ? buyPen / (1 + IGV_RATE) : buyPen;
-    const cost = netBuy + num(extra); // costo neto unitario
+    const cost = netBuy + num(extra);
     const pct = num(percent);
     const q = Math.max(1, Math.floor(num(qty)) || 1);
 
@@ -72,7 +84,7 @@ export function PriceCalculator() {
       priceSinIgv = Math.ceil(priceSinIgv);
     }
 
-    // Precio con IGV SIEMPRE es mayor que precio sin IGV (agrega el 18% para factura)
+    // Precio con IGV: SIEMPRE incluye el 18% adicional de la factura
     let priceConIgv = priceSinIgv * (1 + IGV_RATE);
     if (roundUp && priceConIgv > 0) {
       priceConIgv = Math.ceil(priceConIgv);
@@ -81,14 +93,17 @@ export function PriceCalculator() {
     const igvAmount = priceConIgv - priceSinIgv;
     const profit = priceSinIgv - cost;
 
+    const activeFinalPrice = saleMode === "con_igv" ? priceConIgv : priceSinIgv;
+    const activeTotalPrice = activeFinalPrice * q;
+
     return {
       cost,
       priceSinIgv,
       priceConIgv,
+      activeFinalPrice,
+      activeTotalPrice,
       igvAmount,
       profit,
-      totalSinIgv: priceSinIgv * q,
-      totalConIgv: priceConIgv * q,
       totalProfit: profit * q,
       realMargin: priceSinIgv > 0 ? (profit / priceSinIgv) * 100 : 0,
       realMarkup: cost > 0 ? (profit / cost) * 100 : 0,
@@ -97,7 +112,7 @@ export function PriceCalculator() {
       invalid,
       valid: !invalid && cost > 0,
     };
-  }, [currency, fx, buy, costHasCredit, method, percent, extra, qty, roundUp]);
+  }, [currency, fx, buy, costHasCredit, method, percent, extra, qty, roundUp, saleMode]);
 
   const reset = () => {
     setProduct("");
@@ -110,31 +125,30 @@ export function PriceCalculator() {
     setExtra("0");
     setQty("1");
     setRoundUp(false);
+    setSaleMode("con_igv");
   };
 
-  const copy = async (mode: SaleView) => {
-    const isCon = mode === "con_igv";
-    const targetPrice = isCon ? r.priceConIgv : r.priceSinIgv;
-    const targetTotal = isCon ? r.totalConIgv : r.totalSinIgv;
+  const copy = async () => {
+    const isCon = saleMode === "con_igv";
     const label = isCon ? "Precio con IGV (Factura)" : "Precio sin IGV (Normal)";
-
-    const text = `${product ? product + " — " : ""}${label}: ${money(targetPrice)}${
-      r.q > 1 ? ` | Total (${r.q} unid.): ${money(targetTotal)}` : ""
+    const text = `${product ? product + " — " : ""}${label}: ${money(r.activeFinalPrice)}${
+      r.q > 1 ? ` | Total (${r.q} unid.): ${money(r.activeTotalPrice)}` : ""
     }`;
     await navigator.clipboard.writeText(text);
-    setCopiedMode(mode);
-    setTimeout(() => setCopiedMode(null), 1500);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      {/* Columna Izquierda: Datos de la compra */}
       <div className="admin-glass rounded-[var(--radius-lg)] p-6 lg:col-span-3">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-bold text-fg">Datos de la compra</h2>
           <button
             type="button"
             onClick={reset}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-fg-muted hover:bg-bg-alt hover:text-fg"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-fg-muted hover:bg-bg-alt hover:text-fg transition-colors"
           >
             <RotateCcw size={13} /> Limpiar
           </button>
@@ -143,14 +157,14 @@ export function PriceCalculator() {
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className={labelClass} htmlFor="pc-product">
-              Producto
+              Producto (Opcional)
             </label>
             <input
               id="pc-product"
               value={product}
               onChange={(e) => setProduct(e.target.value)}
               className={inputClass}
-              placeholder="Ej. Mouse Gamer Logitech / Laptop Lenovo"
+              placeholder="Ej. Mouse Gamer, Teclado mecánico, Laptop..."
             />
           </div>
 
@@ -185,28 +199,44 @@ export function PriceCalculator() {
               />
             </div>
           ) : (
-            <div className="hidden sm:block" />
+            <div>
+              <label className={labelClass} htmlFor="pc-buy">
+                Precio de compra (S/)
+              </label>
+              <input
+                id="pc-buy"
+                type="number"
+                min={0}
+                step={0.01}
+                value={buy}
+                onChange={(e) => setBuy(e.target.value)}
+                className={inputClass}
+                placeholder="Ej. 50.00"
+              />
+            </div>
+          )}
+
+          {currency === "USD" && (
+            <div>
+              <label className={labelClass} htmlFor="pc-buy">
+                Precio de compra (US$)
+              </label>
+              <input
+                id="pc-buy"
+                type="number"
+                min={0}
+                step={0.01}
+                value={buy}
+                onChange={(e) => setBuy(e.target.value)}
+                className={inputClass}
+                placeholder="Ej. 15.00"
+              />
+            </div>
           )}
 
           <div>
-            <label className={labelClass} htmlFor="pc-buy">
-              Precio de compra ({currency === "USD" ? "US$" : "S/"})
-            </label>
-            <input
-              id="pc-buy"
-              type="number"
-              min={0}
-              step={0.01}
-              value={buy}
-              onChange={(e) => setBuy(e.target.value)}
-              className={inputClass}
-              placeholder="0.00"
-            />
-          </div>
-
-          <div>
             <label className={labelClass} htmlFor="pc-credit">
-              Tipo de costo de compra
+              Costo de adquisición
             </label>
             <select
               id="pc-credit"
@@ -214,8 +244,8 @@ export function PriceCalculator() {
               onChange={(e) => setCostHasCredit(e.target.value === "credito")}
               className={inputClass}
             >
-              <option value="directo">Precio de compra directo (Estándar)</option>
-              <option value="credito">Deducir crédito fiscal (-18% IGV compra)</option>
+              <option value="directo">Precio de compra directo (Monto pagado)</option>
+              <option value="credito">Deducir 18% de IGV a la compra (Crédito fiscal)</option>
             </select>
           </div>
 
@@ -279,19 +309,19 @@ export function PriceCalculator() {
             />
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-fg sm:col-span-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-fg sm:col-span-2 pt-1">
             <input
               type="checkbox"
               checked={roundUp}
               onChange={(e) => setRoundUp(e.target.checked)}
-              className="h-4 w-4 accent-[var(--color-accent,#2563eb)]"
+              className="h-4 w-4 rounded accent-accent"
             />
-            Redondear precios finales al sol superior
+            Redondear el precio final al sol superior
           </label>
         </div>
       </div>
 
-      {/* Panel de Resultado con ambos precios (Con IGV y Sin IGV) claros */}
+      {/* Columna Derecha: Resultado Nítido, Limpio y de Alto Contraste */}
       <div className="admin-glass rounded-[var(--radius-lg)] p-6 lg:col-span-2 flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between">
@@ -300,133 +330,117 @@ export function PriceCalculator() {
             </h2>
           </div>
 
-          {r.invalid && <p className="mt-4 text-sm font-medium text-red-600">{r.invalid}</p>}
+          {r.invalid && <p className="mt-4 text-sm font-semibold text-red-600">{r.invalid}</p>}
 
           {!r.valid && !r.invalid ? (
-            <p className="mt-4 text-sm text-fg-muted">Ingresa el precio de compra para ver el cálculo.</p>
+            <p className="mt-4 text-sm text-fg-muted">
+              Ingresa el precio de compra a la izquierda para ver el resultado de venta.
+            </p>
           ) : (
             !r.invalid && (
-              <>
-                {/* Selector de vista destacada */}
-                <div className="mt-4 flex rounded-xl border border-border/60 bg-bg-alt/50 p-1">
+              <div className="mt-4 space-y-4">
+                {/* Selector elegante para alternar entre Con IGV y Sin IGV */}
+                <div className="flex rounded-xl border border-border/80 bg-bg-surface p-1 shadow-sm">
                   <button
                     type="button"
-                    onClick={() => setActiveSaleView("con_igv")}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all ${
-                      activeSaleView === "con_igv"
-                        ? "bg-accent text-white shadow-sm"
+                    onClick={() => setSaleMode("con_igv")}
+                    className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
+                      saleMode === "con_igv"
+                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
                         : "text-fg-muted hover:text-fg"
                     }`}
                   >
-                    Con IGV (Factura)
+                    Con IGV (Factura +18%)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActiveSaleView("sin_igv")}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all ${
-                      activeSaleView === "sin_igv"
-                        ? "bg-emerald-600 text-white shadow-sm"
+                    onClick={() => setSaleMode("sin_igv")}
+                    className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
+                      saleMode === "sin_igv"
+                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md"
                         : "text-fg-muted hover:text-fg"
                     }`}
                   >
-                    Sin IGV (Normal)
+                    Sin IGV (Venta normal)
                   </button>
                 </div>
 
-                {/* Tarjetas comparativas de precios: CON IGV (Mayor) vs SIN IGV (Menor) */}
-                <div className="mt-4 grid grid-cols-1 gap-3">
-                  {/* Tarjeta Con IGV */}
-                  <div
-                    className={`rounded-2xl p-4 transition-all border ${
-                      activeSaleView === "con_igv"
-                        ? "border-blue-500/40 bg-blue-500/10 ring-2 ring-blue-500/20"
-                        : "border-border/40 bg-bg-surface/50 opacity-90"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <ReceiptText size={15} className="text-blue-600 dark:text-blue-400" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
-                          Precio Con Factura (Con IGV 18%)
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300">
-                        Mayor (+18%)
-                      </span>
-                    </div>
-                    <p className="mt-1 font-display text-3xl font-extrabold text-blue-900 dark:text-blue-100">
-                      {money(r.priceConIgv)}
-                    </p>
-                    {r.q > 1 && (
-                      <p className="mt-0.5 text-xs font-semibold text-fg-muted">
-                        Total ({r.q} unid.): {money(r.totalConIgv)}
-                      </p>
-                    )}
+                {/* Tarjeta única principal con contraste impecable y números ultra legibles */}
+                <div
+                  className={`rounded-2xl p-5 text-center border transition-all shadow-sm ${
+                    saleMode === "con_igv"
+                      ? "border-blue-500/30 bg-blue-500/10"
+                      : "border-emerald-500/30 bg-emerald-500/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span
+                      className={`text-xs font-extrabold uppercase tracking-wider ${
+                        saleMode === "con_igv"
+                          ? "text-blue-700 dark:text-blue-300"
+                          : "text-emerald-700 dark:text-emerald-300"
+                      }`}
+                    >
+                      {saleMode === "con_igv"
+                        ? "PRECIO FINAL CON FACTURA (CON IGV)"
+                        : "PRECIO FINAL SIN FACTURA (SIN IGV)"}
+                    </span>
                   </div>
 
-                  {/* Tarjeta Sin IGV */}
-                  <div
-                    className={`rounded-2xl p-4 transition-all border ${
-                      activeSaleView === "sin_igv"
-                        ? "border-emerald-500/40 bg-emerald-500/10 ring-2 ring-emerald-500/20"
-                        : "border-border/40 bg-bg-surface/50 opacity-90"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <ShieldCheck size={15} className="text-emerald-600 dark:text-emerald-400" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                          Precio Venta Sin IGV (Normal / Boleta)
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                        Base imponible
-                      </span>
-                    </div>
-                    <p className="mt-1 font-display text-3xl font-extrabold text-emerald-900 dark:text-emerald-100">
-                      {money(r.priceSinIgv)}
-                    </p>
-                    {r.q > 1 && (
-                      <p className="mt-0.5 text-xs font-semibold text-fg-muted">
-                        Total ({r.q} unid.): {money(r.totalSinIgv)}
+                  {/* Número del precio con máximo contraste: color oscuro profundo en tema claro */}
+                  <p className="mt-2 font-display text-4xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight">
+                    {money(r.activeFinalPrice)}
+                  </p>
+
+                  <p className="mt-1 text-xs font-semibold text-fg-muted">
+                    {saleMode === "con_igv"
+                      ? "Incluye 18% de IGV para emisión de factura"
+                      : "Precio neto para venta directa o boleta"}
+                  </p>
+
+                  {r.q > 1 && (
+                    <div className="mt-3 inline-block rounded-lg bg-bg-surface/80 px-3 py-1 border border-border/60">
+                      <p className="text-xs font-bold text-fg">
+                        Total por {r.q} unidades: {money(r.activeTotalPrice)}
                       </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Desglose detallado */}
-                <div className="mt-4 rounded-xl border border-border/50 bg-bg-surface/40 px-3.5 py-2">
-                  <Row k="Costo unitario" v={money(r.cost)} />
-                  <Row k="Utilidad unitaria" v={money(r.profit)} strong highlight="emerald" />
-                  <Row k="Venta sin IGV (Base)" v={money(r.priceSinIgv)} />
-                  <Row k="IGV de venta (18%)" v={money(r.igvAmount)} />
-                  <Row k="Precio con IGV (Factura)" v={money(r.priceConIgv)} strong highlight="blue" />
-                  {r.q > 1 && <Row k={`Utilidad total (${r.q} unid.)`} v={money(r.totalProfit)} strong />}
+                {/* Desglose claro y transparente */}
+                <div className="rounded-2xl border border-border/60 bg-bg-surface/90 px-4 py-2 shadow-sm">
+                  <Row k="Costo de compra" v={money(r.cost)} />
+                  <Row k="Utilidad estimada" v={money(r.profit)} strong accent="green" />
+                  <Row k="Precio sin IGV (Base)" v={money(r.priceSinIgv)} />
+                  <Row k="IGV 18% (Venta)" v={money(r.igvAmount)} />
+                  <Row k="Precio con IGV (Factura)" v={money(r.priceConIgv)} strong accent="blue" />
+                  {r.q > 1 && (
+                    <Row k={`Utilidad total (${r.q} unid.)`} v={money(r.totalProfit)} strong accent="green" />
+                  )}
                   <Row k="Margen real sobre venta" v={`${r.realMargin.toFixed(2)}%`} />
                   <Row k="Recargo real sobre costo" v={`${r.realMarkup.toFixed(2)}%`} />
                 </div>
-              </>
+              </div>
             )
           )}
         </div>
 
+        {/* Botón único de copiado */}
         {r.valid && !r.invalid && (
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="mt-6">
             <button
               type="button"
-              onClick={() => copy("con_igv")}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent py-2.5 px-3 text-xs font-bold text-accent-fg transition-opacity hover:opacity-90 active:scale-95"
+              onClick={copy}
+              className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white shadow-md transition-all active:scale-[0.98] ${
+                saleMode === "con_igv"
+                  ? "bg-blue-600 hover:bg-blue-700 shadow-blue-600/30"
+                  : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30"
+              }`}
             >
-              {copiedMode === "con_igv" ? <Check size={14} /> : <Copy size={14} />}
-              {copiedMode === "con_igv" ? "¡Copiado!" : "Copiar con IGV"}
-            </button>
-            <button
-              type="button"
-              onClick={() => copy("sin_igv")}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2.5 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/20 active:scale-95"
-            >
-              {copiedMode === "sin_igv" ? <Check size={14} /> : <Copy size={14} />}
-              {copiedMode === "sin_igv" ? "¡Copiado!" : "Copiar sin IGV"}
+              {copied ? <Check size={18} /> : <Copy size={18} />}
+              {copied
+                ? "¡Precio copiado al portapapeles!"
+                : `Copiar precio: ${money(r.activeFinalPrice)}`}
             </button>
           </div>
         )}
