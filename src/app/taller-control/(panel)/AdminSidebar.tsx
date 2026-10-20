@@ -5,51 +5,57 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Wallet,
-  Boxes,
-  Package,
-  Tags,
-  Wrench,
-  ClipboardList,
-  ShoppingBag,
-  TrendingUp,
-  Receipt,
-  HandCoins,
-  Users,
-  Trash2,
   LogOut,
   Menu,
   X,
-  FileText,
-  Shield,
-  Calculator,
-  Tv,
-  Wifi,
 } from "lucide-react";
 
-const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  "/taller-control": LayoutDashboard,
-  "/taller-control/calculadora": Calculator,
-  "/taller-control/catalogo": Tv,
-  "/taller-control/seguridad": Shield,
-  "/taller-control/caja": Wallet,
-  "/taller-control/cobranza-internet": Wifi,
-  "/taller-control/inventario": Boxes,
-  "/taller-control/productos": Package,
-  "/taller-control/categorias": Tags,
-  "/taller-control/reparaciones": Wrench,
-  "/taller-control/servicios": ClipboardList,
-  "/taller-control/pedidos": ShoppingBag,
-  "/taller-control/ventas": TrendingUp,
-  "/taller-control/descuentos": ClipboardList,
-  "/taller-control/seguimiento-stock": Boxes,
-  "/taller-control/reporte-mensual": FileText,
-  "/taller-control/cotizaciones": Calculator,
-  "/taller-control/papelera": Trash2,
-  "/taller-control/facturas": Receipt,
-  "/taller-control/cuentas": HandCoins,
-  "/taller-control/usuarios": Users,
+import {
+  DashboardIcon,
+  RealCalculatorIcon,
+  SecurityIcon,
+  WifiShieldIcon,
+  CashRegisterIcon,
+  OrdersBagIcon,
+  SalesTrendIcon,
+  KioskTouchIcon,
+  MonthlyReportIcon,
+  QuotationIcon,
+  TrashBinIcon,
+  InvoiceBillIcon,
+  AccountsFinanceIcon,
+  WarehouseInventoryIcon,
+  ProductsPackageIcon,
+  CategoriesTagsIcon,
+  DiscountsTagIcon,
+  StockTrackerRadarIcon,
+  RepairsWrenchIcon,
+  TechServicesIcon,
+  UsersAdminIcon,
+} from "@/components/admin/SidebarIcons";
+
+const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string; active?: boolean }>> = {
+  "/taller-control": DashboardIcon,
+  "/taller-control/calculadora": RealCalculatorIcon,
+  "/taller-control/seguridad": SecurityIcon,
+  "/taller-control/caja": CashRegisterIcon,
+  "/taller-control/cobranza-internet": WifiShieldIcon,
+  "/taller-control/inventario": WarehouseInventoryIcon,
+  "/taller-control/productos": ProductsPackageIcon,
+  "/taller-control/categorias": CategoriesTagsIcon,
+  "/taller-control/reparaciones": RepairsWrenchIcon,
+  "/taller-control/servicios": TechServicesIcon,
+  "/taller-control/pedidos": OrdersBagIcon,
+  "/taller-control/ventas": SalesTrendIcon,
+  "/taller-control/catalogo": KioskTouchIcon,
+  "/taller-control/descuentos": DiscountsTagIcon,
+  "/taller-control/seguimiento-stock": StockTrackerRadarIcon,
+  "/taller-control/reporte-mensual": MonthlyReportIcon,
+  "/taller-control/cotizaciones": QuotationIcon,
+  "/taller-control/papelera": TrashBinIcon,
+  "/taller-control/facturas": InvoiceBillIcon,
+  "/taller-control/cuentas": AccountsFinanceIcon,
+  "/taller-control/usuarios": UsersAdminIcon,
 };
 
 // Groups the flat nav list into labeled sections purely for display — the
@@ -108,33 +114,41 @@ export function AdminSidebar({
   const NavList = (
     <nav className="flex flex-1 flex-col overflow-y-auto px-3 py-2">
       {groupedLinks.map(({ group, links }, i) => (
-        <div key={group} className={i > 0 ? "mt-3" : undefined}>
-          <p className="px-3.5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-muted/60">
-            {group}
-          </p>
+        <div key={group} className={i > 0 ? "mt-3.5" : undefined}>
+          <div className="flex items-center gap-1.5 px-3.5 pb-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent/60" />
+            <p className="text-[10px] font-bold uppercase tracking-widest text-fg-muted/70">
+              {group}
+            </p>
+          </div>
           <div className="flex flex-col gap-1">
             {links.map((link) => {
-              const Icon = ICONS[link.href] ?? LayoutDashboard;
+              const Icon = ICONS[link.href] ?? DashboardIcon;
               const active = isActive(link.href);
               return (
                 <Link
                   key={link.href}
                   href={link.href}
                   onClick={() => setMobileOpen(false)}
-                  className={`group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                  className={`group relative flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm font-semibold transition-all duration-200 ${
                     active
-                      ? "bg-accent text-accent-fg shadow-[0_4px_16px_-4px_rgba(10,95,219,0.5)]"
-                      : "text-fg-muted hover:translate-x-0.5 hover:bg-bg-raised hover:text-fg"
+                      ? "bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 text-white shadow-[0_4px_16px_-2px_rgba(10,95,219,0.45)] translate-x-0.5"
+                      : "text-fg/80 hover:translate-x-1 hover:bg-bg-raised/90 hover:text-fg hover:shadow-sm"
                   }`}
                 >
                   {active && (
-                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white/70 shadow-[0_0_8px_1px_rgba(255,255,255,0.8)]" />
+                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white shadow-[0_0_10px_2px_rgba(255,255,255,0.9)]" />
                   )}
-                  <Icon
-                    size={18}
-                    className={active ? "text-accent-fg" : "text-fg-muted transition-colors group-hover:text-accent"}
-                  />
-                  {link.label}
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-200 group-hover:scale-105 ${
+                      active
+                        ? "border-white/30 bg-white/20 shadow-inner backdrop-blur-sm"
+                        : "border-border/60 bg-bg-surface/90 shadow-[0_1px_3px_rgba(0,0,0,0.05)] group-hover:border-border-strong group-hover:bg-bg-surface"
+                    }`}
+                  >
+                    <Icon size={20} active={active} />
+                  </div>
+                  <span className="truncate leading-none">{link.label}</span>
                 </Link>
               );
             })}
@@ -221,20 +235,26 @@ function SidebarFooter({
   logoutAction: () => Promise<void>;
 }) {
   return (
-    <div className="border-t border-border/60 px-4 py-4">
-      <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-bg-raised/80 px-3 py-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-fg shadow-[0_0_0_3px_rgba(10,95,219,0.15),0_0_12px_-2px_rgba(10,95,219,0.6)]">
-          {username?.slice(0, 2).toUpperCase() ?? "?"}
+    <div className="border-t border-border/60 bg-gradient-to-b from-transparent to-bg-raised/40 px-3.5 py-3.5">
+      <div className="mb-2.5 flex items-center justify-between rounded-xl border border-border/50 bg-bg-surface/90 px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-xs font-bold text-white shadow-[0_2px_8px_-1px_rgba(10,95,219,0.5)]">
+            {username?.slice(0, 2).toUpperCase() ?? "AD"}
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
+          </div>
+          <div className="truncate text-left">
+            <p className="truncate text-xs font-bold text-fg leading-none">{username ?? "Administrador"}</p>
+            <p className="mt-0.5 text-[10px] font-medium text-emerald-600 leading-none">En línea</p>
+          </div>
         </div>
-        <span className="truncate text-sm font-semibold text-fg">{username}</span>
       </div>
       <form action={logoutAction}>
         <button
           type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-full border border-border-strong px-4 py-2 text-xs font-bold uppercase tracking-wide text-fg transition-colors hover:border-accent hover:text-accent"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-border/80 bg-bg-surface/80 px-3 py-2 text-xs font-semibold text-fg-muted transition-all duration-150 hover:border-red-300 hover:bg-red-50/50 hover:text-red-600 hover:shadow-sm"
         >
-          <LogOut size={14} />
-          Salir
+          <LogOut size={13} />
+          Cerrar sesión
         </button>
       </form>
     </div>
