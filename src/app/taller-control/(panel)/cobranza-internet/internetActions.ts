@@ -3,10 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { dateToInputValue, parseDateInput } from "./month";
+import { dateToInputValue, parseDateInput } from "../caja/month";
 import type { InternetClientRow } from "./cobranza";
 
-const PATH = "/taller-control/caja";
+const PATH = "/taller-control/cobranza-internet";
 
 export async function getInternetClients(): Promise<InternetClientRow[]> {
   const rows = await prisma.internetClient.findMany({ orderBy: { nextPaymentDate: "asc" } });
