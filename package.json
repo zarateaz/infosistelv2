@@ -7,7 +7,8 @@
     "build": "next build",
     "postbuild": "mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/static && cp -r public/. .next/standalone/public/ 2>/dev/null || true",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ship": "tsx scripts/devops/ship.ts"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.37",
