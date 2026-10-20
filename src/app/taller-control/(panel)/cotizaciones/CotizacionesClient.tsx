@@ -20,6 +20,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { StatCard } from "../StatCard";
+import { ConfirmDialog } from "../ConfirmDialog";
 import type { QuotationRecord } from "./actions";
 import { CotizacionFormModal } from "./CotizacionFormModal";
 import { CotizacionDetailModal } from "./CotizacionDetailModal";
@@ -41,6 +42,8 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
   const [editingQuotation, setEditingQuotation] = useState<QuotationRecord | null>(null);
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationRecord | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [quotationToDelete, setQuotationToDelete] = useState<QuotationRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Filter quotations
   const filteredQuotations = useMemo(() => {
@@ -115,14 +118,20 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
     window.open(link, "_blank");
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar esta cotización? Pasará a la papelera.")) return;
-    const res = await deleteQuotation(id);
-    if (res.success) {
-      setQuotations((prev) => prev.filter((it) => it.id !== id));
-      if (selectedQuotation?.id === id) {
-        setIsDetailOpen(false);
+  const handleConfirmDelete = async () => {
+    if (!quotationToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteQuotation(quotationToDelete.id);
+      if (res.success) {
+        setQuotations((prev) => prev.filter((it) => it.id !== quotationToDelete.id));
+        if (selectedQuotation?.id === quotationToDelete.id) {
+          setIsDetailOpen(false);
+        }
+        setQuotationToDelete(null);
       }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -393,7 +402,7 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
 
                       <button
                         type="button"
-                        onClick={() => handleDelete(q.id)}
+                        onClick={() => setQuotationToDelete(q)}
                         className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-bg-alt text-fg-muted transition-colors hover:border-rose-500 hover:text-rose-500"
                         title="Eliminar cotización"
                       >
@@ -447,6 +456,29 @@ export function CotizacionesClient({ initialQuotations }: CotizacionesClientProp
         }}
         onStatusChange={handleStatusChange}
       />
+
+      {/* Modal de Confirmación para Eliminar (Sustituye a window.confirm) */}
+      {quotationToDelete && (
+        <ConfirmDialog
+          title="Eliminar Cotización Comercial"
+          message="¿Estás seguro de que deseas enviar esta cotización a la papelera? Podrás consultarla o restaurarla posteriormente si es necesario."
+          fields={[
+            { label: "Código", value: quotationToDelete.code },
+            { label: "Cliente", value: quotationToDelete.clientName },
+            {
+              label: "Monto Total",
+              value: `${quotationToDelete.currency === "USD" ? "$" : "S/."} ${quotationToDelete.total.toFixed(2)}`,
+            },
+            { label: "Estado actual", value: quotationToDelete.status },
+          ]}
+          confirmLabel="Sí, enviar a la papelera"
+          pendingLabel="Eliminando..."
+          danger={true}
+          pending={isDeleting}
+          onCancel={() => setQuotationToDelete(null)}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </div>
   );
 }

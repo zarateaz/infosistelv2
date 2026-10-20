@@ -36,6 +36,7 @@ export interface QuotationPdfItem {
   unitPrice: number;
   total: number;
   notes?: string | null;
+  image?: string | null;
 }
 
 export interface QuotationPdfData {
@@ -779,19 +780,65 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
   // ANEXO FOTOGRÁFICO / IMÁGENES DE REFERENCIA ADJUNTAS
   // ----------------------------------------------------
   if (data.images && data.images.length > 0) {
-    const loadedDataUrls: string[] = [];
-    for (const rawImg of data.images) {
+    interface LoadedPhotoItem {
+      dataUrl: string;
+      productName: string;
+      brandModel: string;
+      priceText: string;
+      itemNumber?: number;
+    }
+
+    const loadedPhotos: LoadedPhotoItem[] = [];
+    const usedItemIndices = new Set<number>();
+
+    for (let imgIdx = 0; imgIdx < data.images.length; imgIdx++) {
+      const rawImg = data.images[imgIdx];
       if (rawImg && typeof rawImg === "string" && rawImg.trim()) {
-        const loaded = await loadImageDataUrl(rawImg.trim());
+        const trimmed = rawImg.trim();
+        const loaded = await loadImageDataUrl(trimmed);
         if (loaded) {
-          loadedDataUrls.push(loaded);
+          // Find matching item by image path
+          let itemIdx = -1;
+          if (data.items) {
+            itemIdx = data.items.findIndex(
+              (it, idx) => !usedItemIndices.has(idx) && it.image && it.image.trim() === trimmed
+            );
+            // If not found by exact image path, match by index if item exists
+            if (itemIdx === -1 && data.items[imgIdx] && !usedItemIndices.has(imgIdx)) {
+              itemIdx = imgIdx;
+            }
+          }
+
+          let matchedItem: QuotationPdfItem | undefined;
+          if (itemIdx !== -1 && data.items) {
+            matchedItem = data.items[itemIdx];
+            usedItemIndices.add(itemIdx);
+          }
+
+          const productName =
+            matchedItem?.description?.trim() || `Producto / Servicio #${imgIdx + 1}`;
+          const brandModel = [matchedItem?.brand?.trim(), matchedItem?.model?.trim()]
+            .filter(Boolean)
+            .join(" · ");
+          const priceText =
+            matchedItem && matchedItem.unitPrice > 0
+              ? `${currSymbol} ${matchedItem.unitPrice.toFixed(2)}`
+              : "";
+
+          loadedPhotos.push({
+            dataUrl: loaded,
+            productName,
+            brandModel,
+            priceText,
+            itemNumber: itemIdx !== -1 ? itemIdx + 1 : imgIdx + 1,
+          });
         }
       }
     }
 
-    if (loadedDataUrls.length > 0) {
+    if (loadedPhotos.length > 0) {
       const IMAGES_PER_PAGE = 4;
-      const totalAnnexPages = Math.ceil(loadedDataUrls.length / IMAGES_PER_PAGE);
+      const totalAnnexPages = Math.ceil(loadedPhotos.length / IMAGES_PER_PAGE);
 
       for (let pIdx = 0; pIdx < totalAnnexPages; pIdx++) {
         doc.addPage("a4", "portrait");
@@ -859,12 +906,13 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
         const gapY = 6;
         const startGridY = 34.5;
 
-        const pageImages = loadedDataUrls.slice(
+        const pagePhotos = loadedPhotos.slice(
           pIdx * IMAGES_PER_PAGE,
           (pIdx + 1) * IMAGES_PER_PAGE
         );
 
-        for (let i = 0; i < pageImages.length; i++) {
+        for (let i = 0; i < pagePhotos.length; i++) {
+          const photo = pagePhotos[i];
           const globalIdx = pIdx * IMAGES_PER_PAGE + i + 1;
           const col = i % 2;
           const row = Math.floor(i / 2);
@@ -880,24 +928,57 @@ export async function generateQuotationPDF(data: QuotationPdfData) {
 
           // Header inside card
           doc.setFillColor(...lightBg);
-          doc.roundedRect(cardX + 0.3, cardY + 0.3, cardW - 0.6, 7.5, 2.2, 2.2, "F");
+          doc.roundedRect(cardX + 0.3, cardY + 0.3, cardW - 0.6, 7.2, 2.2, 2.2, "F");
           doc.setFont("helvetica", "bold");
           doc.setFontSize(6.8);
           doc.setTextColor(...brandPrimary);
-          doc.text(`FOTOGRAFÍA 0${globalIdx}`, cardX + 4, cardY + 5.2);
+          doc.text(`FOTOGRAFÍA 0${globalIdx}`, cardX + 3.5, cardY + 5.0);
 
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(5.8);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.0);
           doc.setTextColor(...mutedGray);
-          doc.text("Referencia Visual", cardX + cardW - 4, cardY + 5.2, { align: "right" });
+          doc.text(`Ítem #${photo.itemNumber}`, cardX + cardW - 3.5, cardY + 5.0, { align: "right" });
+
+          // Caption Box at bottom of card
+          const captionH = 17;
+          const captionY = cardY + cardH - captionH - 1.5;
+          doc.setFillColor(248, 250, 252);
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.2);
+          doc.roundedRect(cardX + 2.5, captionY, cardW - 5, captionH, 1.5, 1.5, "FD");
+
+          // Product Name inside Caption Box
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.5);
+          doc.setTextColor(15, 23, 42);
+          const maxTextWidth = cardW - 9;
+          const nameLines = doc.splitTextToSize(normalizePdfText(photo.productName), maxTextWidth);
+          doc.text(nameLines.slice(0, 2), cardX + 4.5, captionY + 4.5);
+
+          // Brand, Model and Price
+          const bottomLineY = captionY + 13.2;
+          if (photo.brandModel) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(5.8);
+            doc.setTextColor(...brandPrimary);
+            const bmText = normalizePdfText(photo.brandModel);
+            doc.text(bmText.length > 32 ? bmText.slice(0, 30) + "…" : bmText, cardX + 4.5, bottomLineY);
+          }
+
+          if (photo.priceText) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(6.2);
+            doc.setTextColor(5, 150, 105);
+            doc.text(photo.priceText, cardX + cardW - 4.5, bottomLineY, { align: "right" });
+          }
 
           // Photo boundary inside card
-          const innerW = cardW - 6;
-          const innerH = cardH - 12.5;
-          const innerX = cardX + 3;
-          const innerY = cardY + 9.5;
+          const innerX = cardX + 3.5;
+          const innerY = cardY + 8.5;
+          const innerW = cardW - 7;
+          const innerH = captionY - innerY - 2;
 
-          const dataUrl = pageImages[i];
+          const dataUrl = photo.dataUrl;
           try {
             const imgProps = doc.getImageProperties(dataUrl);
             const naturalW = imgProps.width || 1;
