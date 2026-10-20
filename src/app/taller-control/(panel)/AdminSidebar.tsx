@@ -30,6 +30,7 @@ import {
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   "/taller-control": LayoutDashboard,
+  "/taller-control/calculadora": Calculator,
   "/taller-control/catalogo": Tv,
   "/taller-control/seguridad": Shield,
   "/taller-control/caja": Wallet,
@@ -57,6 +58,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
 // falls back to "General" so a future addition never silently disappears.
 const GROUP_OF: Record<string, string> = {
   "/taller-control": "General",
+  "/taller-control/calculadora": "General",
   "/taller-control/catalogo": "Ventas",
   "/taller-control/seguridad": "General",
   "/taller-control/caja": "Ventas",
