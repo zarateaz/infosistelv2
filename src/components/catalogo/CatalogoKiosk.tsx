@@ -26,6 +26,10 @@ import {
   Play,
   Pause,
   RotateCcw,
+  ChevronLeft,
+  ChevronRight,
+  Grid,
+  Layers,
 } from "lucide-react";
 import type { CatalogoProduct, CatalogoCategory } from "@/app/catalogo/actions";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
@@ -247,7 +251,12 @@ export function CatalogoKiosk({
 
   // Modo Vitrina Automática (Showroom Autoplay)
   const [isAutoplayActive, setIsAutoplayActive] = useState(false);
-  const [heroIndex, setHeroIndex] = useState(0);
+
+  // Modo de visualización: Presentación Épica 1 a 1 (por defecto) o Cuadrícula
+  const [viewMode, setViewMode] = useState<"presentation" | "grid">("presentation");
+  const [activeProductIndex, setActiveProductIndex] = useState(0);
+  const [presentationAutoplay, setPresentationAutoplay] = useState(false);
+  const [cardQrDataUrl, setCardQrDataUrl] = useState<string>("");
 
   // Modales y drawers
   const [detailProduct, setDetailProduct] = useState<CatalogoProduct | null>(null);
@@ -298,21 +307,6 @@ export function CatalogoKiosk({
     [soundEnabled]
   );
 
-  // Productos destacados o en oferta para el banner de vitrina
-  const showcaseProducts = useMemo(() => {
-    const featured = products.filter((p) => p.isFeatured || p.onSale);
-    return featured.length > 0 ? featured : products.slice(0, 5);
-  }, [products]);
-
-  // Rotación del banner hero
-  useEffect(() => {
-    if (showcaseProducts.length === 0) return;
-    const interval = setInterval(() => {
-      setHeroIndex((prev) => (prev + 1) % showcaseProducts.length);
-    }, isAutoplayActive ? 4500 : 7000);
-    return () => clearInterval(interval);
-  }, [showcaseProducts.length, isAutoplayActive]);
-
   // Fullscreen nativo
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -347,7 +341,6 @@ export function CatalogoKiosk({
   useEffect(() => {
     const events = ["mousedown", "mousemove", "touchstart", "touchmove", "keydown"];
     events.forEach((e) => window.addEventListener(e, resetIdle, { passive: true }));
-    resetIdle();
     return () => {
       events.forEach((e) => window.removeEventListener(e, resetIdle));
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -356,8 +349,11 @@ export function CatalogoKiosk({
 
   // Generar QR para el producto seleccionado
   useEffect(() => {
+    let isCurrent = true;
     if (!detailProduct) {
-      setProductQrDataUrl("");
+      Promise.resolve().then(() => {
+        if (isCurrent) setProductQrDataUrl("");
+      });
       return;
     }
     const finalPrice =
@@ -370,8 +366,14 @@ export function CatalogoKiosk({
       margin: 1,
       color: { dark: "#0f172a", light: "#ffffff" },
     })
-      .then(setProductQrDataUrl)
+      .then((url) => {
+        if (isCurrent) setProductQrDataUrl(url);
+      })
       .catch(() => {});
+
+    return () => {
+      isCurrent = false;
+    };
   }, [detailProduct]);
 
   // Filtrado de productos en tiempo real
@@ -402,6 +404,80 @@ export function CatalogoKiosk({
       return true;
     });
   }, [products, activeCategory, filterType, searchQuery]);
+
+  // Producto activo para la tarjeta de presentación épica 1 a 1
+  const currentPresentedProduct = useMemo(() => {
+    if (filteredProducts.length === 0) return null;
+    const idx = Math.min(Math.max(0, activeProductIndex), filteredProducts.length - 1);
+    return filteredProducts[idx];
+  }, [filteredProducts, activeProductIndex]);
+
+  // Generar QR para el producto mostrado en la tarjeta de presentación 1 a 1
+  useEffect(() => {
+    let isCurrent = true;
+    if (!currentPresentedProduct) {
+      Promise.resolve().then(() => {
+        if (isCurrent) setCardQrDataUrl("");
+      });
+      return;
+    }
+    const finalPrice =
+      currentPresentedProduct.onSale && currentPresentedProduct.salePrice
+        ? currentPresentedProduct.salePrice
+        : currentPresentedProduct.price;
+    const waText = `Hola INFOSISTEL, vi en su catálogo el producto: ${currentPresentedProduct.name} (Código: INF-${currentPresentedProduct.itemNumber}) por S/ ${finalPrice.toFixed(2)}. ¿Tienen stock disponible?`;
+    const waUrl = `https://wa.me/51964648202?text=${encodeURIComponent(waText)}`;
+
+    QRCode.toDataURL(waUrl, {
+      width: 220,
+      margin: 1,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (isCurrent) setCardQrDataUrl(url);
+      })
+      .catch(() => {});
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentPresentedProduct]);
+
+  // Navegación 1 a 1 (Siguiente y Anterior)
+  const handleNextProduct = useCallback(() => {
+    if (filteredProducts.length <= 1) return;
+    kioskAudio.tap(soundEnabled);
+    setActiveProductIndex((prev) => (prev + 1) % filteredProducts.length);
+  }, [filteredProducts.length, soundEnabled]);
+
+  const handlePrevProduct = useCallback(() => {
+    if (filteredProducts.length <= 1) return;
+    kioskAudio.tap(soundEnabled);
+    setActiveProductIndex((prev) => (prev - 1 + filteredProducts.length) % filteredProducts.length);
+  }, [filteredProducts.length, soundEnabled]);
+
+  // Autoplay para presentación 1 a 1
+  useEffect(() => {
+    if (!presentationAutoplay || filteredProducts.length <= 1 || viewMode !== "presentation") return;
+    const interval = setInterval(() => {
+      setActiveProductIndex((prev) => (prev + 1) % filteredProducts.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [presentationAutoplay, filteredProducts.length, viewMode]);
+
+  // Navegación con teclado físico (Flechas Izquierda / Derecha)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showVirtualKeyboard || detailProduct || isCartOpen || viewMode !== "presentation") return;
+      if (e.key === "ArrowRight") {
+        handleNextProduct();
+      } else if (e.key === "ArrowLeft") {
+        handlePrevProduct();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleNextProduct, handlePrevProduct, showVirtualKeyboard, detailProduct, isCartOpen, viewMode]);
 
   // Carrito / Cotización
   const addToCart = (product: CatalogoProduct) => {
@@ -514,8 +590,6 @@ export function CatalogoKiosk({
     setSearchQuery("");
   };
 
-  const activeHero = showcaseProducts[heroIndex] || products[0];
-
   return (
     <div
       className={`relative flex flex-col w-full select-none bg-white text-slate-900 font-sans ${
@@ -594,19 +668,21 @@ export function CatalogoKiosk({
           {/* Modo Vitrina */}
           <button
             onClick={() => {
-              const next = !isAutoplayActive;
+              const next = !presentationAutoplay;
+              setPresentationAutoplay(next);
               setIsAutoplayActive(next);
+              if (next) setViewMode("presentation");
               kioskAudio.tap(soundEnabled);
             }}
             className={`hidden md:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
-              isAutoplayActive
+              presentationAutoplay
                 ? "border-emerald-300 bg-emerald-50 text-emerald-800 shadow-xs"
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
             }`}
             title="Activar o pausar rotación automática"
           >
-            {isAutoplayActive ? <Pause size={14} className="text-emerald-700" /> : <Play size={14} />}
-            <span>{isAutoplayActive ? "Vitrina Activa" : "Modo Vitrina"}</span>
+            {presentationAutoplay ? <Pause size={14} className="text-emerald-700" /> : <Play size={14} />}
+            <span>{presentationAutoplay ? "Vitrina Activa" : "Modo Vitrina"}</span>
           </button>
 
           {/* Sonido Táctil */}
@@ -672,118 +748,20 @@ export function CatalogoKiosk({
       {/* CONTENIDO PRINCIPAL SCROLLABLE */}
       <div className="relative z-10 flex flex-1 flex-col overflow-y-auto bg-slate-50/50">
         
-        {/* BANNER SHOWCASE DESTACADO PROFESIONAL */}
-        {activeHero && (
-          <div className="p-3 sm:p-6 pb-2">
-            <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 md:p-8 shadow-sm transition-all duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-center">
-                {/* Información del producto destacado */}
-                <div className="md:col-span-7 space-y-2 sm:space-y-4">
-                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                    <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-900">
-                      <Sparkles size={11} className="text-amber-600" /> {activeHero.onSale ? "Oferta Especial" : "Producto Destacado"}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] sm:text-xs font-mono text-slate-700">
-                      INF-{activeHero.itemNumber}
-                    </span>
-                    <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] sm:text-xs font-bold text-emerald-800">
-                      ● Stock en tienda ({activeHero.stock} disponibles)
-                    </span>
-                  </div>
-
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-snug line-clamp-2">
-                    {activeHero.name}
-                  </h2>
-
-                  <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 leading-relaxed">
-                    {activeHero.description ||
-                      "Garantía oficial y servicio técnico garantizado por INFOSISTEL en Huancayo."}
-                  </p>
-
-                  <div className="flex items-baseline gap-3 pt-0.5">
-                    <div className="text-2xl sm:text-3xl font-black text-blue-600">
-                      S/{" "}
-                      {(activeHero.onSale && activeHero.salePrice
-                        ? activeHero.salePrice
-                        : activeHero.price
-                      ).toFixed(2)}
-                    </div>
-                    {activeHero.onSale && activeHero.salePrice && (
-                      <div className="text-xs sm:text-sm text-slate-400 line-through">
-                        S/ {activeHero.price.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <button
-                      onClick={() => {
-                        setDetailProduct(activeHero);
-                        kioskAudio.open(soundEnabled);
-                      }}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm shadow-blue-500/20 active:scale-95 transition-all"
-                    >
-                      <Eye size={16} />
-                      <span>Ver Ficha & QR</span>
-                    </button>
-
-                    <button
-                      onClick={() => addToCart(activeHero)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-800 active:scale-95 transition-all shadow-xs"
-                    >
-                      <Plus size={16} />
-                      <span>Cotizar</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Foto / Ilustración en pedestal blanco */}
-                <div className="md:col-span-5 flex items-center justify-center">
-                  <div
-                    onClick={() => {
-                      setDetailProduct(activeHero);
-                      kioskAudio.open(soundEnabled);
-                    }}
-                    className="relative flex h-44 sm:h-56 md:h-64 w-full max-w-xs sm:max-w-sm items-center justify-center rounded-2xl sm:rounded-3xl bg-slate-50 p-4 border border-slate-200/80 shadow-xs group cursor-pointer"
-                  >
-                    {activeHero.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={activeHero.image}
-                        alt={activeHero.name}
-                        className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
-                        <div className="h-16 w-16 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-center mb-2">
-                          <CategoryIcon category={activeHero.category} size={36} className="text-blue-600" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                          {activeHero.category}
-                        </span>
-                      </div>
-                    )}
-                    <div className="absolute bottom-2 right-2 rounded-lg bg-white/95 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs">
-                      Toca para ampliar
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* BÚSQUEDA Y CATEGORÍAS */}
-        <div className="px-3 sm:px-6 py-2 sm:py-3 space-y-3">
-          {/* Barra de Búsqueda */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+        {/* BARRA DE BÚSQUEDA Y CATEGORÍAS */}
+        <div className="px-3 sm:px-6 pt-3 sm:pt-4 pb-2 space-y-3">
+          {/* Barra de Búsqueda y Switcher de Modo */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[240px]">
               <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Buscar mouse, teclado, laptop, repuesto o código..."
+                placeholder="Buscar por nombre, marca, categoría o código INF..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setActiveProductIndex(0);
+                }}
                 onFocus={() => kioskAudio.key(soundEnabled)}
                 className="w-full h-11 sm:h-12 rounded-xl sm:rounded-2xl border border-slate-200 bg-white pl-10 pr-9 text-sm sm:text-base font-medium text-slate-900 placeholder:text-slate-400 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-50 transition-all"
               />
@@ -792,12 +770,48 @@ export function CatalogoKiosk({
                   onClick={() => {
                     kioskAudio.close(soundEnabled);
                     setSearchQuery("");
+                    setActiveProductIndex(0);
                   }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:text-slate-900"
                 >
                   <X size={14} />
                 </button>
               )}
+            </div>
+
+            {/* Selector de Modo: Presentación 1 a 1 vs Cuadrícula */}
+            <div className="flex items-center rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-1 shadow-xs shrink-0">
+              <button
+                onClick={() => {
+                  setViewMode("presentation");
+                  kioskAudio.tap(soundEnabled);
+                }}
+                className={`flex items-center gap-1.5 rounded-lg sm:rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                  viewMode === "presentation"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="Modo Tarjeta de Presentación 1 a 1"
+              >
+                <Layers size={14} />
+                <span>Presentación 1 a 1</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setViewMode("grid");
+                  kioskAudio.tap(soundEnabled);
+                }}
+                className={`flex items-center gap-1.5 rounded-lg sm:rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                  viewMode === "grid"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="Ver todos en Cuadrícula"
+              >
+                <Grid size={14} />
+                <span>Cuadrícula</span>
+              </button>
             </div>
 
             {/* Botón Teclado en Pantalla */}
@@ -873,6 +887,7 @@ export function CatalogoKiosk({
               onClick={() => {
                 setActiveCategory("TODOS");
                 setFilterType("all");
+                setActiveProductIndex(0);
                 kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
@@ -888,6 +903,7 @@ export function CatalogoKiosk({
             <button
               onClick={() => {
                 setFilterType(filterType === "featured" ? "all" : "featured");
+                setActiveProductIndex(0);
                 kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
@@ -904,6 +920,7 @@ export function CatalogoKiosk({
             <button
               onClick={() => {
                 setFilterType(filterType === "onsale" ? "all" : "onsale");
+                setActiveProductIndex(0);
                 kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
@@ -920,6 +937,7 @@ export function CatalogoKiosk({
             <button
               onClick={() => {
                 setFilterType(filterType === "instock" ? "all" : "instock");
+                setActiveProductIndex(0);
                 kioskAudio.tap(soundEnabled);
               }}
               className={`flex shrink-0 items-center gap-1 rounded-xl sm:rounded-2xl border px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
@@ -942,6 +960,7 @@ export function CatalogoKiosk({
                   key={cat.id}
                   onClick={() => {
                     setActiveCategory(isSelected ? "TODOS" : cat.name);
+                    setActiveProductIndex(0);
                     kioskAudio.tap(soundEnabled);
                   }}
                   className={`flex shrink-0 items-center gap-1.5 rounded-xl sm:rounded-2xl border px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shadow-xs ${
@@ -965,35 +984,324 @@ export function CatalogoKiosk({
           </div>
         </div>
 
-        {/* CUADRÍCULA DE PRODUCTOS PROFESIONAL */}
-        <div className="flex-1 p-3 sm:p-6 pt-1">
-          {filteredProducts.length === 0 ? (
-            <div className="flex h-64 sm:h-80 flex-col items-center justify-center text-center p-6 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white my-2 shadow-xs">
-              <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 border border-slate-200 mb-2 sm:mb-3">
-                <Search size={24} />
-              </div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-1">
-                No se encontraron productos coincidentes
-              </h3>
-              <p className="text-xs text-slate-500 max-w-sm mb-4">
-                Prueba con otro término de búsqueda o limpia los filtros para explorar todo nuestro inventario.
-              </p>
-              <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setActiveCategory("TODOS");
-                  setFilterType("all");
-                  kioskAudio.close(soundEnabled);
-                }}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 shadow-xs"
-              >
-                <RotateCcw size={14} />
-                <span>Restablecer filtros</span>
-              </button>
+        {/* ── SECCIÓN PRINCIPAL: PRESENTACIÓN 1 A 1 O CUADRÍCULA ── */}
+        {filteredProducts.length === 0 ? (
+          <div className="flex-1 p-4 sm:p-6 flex flex-col items-center justify-center text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-slate-200 text-slate-400 mb-3 shadow-xs">
+              <Search size={28} />
             </div>
-          ) : (
+            <h3 className="text-lg font-bold text-slate-900 mb-1">
+              No se encontraron productos en esta categoría
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-sm mb-4">
+              Prueba cambiando la categoría seleccionada o restablece los filtros de búsqueda.
+            </p>
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setActiveCategory("TODOS");
+                setFilterType("all");
+                setActiveProductIndex(0);
+                kioskAudio.close(soundEnabled);
+              }}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 shadow-xs"
+            >
+              <RotateCcw size={14} />
+              <span>Restablecer filtros</span>
+            </button>
+          </div>
+        ) : viewMode === "presentation" && currentPresentedProduct ? (
+          /* ── MODO TARJETA DE PRESENTACIÓN ÉPICA 1 A 1 ── */
+          <div className="p-3 sm:p-6 pt-1 space-y-4">
+            {/* Barra de Navegación 1 a 1 */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/90 bg-white/90 px-3.5 py-2.5 shadow-xs backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs font-bold text-blue-700">
+                  <CategoryIcon category={currentPresentedProduct.category} size={15} className="text-blue-600" />
+                  {currentPresentedProduct.category}
+                </span>
+                <span className="text-xs font-bold text-slate-500">
+                  Producto {activeProductIndex + 1} de {filteredProducts.length}
+                </span>
+              </div>
+
+              {/* Botones de navegación y Autoplay */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handlePrevProduct}
+                  disabled={filteredProducts.length <= 1}
+                  className="flex h-9 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-95 disabled:opacity-40 shadow-xs transition-all"
+                  title="Producto anterior (Flecha Izquierda)"
+                >
+                  <ChevronLeft size={16} />
+                  <span className="hidden sm:inline">Anterior</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const next = !presentationAutoplay;
+                    setPresentationAutoplay(next);
+                    if (next) kioskAudio.open(soundEnabled);
+                    else kioskAudio.close(soundEnabled);
+                  }}
+                  className={`flex h-9 items-center gap-1 rounded-xl border px-3 text-xs font-bold transition-all shadow-xs ${
+                    presentationAutoplay
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700 animate-pulse"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                  title="Presentación continua cada 6 segundos"
+                >
+                  {presentationAutoplay ? <Pause size={13} /> : <Play size={13} />}
+                  <span className="hidden sm:inline">{presentationAutoplay ? "Pausar" : "Autoplay"}</span>
+                </button>
+
+                <button
+                  onClick={handleNextProduct}
+                  disabled={filteredProducts.length <= 1}
+                  className="flex h-9 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-95 disabled:opacity-40 shadow-xs transition-all"
+                  title="Siguiente producto (Flecha Derecha)"
+                >
+                  <span className="hidden sm:inline">Siguiente</span>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Barra de Progreso Discreta */}
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80">
+              <div
+                className="h-full bg-blue-600 transition-all duration-300 rounded-full"
+                style={{
+                  width: `${((activeProductIndex + 1) / filteredProducts.length) * 100}%`,
+                }}
+              />
+            </div>
+
+            {/* ── LA TARJETA DE PRESENTACIÓN ÉPICA ── */}
+            <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 sm:p-7 md:p-9 shadow-lg shadow-slate-200/50 transition-all duration-300">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-center">
+                {/* Columna Izquierda: Detalles, Ficha, Especificaciones y Precios */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-blue-50 border border-blue-200 px-3 py-0.5 text-xs font-mono font-bold text-blue-800">
+                      INF-{currentPresentedProduct.itemNumber}
+                    </span>
+
+                    <span
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-bold ${
+                        currentPresentedProduct.stock > 0
+                          ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                          : "bg-red-50 border border-red-200 text-red-800"
+                      }`}
+                    >
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          currentPresentedProduct.stock > 0 ? "bg-emerald-500 animate-pulse" : "bg-red-500"
+                        }`}
+                      />
+                      {currentPresentedProduct.stock > 0
+                        ? `Stock disponible (${currentPresentedProduct.stock} unid.)`
+                        : "Agotado temporalmente"}
+                    </span>
+
+                    {currentPresentedProduct.onSale && (
+                      <span className="flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-bold text-red-700">
+                        <Flame size={12} className="text-red-500" /> Oferta Especial
+                      </span>
+                    )}
+
+                    {currentPresentedProduct.isFeatured && (
+                      <span className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                        <Sparkles size={12} className="text-amber-600" /> Destacado
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Título Principal */}
+                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
+                    {currentPresentedProduct.name}
+                  </h2>
+
+                  {/* Descripción / Ficha */}
+                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed max-w-2xl">
+                    {currentPresentedProduct.description ||
+                      "Producto tecnológico de alta calidad con garantía oficial y soporte técnico garantizado por INFOSISTEL en Huancayo."}
+                  </p>
+
+                  {/* Garantía y Confianza */}
+                  <div className="flex flex-wrap items-center gap-3 py-1 text-xs text-slate-500">
+                    <span className="flex items-center gap-1 text-slate-700 font-semibold">
+                      <CheckCircle2 size={14} className="text-emerald-600" /> Garantía de tienda
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-slate-700 font-semibold">
+                      <CheckCircle2 size={14} className="text-emerald-600" /> Entrega inmediata
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-slate-700 font-semibold">
+                      <CheckCircle2 size={14} className="text-emerald-600" /> Boleta o Factura
+                    </span>
+                  </div>
+
+                  {/* Precio Grande y Oferta */}
+                  <div className="flex items-baseline gap-3 pt-2">
+                    <div className="text-3xl sm:text-4xl md:text-5xl font-black text-blue-600 tracking-tight">
+                      S/{" "}
+                      {(currentPresentedProduct.onSale && currentPresentedProduct.salePrice
+                        ? currentPresentedProduct.salePrice
+                        : currentPresentedProduct.price
+                      ).toFixed(2)}
+                    </div>
+                    {currentPresentedProduct.onSale && currentPresentedProduct.salePrice && (
+                      <div className="text-sm sm:text-base text-slate-400 line-through">
+                        S/ {currentPresentedProduct.price.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botones de Acción */}
+                  <div className="flex flex-wrap gap-2.5 pt-3">
+                    <button
+                      onClick={() => addToCart(currentPresentedProduct)}
+                      disabled={currentPresentedProduct.stock <= 0}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 px-6 py-3.5 text-sm sm:text-base font-bold text-white shadow-md shadow-blue-500/25 active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      <Plus size={18} />
+                      <span>Agregar a Cotización</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setDetailProduct(currentPresentedProduct);
+                        kioskAudio.open(soundEnabled);
+                      }}
+                      className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-5 py-3.5 text-sm font-bold text-slate-800 active:scale-95 transition-all shadow-xs"
+                    >
+                      <Eye size={17} />
+                      <span>Ver Ficha & Zoom</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Columna Derecha: Foto del Producto en Pedestal + Código QR de WhatsApp */}
+                <div className="lg:col-span-5 flex flex-col items-center justify-center gap-4">
+                  {/* Pedestal de la Foto */}
+                  <div
+                    onClick={() => {
+                      setDetailProduct(currentPresentedProduct);
+                      kioskAudio.open(soundEnabled);
+                    }}
+                    className="relative flex h-60 sm:h-72 md:h-80 w-full items-center justify-center rounded-3xl bg-radial from-slate-50 to-slate-100/80 p-5 border border-slate-200/80 shadow-inner group cursor-pointer"
+                  >
+                    {currentPresentedProduct.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={currentPresentedProduct.image}
+                        alt={currentPresentedProduct.name}
+                        className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
+                        <div className="h-20 w-20 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-2">
+                          <CategoryIcon category={currentPresentedProduct.category} size={48} className="text-blue-600" />
+                        </div>
+                        <span className="text-sm font-bold text-slate-600 uppercase tracking-wider">
+                          {currentPresentedProduct.category}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-3 right-3 rounded-xl bg-white/95 border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm backdrop-blur-xs flex items-center gap-1">
+                      <Eye size={12} className="text-blue-600" />
+                      <span>Toca para ampliar</span>
+                    </div>
+                  </div>
+
+                  {/* Tarjeta del Código QR en Vivo */}
+                  {cardQrDataUrl && (
+                    <div className="w-full flex items-center gap-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/70 p-3 shadow-xs">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={cardQrDataUrl}
+                        alt="Código QR WhatsApp"
+                        className="h-16 w-16 rounded-xl border border-slate-200 bg-white p-1 shrink-0 shadow-xs"
+                      />
+                      <div className="min-w-0 text-left">
+                        <div className="flex items-center gap-1 text-xs font-bold text-slate-900">
+                          <QrCode size={13} className="text-emerald-600" />
+                          <span>Escanear con tu celular</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-snug line-clamp-2 mt-0.5">
+                          Apunta tu cámara para consultar stock o coordinar tu compra por WhatsApp al instante.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ── TIRA DE DIAPOSITIVAS / CARRUSEL DE MINIATURAS ── */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-1">
+                <span>Catálogo en {activeCategory} ({filteredProducts.length} productos)</span>
+                <span className="text-[11px] text-slate-400">Toca cualquier miniatura para presentar</span>
+              </div>
+
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
+                {filteredProducts.map((p, idx) => {
+                  const isCurrent = idx === activeProductIndex;
+                  const finalPrice = p.onSale && p.salePrice ? p.salePrice : p.price;
+
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setActiveProductIndex(idx);
+                        kioskAudio.tap(soundEnabled);
+                      }}
+                      className={`group relative flex flex-col items-center justify-between rounded-2xl border p-2 text-left transition-all duration-200 w-28 sm:w-32 shrink-0 active:scale-95 ${
+                        isCurrent
+                          ? "border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/40 shadow-sm"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="relative h-16 w-full flex items-center justify-center rounded-xl bg-slate-50 p-1 overflow-hidden">
+                        {p.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="h-full w-full object-contain transition-transform group-hover:scale-105"
+                          />
+                        ) : (
+                          <CategoryIcon category={p.category} size={20} className="text-slate-400" />
+                        )}
+                        {isCurrent && (
+                          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-blue-600" />
+                        )}
+                      </div>
+
+                      <div className="w-full mt-1.5 space-y-0.5">
+                        <div className="text-[9px] font-mono text-slate-400">INF-{p.itemNumber}</div>
+                        <p className="text-[11px] font-bold text-slate-900 truncate leading-tight">
+                          {p.name}
+                        </p>
+                        <div className="text-xs font-black text-blue-600">
+                          S/ {finalPrice.toFixed(2)}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── MODO CUADRÍCULA COMPLETA ── */
+          <div className="flex-1 p-3 sm:p-6 pt-1">
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4 md:gap-5">
-              {filteredProducts.map((p) => {
+              {filteredProducts.map((p, idx) => {
                 const finalPrice = p.onSale && p.salePrice ? p.salePrice : p.price;
                 const discount =
                   p.onSale && p.salePrice ? Math.round(((p.price - p.salePrice) / p.price) * 100) : 0;
@@ -1003,7 +1311,8 @@ export function CatalogoKiosk({
                   <div
                     key={p.id}
                     onClick={() => {
-                      setDetailProduct(p);
+                      setActiveProductIndex(idx);
+                      setViewMode("presentation");
                       kioskAudio.open(soundEnabled);
                     }}
                     className="group relative flex flex-col justify-between overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-2.5 sm:p-4 transition-all duration-200 hover:border-blue-400 hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] cursor-pointer shadow-xs"
@@ -1110,8 +1419,8 @@ export function CatalogoKiosk({
                 );
               })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL FICHA TÉCNICA */}
