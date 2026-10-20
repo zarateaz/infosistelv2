@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   DashboardIcon,
   RealCalculatorIcon,
@@ -172,13 +173,16 @@ export function AdminSidebar({
           unoptimized
           className="h-6 w-auto object-contain"
         />
-        <button
-          onClick={() => setMobileOpen(true)}
-          aria-label="Abrir menú"
-          className="rounded-xl border border-border-strong p-2 text-fg transition-transform duration-100 touch-manipulation active:scale-95 hover:border-accent hover:text-accent"
-        >
-          <Menu size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle variant="icon" />
+          <button
+            onClick={() => setMobileOpen(true)}
+            aria-label="Abrir menú"
+            className="rounded-xl border border-border-strong p-2 text-fg transition-transform duration-100 touch-manipulation active:scale-95 hover:border-accent hover:text-accent"
+          >
+            <Menu size={20} />
+          </button>
+        </div>
       </div>
 
       {mobileOpen && (
@@ -240,6 +244,9 @@ function SidebarFooter({
 }) {
   return (
     <div className="border-t border-border/60 bg-gradient-to-b from-transparent to-bg-raised/40 px-3.5 py-3.5">
+      <div className="mb-2.5">
+        <ThemeToggle variant="sidebar" />
+      </div>
       <div className="mb-2.5 flex items-center justify-between rounded-xl border border-border/50 bg-bg-surface/90 px-3 py-2 shadow-sm">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-xs font-bold text-white shadow-[0_2px_8px_-1px_rgba(10,95,219,0.5)]">

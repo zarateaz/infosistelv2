@@ -69,14 +69,23 @@ export default async function RootLayout({
   // per-request nonce). Any component that needs the actual nonce value —
   // e.g. to pass to a <Script nonce=...> — reads it the same way, locally:
   // (await headers()).get("x-nonce").
-  await headers();
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <html
       lang="es"
+      suppressHydrationWarning
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-bg text-fg font-sans">
+      <head>
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark");}else{document.documentElement.classList.remove("dark");}}catch(e){}})();`,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-bg text-fg font-sans transition-colors duration-200">
         <SiteChrome>{children}</SiteChrome>
       </body>
     </html>

@@ -27,6 +27,23 @@
   --radius-md: 1rem;
 }
 
+html.dark,
+.dark {
+  color-scheme: dark;
+  --bg: #090d16;
+  --bg-alt: #0f172a;
+  --bg-raised: #151e36;
+  --fg: #f8fafc;
+  --fg-muted: #94a3b8;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-pressed: #2563eb;
+  --accent-fg: #ffffff;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-alt: var(--bg-alt);
@@ -47,6 +64,10 @@
 
 html {
   color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
 }
 
 body {
@@ -82,6 +103,14 @@ body {
     radial-gradient(55% 50% at 12% 8%, rgba(10, 95, 219, 0.14), transparent 60%),
     radial-gradient(48% 42% at 88% 4%, rgba(46, 126, 240, 0.12), transparent 60%),
     radial-gradient(60% 55% at 50% 100%, rgba(10, 95, 219, 0.07), transparent 65%),
+    var(--bg);
+}
+html.dark .bg-aurora,
+.dark .bg-aurora {
+  background:
+    radial-gradient(55% 50% at 12% 8%, rgba(37, 99, 235, 0.16), transparent 60%),
+    radial-gradient(48% 42% at 88% 4%, rgba(59, 130, 246, 0.1), transparent 60%),
+    radial-gradient(60% 55% at 50% 100%, rgba(37, 99, 235, 0.08), transparent 65%),
     var(--bg);
 }
 
@@ -161,14 +190,34 @@ body {
     0 0 0 1px rgba(10, 95, 219, 0.16);
 }
 
-/* Admin form field. First pass used var(--border) (8% black) for the
-   outline — technically WCAG-compliant against the field's own fill, but
-   genuinely hard to see for a low-vision user (reported directly: "mi
-   contadora es medio ciega"), especially on a laptop screen at an angle.
-   This version prioritizes a border you can actually see over a subtle
-   "glass" look: 2px, ~45% black (double var(--border-strong)), solid
-   white fill so it reads as a clear box against the page's off-white
-   background instead of blending into it. */
+html.dark .admin-glass,
+.dark .admin-glass {
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.88), rgba(15, 23, 42, 0.65));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.12) inset,
+    0 20px 48px -20px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(59, 130, 246, 0.15);
+}
+html.dark .admin-glass::before,
+.dark .admin-glass::before {
+  background: linear-gradient(
+    100deg,
+    rgba(59, 130, 246, 0.7),
+    rgba(59, 130, 246, 0) 30%,
+    rgba(59, 130, 246, 0) 100%
+  );
+}
+html.dark .admin-glass:hover,
+.dark .admin-glass:hover {
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.2) inset,
+    0 24px 56px -18px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+/* Admin form field. */
 .admin-field {
   border: 2px solid rgba(11, 18, 48, 0.32);
   background: var(--bg-alt);
@@ -187,41 +236,38 @@ body {
   opacity: 0.85;
 }
 
-/* Épico table header — swaps the plain gray `border-b` under every admin
-   table's <thead> row for a faint accent-tinted wash and a glowing
-   gradient underline, so data tables (Caja, Cuentas, Productos,
-   Inventario, Ventas, Facturas) read as part of the same system as the
-   glass cards above them instead of a bare HTML table dropped in below. */
+html.dark .admin-field,
+.dark .admin-field {
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: #0f172a;
+  color: #f8fafc;
+}
+html.dark .admin-field:hover,
+.dark .admin-field:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+html.dark .admin-field:focus,
+.dark .admin-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Épico table header */
 .admin-thead {
   position: relative;
   background: linear-gradient(180deg, rgba(10, 95, 219, 0.07), transparent);
-  /* `border-bottom` is the guaranteed baseline — `box-shadow` support on a
-     <tr> (a table-row box, not a regular block box) is inconsistent across
-     browsers, so the glow layered on top is a pure enhancement: worst case
-     it's just a solid accent line instead of a soft one, never no line. */
   border-bottom: 1px solid rgba(10, 95, 219, 0.35);
   box-shadow: 0 1px 0 0 rgba(10, 95, 219, 0.15);
 }
+html.dark .admin-thead,
+.dark .admin-thead {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.15), transparent);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.4);
+  box-shadow: 0 1px 0 0 rgba(59, 130, 246, 0.2);
+}
 
-/* Admin sidebar — same frosted-glass family as .admin-glass, but tuned for
-   a fixed edge-to-edge vertical panel instead of a floating card: the glow
-   runs down the right edge (where the panel actually meets the page)
-   rather than around all four sides, and the gradient is vertical so it
-   reads as a wall of light, not a tilted card. */
+/* Admin sidebar */
 .admin-sidebar {
-  /* No `position` here on purpose — the elements that use this class
-     already set their own (fixed on desktop, absolute on the mobile
-     drawer) via Tailwind. Setting `position: relative` here would win the
-     cascade (same specificity, later in source) and silently downgrade
-     `fixed` back into normal document flow — which is exactly what
-     happened once and pushed all page content down by the sidebar's full
-     height. Both `fixed` and `absolute` are already valid positioning
-     contexts for ::after below, so this class doesn't need to set one. */
-  /* This element is `fixed`, with page content scrolling behind it —
-     the single most expensive place for a backdrop-filter blur to live,
-     since without containment the browser has to consider re-blurring it
-     on every scroll frame as new content passes underneath. `contain`
-     scopes that cost to just this box. */
   contain: layout paint style;
   background: linear-gradient(
     180deg,
@@ -231,6 +277,18 @@ body {
   );
   backdrop-filter: blur(13px) saturate(140%);
   box-shadow: 18px 0 44px -30px rgba(10, 30, 80, 0.28);
+}
+
+html.dark .admin-sidebar,
+.dark .admin-sidebar {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.98),
+    rgba(15, 23, 42, 0.94) 55%,
+    rgba(10, 16, 32, 0.96)
+  );
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 18px 0 44px -30px rgba(0, 0, 0, 0.7);
 }
 
 .admin-sidebar::after {
@@ -244,6 +302,16 @@ body {
     rgba(10, 95, 219, 0.4) 30%,
     rgba(10, 95, 219, 0.4) 70%,
     rgba(10, 95, 219, 0.05)
+  );
+}
+html.dark .admin-sidebar::after,
+.dark .admin-sidebar::after {
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.05),
+    rgba(59, 130, 246, 0.5) 30%,
+    rgba(59, 130, 246, 0.5) 70%,
+    rgba(59, 130, 246, 0.05)
   );
 }
 

@@ -44,8 +44,8 @@ export default async function AdminPanelLayout({ children }: { children: React.R
         username={session?.username as string | undefined}
         logoutAction={logoutAction}
       />
-      <main className="px-4 py-8 md:ml-64 md:px-10 md:py-10">
-        <div className="mx-auto max-w-6xl">{children}</div>
+      <main className="px-3.5 py-6 md:ml-64 md:px-8 md:py-8 lg:px-10 2xl:px-14 min-h-screen">
+        <div className="mx-auto w-full max-w-[1760px] 2xl:max-w-[1960px]">{children}</div>
       </main>
       <AdminChatBot />
     </div>
