@@ -59,7 +59,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
   const dismiss = (r: (typeof rows)[number]) => setDismissed((d) => [...d, `${r.c.id}:${r.c.nextPaymentDate}`]);
 
   return (
-    <section className="print:hidden mt-10">
+    <section id="cobranza-internet" className="print:hidden mt-10 scroll-mt-6">
       {/* Notificaciones flotantes rojas */}
       <div className="pointer-events-none fixed right-4 top-4 z-50 flex w-[min(92vw,360px)] flex-col gap-2">
         {toasts.slice(0, Math.min(visible, 5)).map((r) => (

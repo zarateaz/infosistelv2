@@ -7,6 +7,7 @@ import { AdminChatBot } from "@/components/AdminChatBot";
 const NAV_LINKS = [
   { href: "/taller-control", label: "Dashboard" },
   { href: "/taller-control/caja", label: "Caja" },
+  { href: "/taller-control/caja#cobranza-internet", label: "Cobranza de Internet" },
   { href: "/taller-control/inventario", label: "Inventario" },
   { href: "/taller-control/productos", label: "Productos" },
   { href: "/taller-control/categorias", label: "Categorías" },

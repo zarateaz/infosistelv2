@@ -136,6 +136,8 @@ export default async function AdminCashboxPage({
           ))}
         </div>
 
+        <CobranzaInternet clients={internetClients} />
+
         <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg font-bold text-fg">
@@ -153,8 +155,6 @@ export default async function AdminCashboxPage({
         <div className="mt-8">
           <AddTransactionForm month={month} />
         </div>
-
-        <CobranzaInternet clients={internetClients} />
       </div>
 
       <div className="print:hidden mt-10 flex flex-wrap items-center justify-between gap-3">

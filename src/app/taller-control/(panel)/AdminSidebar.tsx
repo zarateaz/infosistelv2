@@ -25,6 +25,7 @@ import {
   Shield,
   Calculator,
   Tv,
+  Wifi,
 } from "lucide-react";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -32,6 +33,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/catalogo": Tv,
   "/taller-control/seguridad": Shield,
   "/taller-control/caja": Wallet,
+  "/taller-control/caja#cobranza-internet": Wifi,
   "/taller-control/inventario": Boxes,
   "/taller-control/productos": Package,
   "/taller-control/categorias": Tags,
@@ -58,6 +60,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/catalogo": "Ventas",
   "/taller-control/seguridad": "General",
   "/taller-control/caja": "Ventas",
+  "/taller-control/caja#cobranza-internet": "Ventas",
   "/taller-control/pedidos": "Ventas",
   "/taller-control/ventas": "Ventas",
   "/taller-control/descuentos": "Inventario",
