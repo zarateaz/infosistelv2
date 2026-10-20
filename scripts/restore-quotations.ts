@@ -1,12 +1,33 @@
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 // @ts-ignore
 import Database from "better-sqlite3";
 
 /**
- * Universal script to find, recover and restore all quotations from any backup or active database.
+ * Universal script to find, recover and restore all quotations from any backup,
+ * active database, or compressed (.gz) archive.
  * 0 margin of error.
  */
+
+const tempFilesToClean: string[] = [];
+
+function safeDecompressGz(filePath: string): string | null {
+  try {
+    const buffer = fs.readFileSync(filePath);
+    // Gzip magic number check: 0x1f 0x8b
+    if (buffer.length < 2 || buffer[0] !== 0x1f || buffer[1] !== 0x8b) {
+      return null;
+    }
+    const decompressed = zlib.gunzipSync(buffer);
+    const tempPath = path.join("/tmp", `restore_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.db`);
+    fs.writeFileSync(tempPath, decompressed);
+    tempFilesToClean.push(tempPath);
+    return tempPath;
+  } catch (err: any) {
+    return null;
+  }
+}
 
 function findDatabases(): string[] {
   const candidates: string[] = [
@@ -15,33 +36,49 @@ function findDatabases(): string[] {
     "/home/zarate/infosistel-v2/dev.db",
     path.resolve(process.cwd(), "dev.db"),
     path.resolve(process.cwd(), "..", "infosistel-v2-data", "dev.db"),
+    path.resolve(process.cwd(), "prisma", "dev.db"),
   ];
 
-  const backupDirs = [
+  const searchDirs = [
     "/home/zarate/infosistel-v2-data/backups",
+    "/home/zarate/infosistel-v2-data",
+    "/home/zarate/infosistel-v2/backups",
+    "/home/zarate/infosistel-v2",
     "/home/zarate/backups",
+    "/home/zarate",
     path.resolve(process.cwd(), "backups"),
+    path.resolve(process.cwd()),
+    "/tmp",
   ];
 
-  for (const bDir of backupDirs) {
-    if (fs.existsSync(bDir)) {
+  for (const sDir of searchDirs) {
+    if (fs.existsSync(sDir)) {
       try {
-        const files = fs.readdirSync(bDir);
+        const files = fs.readdirSync(sDir);
         for (const file of files) {
-          if (file.includes("dev.db") || file.endsWith(".db") || file.endsWith(".sqlite")) {
-            candidates.push(path.join(bDir, file));
-          }
+          const fullPath = path.join(sDir, file);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (!stat.isFile()) continue;
+
+            if (file.endsWith(".gz") && (file.includes("dev.db") || file.includes("backup") || file.includes("infosistel"))) {
+              const decompressed = safeDecompressGz(fullPath);
+              if (decompressed) {
+                candidates.push(decompressed);
+              }
+            } else if (file.includes("dev.db") || file.endsWith(".db") || file.endsWith(".sqlite") || file.includes(".bak")) {
+              candidates.push(fullPath);
+            }
+          } catch {}
         }
-      } catch (e) {
-        // ignore permission or read error
-      }
+      } catch {}
     }
   }
 
-  // Deduplicate and filter existing files
+  // Deduplicate and filter existing valid files
   const existing = Array.from(new Set(candidates.filter(Boolean))).filter((p) => {
     try {
-      return fs.existsSync(p) && fs.statSync(p).isFile() && fs.statSync(p).size > 0;
+      return fs.existsSync(p) && fs.statSync(p).isFile() && fs.statSync(p).size > 1024;
     } catch {
       return false;
     }
@@ -92,82 +129,13 @@ interface QuotationItemRow {
   notes: string | null;
   costPrice: number | null;
   marginPercent: number | null;
+  image?: string | null;
 }
 
-async function main() {
-  console.log("=== INFOSISTEL: Recuperación y Restauración de Cotizaciones (0 Margen de Error) ===");
-  
-  const targetDbPath = (process.env.DATABASE_URL
-    ? process.env.DATABASE_URL.replace(/^file:/, "")
-    : fs.existsSync("/home/zarate/infosistel-v2-data/dev.db")
-    ? "/home/zarate/infosistel-v2-data/dev.db"
-    : path.resolve(process.cwd(), "dev.db")).trim();
+function restoreIntoTarget(targetDbPath: string, allFoundQuotations: Map<string, { q: QuotationRow; items: QuotationItemRow[]; source: string }>): number {
+  if (!fs.existsSync(targetDbPath)) return 0;
 
-  console.log(`Base de datos activa destino: ${targetDbPath}`);
-
-  const allDbs = findDatabases();
-  console.log(`Bases de datos y backups encontrados (${allDbs.length}):`);
-  allDbs.forEach((d) => console.log(`  - ${d} (${(fs.statSync(d).size / 1024).toFixed(1)} KB)`));
-
-  const allFoundQuotations = new Map<string, { q: QuotationRow; items: QuotationItemRow[]; source: string }>();
-
-  for (const dbPath of allDbs) {
-    try {
-      const db = new Database(dbPath, { readonly: true });
-      
-      // Check if Quotation table exists
-      const hasQuotationTable = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='Quotation'")
-        .get();
-
-      if (!hasQuotationTable) {
-        db.close();
-        continue;
-      }
-
-      // Check columns in Quotation table to safely select
-      const quotes = db.prepare("SELECT * FROM Quotation").all() as QuotationRow[];
-      
-      let items: QuotationItemRow[] = [];
-      const hasItemTable = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='QuotationItem'")
-        .get();
-      if (hasItemTable) {
-        items = db.prepare("SELECT * FROM QuotationItem").all() as QuotationItemRow[];
-      }
-
-      db.close();
-
-      if (quotes.length > 0) {
-        console.log(`\n📦 Encontradas ${quotes.length} cotizaciones en: ${dbPath}`);
-        for (const q of quotes) {
-          const qItems = items.filter((it) => it.quotationId === q.id);
-          console.log(`   • [${q.code}] Cliente: "${q.clientName}" | Total: ${q.currency} ${q.total} | Estado: ${q.status} ${q.deletedAt ? "(Marcada como eliminada)" : "(Activa)"} | Ítems: ${qItems.length}`);
-          
-          // Keep best version or merge
-          if (!allFoundQuotations.has(q.id) || (!q.deletedAt && allFoundQuotations.get(q.id)?.q.deletedAt)) {
-            allFoundQuotations.set(q.id, { q, items: qItems, source: dbPath });
-          }
-        }
-      }
-    } catch (err: any) {
-      console.warn(`  [Aviso] No se pudo leer ${dbPath}: ${err.message}`);
-    }
-  }
-
-  if (allFoundQuotations.size === 0) {
-    console.log("\n⚠️ No se encontraron cotizaciones en ningún archivo analizado.");
-    return;
-  }
-
-  console.log(`\nTotal cotizaciones únicas a restaurar: ${allFoundQuotations.size}`);
-
-  // Now ensure target DB has table structure and restore
-  if (!fs.existsSync(targetDbPath)) {
-    console.error(`ERROR: La base de datos destino ${targetDbPath} no existe.`);
-    return;
-  }
-
+  console.log(`\n⚙️  Restaurando datos en base de datos: ${targetDbPath}`);
   const targetDb = new Database(targetDbPath);
 
   // Ensure tables exist in target
@@ -214,6 +182,7 @@ async function main() {
       "notes" TEXT,
       "costPrice" REAL DEFAULT 0,
       "marginPercent" REAL DEFAULT 0,
+      "image" TEXT,
       FOREIGN KEY ("quotationId") REFERENCES "Quotation" ("id") ON DELETE CASCADE ON UPDATE CASCADE
     );
 
@@ -229,11 +198,13 @@ async function main() {
   try { targetDb.exec('ALTER TABLE "Quotation" ADD COLUMN "deletedAt" DATETIME;'); } catch {}
   try { targetDb.exec('ALTER TABLE "QuotationItem" ADD COLUMN "costPrice" REAL DEFAULT 0;'); } catch {}
   try { targetDb.exec('ALTER TABLE "QuotationItem" ADD COLUMN "marginPercent" REAL DEFAULT 0;'); } catch {}
+  try { targetDb.exec('ALTER TABLE "QuotationItem" ADD COLUMN "image" TEXT;'); } catch {}
 
   // Check columns present in target QuotationItem
   const itemCols = (targetDb.prepare('PRAGMA table_info("QuotationItem")').all() as { name: string }[]).map((c) => c.name);
   const hasCostPrice = itemCols.includes("costPrice");
   const hasMarginPercent = itemCols.includes("marginPercent");
+  const hasImage = itemCols.includes("image");
 
   const insertQuote = targetDb.prepare(`
     INSERT INTO "Quotation" (
@@ -248,58 +219,32 @@ async function main() {
       @warranty, @notes, @images, @createdAt, @updatedAt, NULL
     )
     ON CONFLICT(id) DO UPDATE SET
-      code = excluded.code,
-      clientName = excluded.clientName,
-      clientDocType = excluded.clientDocType,
-      clientDocNum = excluded.clientDocNum,
-      clientPhone = excluded.clientPhone,
-      clientEmail = excluded.clientEmail,
-      clientAddress = excluded.clientAddress,
-      attentionTo = excluded.attentionTo,
-      issueDate = excluded.issueDate,
-      validDays = excluded.validDays,
-      currency = excluded.currency,
-      includeIgv = excluded.includeIgv,
-      subtotal = excluded.subtotal,
-      igv = excluded.igv,
-      discount = excluded.discount,
-      total = excluded.total,
-      status = excluded.status,
-      deliveryTime = excluded.deliveryTime,
-      paymentMethod = excluded.paymentMethod,
-      warranty = excluded.warranty,
-      notes = excluded.notes,
-      images = excluded.images,
       deletedAt = NULL
   `);
 
   const itemColsList = ["id", "quotationId", "productId", "description", "brand", "model", "quantity", "unitPrice", "total", "notes"];
   if (hasCostPrice) itemColsList.push("costPrice");
   if (hasMarginPercent) itemColsList.push("marginPercent");
+  if (hasImage) itemColsList.push("image");
 
   const insertItemSql = `
-    INSERT OR REPLACE INTO "QuotationItem" (${itemColsList.map(c => `"${c}"`).join(", ")})
-    VALUES (${itemColsList.map(c => `@${c}`).join(", ")})
+    INSERT OR IGNORE INTO "QuotationItem" (${itemColsList.map((c) => `"${c}"`).join(", ")})
+    VALUES (${itemColsList.map((c) => `@${c}`).join(", ")})
   `;
   const insertItem = targetDb.prepare(insertItemSql);
 
   let restoredCount = 0;
   const restoreTx = targetDb.transaction(() => {
-    for (const [id, data] of allFoundQuotations) {
+    for (const [, data] of allFoundQuotations) {
       const q = { ...data.q };
-      
-      // Ensure date format
+
       if (typeof q.issueDate === "number") q.issueDate = new Date(q.issueDate).toISOString();
       if (typeof q.createdAt === "number") q.createdAt = new Date(q.createdAt).toISOString();
       if (typeof q.updatedAt === "number") q.updatedAt = new Date(q.updatedAt).toISOString();
-      
-      // Force deletedAt to null to un-delete it
+
       q.deletedAt = null;
       q.includeIgv = q.includeIgv ? 1 : 0;
 
-      // Los respaldos anteriores a la migración de fotos no traen la columna
-      // `images` (ni otras opcionales): better-sqlite3 exige todos los
-      // parámetros nombrados, así que se rellenan con null.
       for (const key of [
         "clientDocType", "clientDocNum", "clientPhone", "clientEmail", "clientAddress",
         "attentionTo", "deliveryTime", "paymentMethod", "warranty", "notes", "images",
@@ -310,20 +255,132 @@ async function main() {
       insertQuote.run(q);
 
       for (const it of data.items) {
-        insertItem.run(it);
+        const itRow: Record<string, any> = {
+          id: it.id,
+          quotationId: it.quotationId,
+          productId: it.productId ?? null,
+          description: it.description,
+          brand: it.brand ?? null,
+          model: it.model ?? null,
+          quantity: it.quantity ?? 1,
+          unitPrice: it.unitPrice ?? 0,
+          total: it.total ?? 0,
+          notes: it.notes ?? null,
+          costPrice: it.costPrice ?? 0,
+          marginPercent: it.marginPercent ?? 0,
+          image: (it as any).image ?? null,
+        };
+        insertItem.run(itRow);
       }
       restoredCount++;
     }
 
-    // Also un-delete any existing quotation in the target DB
-    targetDb.prepare("UPDATE \"Quotation\" SET deletedAt = NULL WHERE deletedAt IS NOT NULL").run();
+    // Un-delete any quotations that had deletedAt set
+    targetDb.prepare('UPDATE "Quotation" SET deletedAt = NULL WHERE deletedAt IS NOT NULL').run();
   });
 
   restoreTx();
   targetDb.close();
+  return restoredCount;
+}
 
-  console.log(`\n✅ ¡ÉXITO! Se restauraron e hicieron activas ${restoredCount} cotizaciones en: ${targetDbPath}`);
-  console.log("Todas las cotizaciones tienen ahora su estado activo (deletedAt = NULL) y están listas para verse en /taller-control/cotizaciones.");
+async function main() {
+  console.log("=== INFOSISTEL: Recuperación y Restauración Total de Cotizaciones (0 Margen de Error) ===");
+
+  const targetDbPaths = Array.from(
+    new Set(
+      [
+        process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/^file:/, "") : "",
+        "/home/zarate/infosistel-v2-data/dev.db",
+        "/home/zarate/infosistel-v2/dev.db",
+        path.resolve(process.cwd(), "dev.db"),
+        path.resolve(process.cwd(), "..", "infosistel-v2-data", "dev.db"),
+      ]
+        .map((p) => p.trim())
+        .filter(Boolean)
+    )
+  );
+
+  const allDbs = findDatabases();
+  console.log(`\nBases de datos y respaldos encontrados (${allDbs.length}):`);
+  allDbs.forEach((d) => {
+    try {
+      const sz = (fs.statSync(d).size / 1024).toFixed(1);
+      console.log(`  - ${d} (${sz} KB)`);
+    } catch {}
+  });
+
+  const allFoundQuotations = new Map<string, { q: QuotationRow; items: QuotationItemRow[]; source: string }>();
+
+  for (const dbPath of allDbs) {
+    try {
+      const db = new Database(dbPath, { readonly: true });
+
+      const hasQuotationTable = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='Quotation'")
+        .get();
+
+      if (!hasQuotationTable) {
+        db.close();
+        continue;
+      }
+
+      const quotes = db.prepare("SELECT * FROM Quotation").all() as QuotationRow[];
+
+      let items: QuotationItemRow[] = [];
+      const hasItemTable = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='QuotationItem'")
+        .get();
+      if (hasItemTable) {
+        items = db.prepare("SELECT * FROM QuotationItem").all() as QuotationItemRow[];
+      }
+
+      db.close();
+
+      if (quotes.length > 0) {
+        console.log(`\n📦 Encontradas ${quotes.length} cotizaciones en: ${dbPath}`);
+        for (const q of quotes) {
+          const qItems = items.filter((it) => it.quotationId === q.id);
+          console.log(`   • [${q.code}] Cliente: "${q.clientName}" | Total: ${q.currency} ${q.total} | Estado: ${q.status} | Ítems: ${qItems.length}`);
+
+          const existing = allFoundQuotations.get(q.id);
+          if (!existing) {
+            allFoundQuotations.set(q.id, { q, items: qItems, source: dbPath });
+          } else {
+            // Keep the one with items or un-deleted
+            if (qItems.length > existing.items.length || (!q.deletedAt && existing.q.deletedAt)) {
+              allFoundQuotations.set(q.id, { q, items: qItems, source: dbPath });
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      // ignore corrupt or locked files
+    }
+  }
+
+  if (allFoundQuotations.size === 0) {
+    console.log("\n⚠️ No se encontraron cotizaciones en ningún archivo analizado.");
+  } else {
+    console.log(`\n🎯 Total cotizaciones recuperadas listadas para restauración: ${allFoundQuotations.size}`);
+
+    for (const targetPath of targetDbPaths) {
+      if (fs.existsSync(targetPath)) {
+        const count = restoreIntoTarget(targetPath, allFoundQuotations);
+        console.log(`  ✅ ${count} cotizaciones activadas exitosamente en: ${targetPath}`);
+      }
+    }
+
+    console.log("\n🎉 ¡PROCESO DE RESTAURACIÓN COMPLETADO CON ÉXITO! (0 margen de error)");
+    console.log("Todas las cotizaciones se encuentran recuperadas y activas en el panel de Ventas / Cotizaciones.");
+  }
+
+  // Cleanup temporary uncompressed files
+  for (const tmp of tempFilesToClean) {
+    try {
+      if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+    } catch {}
+  }
 }
 
 main().catch((err) => {

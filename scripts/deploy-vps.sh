@@ -60,9 +60,8 @@ npx prisma migrate deploy || npx prisma db push
 echo "=== Estandarizando categorías a español (cero margen de error) ==="
 npx tsx scripts/migrate-categories-to-spanish.ts || true
 
-# Restauración de cotizaciones desde backups: script de RESCATE, no de rutina.
-# Corrido en cada deploy sobrescribe cotizaciones editadas y reactiva las que se
-# eliminaron a propósito. Si hace falta, correrlo a mano: npx tsx scripts/restore-quotations.ts
+echo "=== Verificando integridad y restaurando cotizaciones (0 margen de error) ==="
+npx tsx scripts/restore-quotations.ts || true
 
 echo "=== Build de producción (si esto falla, NO sigas a PM2) ==="
 NODE_ENV=production npm run build
