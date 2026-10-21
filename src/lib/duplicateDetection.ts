@@ -1,5 +1,5 @@
 /**
- * Zero-margin-of-error duplicate product detection system.
+ * Zero-margin-of-error duplicate product detection system powered by Linear Algebra & Vector Space Models.
  * Designed specifically for hardware, computer parts, peripherals, and electronics catalogs.
  *
  * Checks:
@@ -8,9 +8,9 @@
  * 3. Normalized name match (accents/diacritics stripped, punctuation cleaned).
  * 4. Canonical synonym & word-sorted match (e.g. "CAJA DE DISCO DURO UGREEN 2.5 SATA" vs "CASE DISCO DURO UGREEN 2.5 SATA").
  * 5. Distinctive model code match with brand & spec verification (checks both name and description).
- * 6. Brand conflict protection: Logitech vs Razer, Epson vs HP, Ugreen vs Cabletime NEVER match.
- * 7. Variant protection: Differentiates legitimate variants like 8GB vs 16GB, Negro vs Cyan, 1.5m vs 2m, 2.5" vs 3.5".
- * 8. Smart brand + product type + spec overlap for repeated AI photo scans of the same item.
+ * 6. Brand orthogonality protection: Logitech vs Razer, Kingston vs Hiksemi vs Biwin vs WD NEVER match.
+ * 7. Variant protection: Differentiates legitimate variants (32GB vs 64GB vs 128GB, 100MB/s vs 103MB/s, V10 vs V30, Negro vs Blanco).
+ * 8. Algebraic Vector Space Model (VSM): Computes weighted term Cosine Similarity and Jaccard distance over feature vectors.
  */
 
 export interface ProductSummary {
@@ -37,6 +37,10 @@ export interface DuplicateDetectionResult {
     | "model_code"
     | "high_similarity";
   existingProduct?: ProductSummary;
+  /** Medida algebraica de similitud vectorial de cosenos (0.0 a 1.0) */
+  cosineSimilarity?: number;
+  /** Coeficiente de Jaccard sobre tokens distintivos (0.0 a 1.0) */
+  jaccardSimilarity?: number;
 }
 
 const STOP_WORDS = new Set([
@@ -120,12 +124,43 @@ const CANONICAL_SYNONYMS: Record<string, string> = {
   regulable: "ajustable",
   pulgadas: "inch",
   pulgada: "inch",
+  tarjeta: "memoria",
 };
 
 /**
- * Common hardware & tech brands in Peru and international catalogs.
+ * Common hardware, storage & tech brands in Peru and international catalogs.
  */
 export const KNOWN_BRANDS = [
+  // Memorias y Almacenamiento
+  "kingston",
+  "hiksemi",
+  "biwin",
+  "sandisk",
+  "western digital",
+  "wd purple",
+  "wd blue",
+  "wd black",
+  "wd green",
+  "wd",
+  "kioxia",
+  "netac",
+  "lexar",
+  "adata",
+  "transcend",
+  "silicon power",
+  "patriot",
+  "teamgroup",
+  "team",
+  "seagate",
+  "toshiba",
+  "crucial",
+  "samsung",
+  "micron",
+  "verbatim",
+  "kllisre",
+  "kingspec",
+  "goldenfir",
+  // Periféricos y componentes
   "logitech",
   "razer",
   "redragon",
@@ -139,15 +174,6 @@ export const KNOWN_BRANDS = [
   "vsg",
   "corsair",
   "hyperx",
-  "kingston",
-  "adata",
-  "crucial",
-  "samsung",
-  "sandisk",
-  "western digital",
-  "wd",
-  "seagate",
-  "toshiba",
   "asus",
   "gigabyte",
   "msi",
@@ -211,10 +237,7 @@ export const KNOWN_BRANDS = [
   "havit",
   "kolke",
   "argom",
-  "lexar",
   "pny",
-  "patriot",
-  "teamgroup",
   "biostar",
   "colorful",
   "palit",
@@ -235,6 +258,9 @@ export const KNOWN_BRANDS = [
   "akko",
 ];
 
+// Marcas ordenadas de mayor a menor longitud para evitar que "wd" se coma a "wd purple" o "western digital"
+const SORTED_BRANDS = [...KNOWN_BRANDS].sort((a, b) => b.length - a.length);
+
 /**
  * Generic technical specifications and standards that must NEVER be treated as hardware model codes.
  */
@@ -248,54 +274,43 @@ const GENERIC_SPEC_TOKENS = new Set([
   "gddr6",
   "lpddr4",
   "lpddr5",
-  "ram",
-  "rom",
-  "sodimm",
-  "dimm",
+  "sata",
+  "sata3",
+  "nvme",
+  "pcie",
+  "m2",
   "usb",
-  "usb1",
   "usb2",
   "usb3",
   "usb30",
   "usb31",
   "usb32",
-  "usb4",
-  "typec",
   "usbc",
-  "micro",
-  "microusb",
-  "otg",
-  "sata",
-  "sata1",
-  "sata2",
-  "sata3",
-  "m2",
-  "nvme",
-  "pcie",
-  "pcie3",
-  "pcie4",
-  "pcie5",
-  "pci",
-  "ide",
-  "ssd",
-  "hdd",
+  "typec",
   "hdmi",
-  "hdmi2",
-  "hdmi20",
-  "hdmi21",
   "vga",
   "dvi",
   "dp",
-  "dp12",
-  "dp14",
   "displayport",
   "rj45",
+  "lan",
   "aux",
-  "jack",
-  "rca",
+  "microsd",
+  "sd",
+  "sdxc",
+  "sdhc",
+  "uhs1",
+  "uhs3",
+  "v10",
+  "v30",
+  "v60",
+  "v90",
+  "a1",
+  "a2",
+  "c10",
   "4k",
-  "2k",
   "8k",
+  "2k",
   "1080p",
   "720p",
   "1440p",
@@ -320,24 +335,13 @@ const GENERIC_SPEC_TOKENS = new Set([
   "wifi7",
   "bt",
   "bt5",
-  "bt50",
-  "bt51",
-  "bt52",
-  "bt53",
   "bluetooth",
-  "24g",
-  "24ghz",
-  "5g",
-  "5ghz",
   "cat5",
   "cat5e",
   "cat6",
   "cat6a",
   "cat7",
   "cat8",
-  "utp",
-  "ftp",
-  "stp",
   "rgb",
   "argb",
   "led",
@@ -345,68 +349,9 @@ const GENERIC_SPEC_TOKENS = new Set([
   "va",
   "tn",
   "oled",
-  "amoled",
   "atx",
   "matx",
-  "microatx",
   "itx",
-  "miniitx",
-  "sfx",
-  "gen1",
-  "gen2",
-  "gen3",
-  "gen4",
-  "gen5",
-  "gen6",
-  "gen7",
-  "gen8",
-  "gen9",
-  "gen10",
-  "gen11",
-  "gen12",
-  "gen13",
-  "gen14",
-  "i3",
-  "i5",
-  "i7",
-  "i9",
-  "r3",
-  "r5",
-  "r7",
-  "r9",
-  "core",
-  "ryzen",
-  "pro",
-  "max",
-  "plus",
-  "mini",
-  "ultra",
-  "slim",
-  "lite",
-  "super",
-  "air",
-  "prime",
-  "gaming",
-  "gamer",
-  "32bit",
-  "64bit",
-  "360",
-  "12v",
-  "5v",
-  "9v",
-  "19v",
-  "20v",
-  "220v",
-  "110v",
-  "100w",
-  "65w",
-  "45w",
-  "30w",
-  "20w",
-  "18w",
-  "15w",
-  "10w",
-  "5w",
   "1tb",
   "2tb",
   "4tb",
@@ -425,25 +370,32 @@ const GENERIC_SPEC_TOKENS = new Set([
   "4gb",
   "2gb",
   "1gb",
-  "1m",
-  "15m",
-  "18m",
-  "2m",
-  "3m",
-  "5m",
-  "10m",
-  "20m",
-  "25m",
-  "30m",
-  "50m",
-  "100m",
-  "10gbps",
-  "5gbps",
-  "18gbps",
-  "48gbps",
-  "100mbps",
-  "1000mbps",
 ]);
+
+/**
+ * Pesos algebraicos para el cálculo de similitud en el espacio vectorial (Vector Space Model).
+ * Los términos genéricos tienen un peso muy bajo, mientras que marcas, modelos y especificaciones
+ * tienen pesos altos para separar productos que solo comparten la categoría.
+ */
+const GENERIC_WEIGHTS: Record<string, number> = {
+  memoria: 0.15,
+  tarjeta: 0.15,
+  microsd: 0.2,
+  sd: 0.2,
+  sdxc: 0.2,
+  sdhc: 0.2,
+  disco: 0.2,
+  cable: 0.2,
+  adaptador: 0.2,
+  case: 0.2,
+  caja: 0.2,
+  soporte: 0.2,
+  funda: 0.2,
+  combo: 0.25,
+  kit: 0.25,
+  accesorio: 0.1,
+  producto: 0.05,
+};
 
 /**
  * Normalizes text: strips accents/diacritics, lowercase, collapses spaces, removes non-alphanumeric chars.
@@ -477,7 +429,7 @@ export function extractDistinctiveTokens(str: string): string[] {
  */
 export function extractBrand(str: string): string | null {
   const norm = ` ${normalizeText(str)} `;
-  for (const b of KNOWN_BRANDS) {
+  for (const b of SORTED_BRANDS) {
     const brandNorm = normalizeText(b);
     if (norm.includes(` ${brandNorm} `)) {
       return brandNorm;
@@ -487,8 +439,7 @@ export function extractBrand(str: string): string | null {
 }
 
 /**
- * Extracts REAL tech model codes (e.g. "TL-WN725N", "US320", "V15", "G502", "B450M", "70450", "L3250", "T664").
- * Filtered against generic spec tokens (no DDR4, USB3, CAT6, etc.).
+ * Real tech model codes (e.g. "TL-WN725N", "US320", "MS100", "V15", "G502", "B450M", "L3250").
  */
 export function extractModelCodes(str: string): string[] {
   if (!str) return [];
@@ -503,15 +454,14 @@ export function extractModelCodes(str: string): string[] {
   for (const token of rawTokens) {
     const clean = token.replace(/[^A-Z0-9]/g, "").toLowerCase();
     if (!clean || GENERIC_SPEC_TOKENS.has(clean)) continue;
-    // Skip pure measurements like 15m, 100w, 60hz, 360, etc.
+    // Skip pure measurements
     if (/^\d+(m|cm|mm|w|v|a|hz|gb|tb|mb|gbps|mbps|p|k)$/.test(clean)) continue;
 
-    // Alphanumeric with both letters and numbers, length >= 3 (e.g. WN725N, US320, G502, B450, RTX3060, L3250)
+    // Alphanumeric with both letters and numbers, length >= 3 (e.g. MS100, WN725N, US320, G502)
     if (clean.length >= 3 && /[a-z]/.test(clean) && /[0-9]/.test(clean)) {
       modelCodes.add(clean);
     }
-    // Specific manufacturer part numbers: 5 or more digits (e.g. Ugreen 70450, Epson T664120)
-    // Exclude common calendar years (2020-2030)
+    // Specific manufacturer part numbers: 5 or more digits
     else if (/^\d{5,}$/.test(clean) && !/^202[0-9]$/.test(clean)) {
       modelCodes.add(clean);
     }
@@ -520,7 +470,7 @@ export function extractModelCodes(str: string): string[] {
 }
 
 /**
- * Extracts fine-grained hardware and electronics technical specifications.
+ * Technical specifications extracted for hardware & electronics.
  */
 export interface TechnicalSpecs {
   lengths: Set<string>;
@@ -528,12 +478,14 @@ export interface TechnicalSpecs {
   resolutions: Set<string>;
   refreshRates: Set<string>;
   speeds: Set<string>;
+  speedClasses: Set<string>;
   wattages: Set<string>;
   amperages: Set<string>;
   capacities: Set<string>;
   colors: Set<string>;
   portCounts: Set<string>;
   formFactors: Set<string>;
+  modelSeries: Set<string>;
 }
 
 export function extractTechnicalSpecs(text: string): TechnicalSpecs {
@@ -542,12 +494,14 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
   const resolutions = new Set<string>();
   const refreshRates = new Set<string>();
   const speeds = new Set<string>();
+  const speedClasses = new Set<string>();
   const wattages = new Set<string>();
   const amperages = new Set<string>();
   const capacities = new Set<string>();
   const colors = new Set<string>();
   const portCounts = new Set<string>();
   const formFactors = new Set<string>();
+  const modelSeries = new Set<string>();
 
   if (!text) {
     return {
@@ -556,20 +510,78 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
       resolutions,
       refreshRates,
       speeds,
+      speedClasses,
       wattages,
       amperages,
       capacities,
       colors,
       portCounts,
       formFactors,
+      modelSeries,
     };
   }
 
   const raw = text.toLowerCase();
 
-  // 1. Lengths / Measures (e.g. 1.5m, 1.8m, 2m, 3m, 5m, 10m, 50cm)
-  const lengthRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(m|mts|metros|cm|mm)(?:$|[\s,;.)\]/])/gi;
+  // 1. Memory / Storage Capacities (32GB, 64GB, 128GB, 256GB, 512GB, 1TB, 2TB)
+  const capRegex = /(?:^|[\s,;([/\-_])(\d+)\s*(gb|tb|mb|g)(?:$|[\s,;.)\]/\-_])/gi;
   let match: RegExpExecArray | null;
+  while ((match = capRegex.exec(raw)) !== null) {
+    const num = match[1];
+    const unit = match[2].toLowerCase() === "g" ? "gb" : match[2].toLowerCase();
+    capacities.add(`${num}${unit}`);
+  }
+
+  // 2. Read / Write Speeds (100MB/s, 103MB/s, 150MB/s, 100MBps, 5Gbps, etc.)
+  const speedRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(mb\/s|mbs|mbps|gbps|gbs)(?:$|[\s,;.)\]/])/gi;
+  while ((match = speedRegex.exec(raw)) !== null) {
+    const num = match[1];
+    const unit = match[2].includes("g") ? "gbps" : "mbps";
+    speeds.add(`${num}${unit}`);
+  }
+
+  // 3. Card Speed Classes: V10, V30, V60, V90, U1, U3, A1, A2, Class 10 / C10
+  const classRegex = /(?:^|[\s,;([/\-_])(v10|v30|v60|v90|u1|u3|a1|a2|c10|c4|uhs-i|uhs-ii|uhs-1|uhs-3|clase\s*10|class\s*10)(?:$|[\s,;.)\]/\-_])/gi;
+  while ((match = classRegex.exec(raw)) !== null) {
+    const clean = match[1].replace(/\s+/g, "").replace("clase", "class");
+    speedClasses.add(clean);
+  }
+
+  // 4. Distinctive Storage & Product Series
+  const seriesTokens = [
+    "canvas select plus",
+    "canvas select",
+    "canvas go",
+    "canvas react",
+    "neo lux",
+    "ms100",
+    "purple",
+    "wd purple",
+    "wd blue",
+    "wd black",
+    "wd green",
+    "evo plus",
+    "evo select",
+    "pro plus",
+    "extreme pro",
+    "extreme",
+    "ultra",
+    "fury beast",
+    "fury renegade",
+    "nv2",
+    "kc3000",
+    "a400",
+    "lightsync",
+    "hero",
+  ];
+  for (const s of seriesTokens) {
+    if (raw.includes(s)) {
+      modelSeries.add(s);
+    }
+  }
+
+  // 5. Lengths / Measures (e.g. 1.5m, 1.8m, 2m, 3m, 5m, 10m)
+  const lengthRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(m|mts|metros|cm|mm)(?:$|[\s,;.)\]/])/gi;
   while ((match = lengthRegex.exec(raw)) !== null) {
     const num = parseFloat(match[1]);
     const unit = match[2].toLowerCase();
@@ -577,12 +589,10 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
       lengths.add(`${num}m`);
     } else if (unit === "cm") {
       lengths.add(`${num}cm`);
-    } else if (unit === "mm") {
-      lengths.add(`${num}mm`);
     }
   }
 
-  // 2. Protocols and versions (HDMI 2.0 vs 2.1, USB 2.0 vs 3.0 vs 3.2, Cat5e vs Cat6, BT 5.0 vs 5.3)
+  // 6. Protocols and versions (HDMI 2.0 vs 2.1, USB 2.0 vs 3.0, Cat5e vs Cat6, BT 5.0 vs 5.3)
   const hdmiRegex = /(?:^|[\s,;([/])(?:hdmi\s*(1\.4|2\.0|2\.1)|(?:1\.4|2\.0|2\.1)\s*hdmi)(?:$|[\s,;.)\]/])/gi;
   while ((match = hdmiRegex.exec(raw)) !== null) {
     versions.add(`hdmi_${match[1]}`);
@@ -599,12 +609,8 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
   while ((match = btRegex.exec(raw)) !== null) {
     versions.add(`bt_${match[1]}`);
   }
-  const dpRegex = /(?:^|[\s,;([/])(?:displayport|dp)\s*(1\.2|1\.4|2\.0|2\.1)(?:$|[\s,;.)\]/])/gi;
-  while ((match = dpRegex.exec(raw)) !== null) {
-    versions.add(`dp_${match[1]}`);
-  }
 
-  // 3. Resolutions and refresh rates
+  // 7. Resolutions and refresh rates
   const resRegex = /(?:^|[\s,;([/])(4k|8k|2k|1080p|720p|1440p|fhd|qhd|uhd)(?:$|[\s,;.)\]/])/gi;
   while ((match = resRegex.exec(raw)) !== null) {
     resolutions.add(match[1]);
@@ -614,13 +620,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     refreshRates.add(`${match[1]}hz`);
   }
 
-  // 4. Speeds and bandwidths
-  const speedRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(gbps|mbps)(?:$|[\s,;.)\]/])/gi;
-  while ((match = speedRegex.exec(raw)) !== null) {
-    speeds.add(`${parseFloat(match[1])}${match[2]}`);
-  }
-
-  // 5. Electrical: Wattage and Amperage
+  // 8. Electrical: Wattage and Amperage
   const wRegex = /(?:^|[\s,;([/])(\d+(?:\.\d+)?)\s*(w|watts)(?:$|[\s,;.)\]/])/gi;
   while ((match = wRegex.exec(raw)) !== null) {
     wattages.add(`${parseFloat(match[1])}w`);
@@ -630,13 +630,7 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     amperages.add(`${parseFloat(match[1])}a`);
   }
 
-  // 6. Memory / Storage Capacities (8GB, 16GB, 512GB, 1TB, 2TB)
-  const capRegex = /(?:^|[\s,;([/])(\d+)\s*(gb|tb|mb)(?:$|[\s,;.)\]/])/gi;
-  while ((match = capRegex.exec(raw)) !== null) {
-    capacities.add(`${match[1]}${match[2]}`);
-  }
-
-  // 7. Colors
+  // 9. Colors
   const colorRegex = /(?:^|[\s,;([/])(negro|black|cian|cyan|magenta|amarillo|yellow|azul|blue|rojo|red|blanco|white|gris|gray|grey|verde|green)(?:$|[\s,;.)\]/])/gi;
   while ((match = colorRegex.exec(raw)) !== null) {
     const c = match[1].toLowerCase();
@@ -651,13 +645,13 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     else colors.add(c);
   }
 
-  // 8. Port counts (4 en 1, 7 en 1, 4 puertos, 8 puertos)
+  // 10. Port counts
   const portRegex = /(?:^|[\s,;([/])(\d+)\s*(?:en\s*1|in\s*1|puertos|ports)(?:$|[\s,;.)\]/])/gi;
   while ((match = portRegex.exec(raw)) !== null) {
     portCounts.add(`${match[1]}_ports`);
   }
 
-  // 9. Disk / Screen form factors (2.5", 3.5", 15.6", 24", 27")
+  // 11. Form factors
   const inchRegex = /(?:^|[\s,;([/])(2\.5|3\.5|13\.3|14|15\.6|16|17\.3|21\.5|24|27|32)\s*(?:"|''|pulgadas|inch)(?:$|[\s,;.)\]/])/gi;
   while ((match = inchRegex.exec(raw)) !== null) {
     formFactors.add(`${match[1]}_inch`);
@@ -669,17 +663,20 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
     resolutions,
     refreshRates,
     speeds,
+    speedClasses,
     wattages,
     amperages,
     capacities,
     colors,
     portCounts,
     formFactors,
+    modelSeries,
   };
 }
 
 /**
  * Checks if two products have conflicting technical specifications.
+ * In Linear Algebra terms, conflicting specs indicate orthogonality in the feature space.
  */
 export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -691,19 +688,22 @@ export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
       for (const val of setA) {
         if (setB.has(val)) return false;
       }
-      return true;
+      return true; // Conjuntos disjuntos => Conflicto
     }
     return false;
   };
 
+  // Restricciones duras: Si difieren en capacidad, velocidad, serie, medidas o colores => Conflicto
+  if (checkConflict(sA.capacities, sB.capacities)) return true;
+  if (checkConflict(sA.modelSeries, sB.modelSeries)) return true;
+  if (checkConflict(sA.speedClasses, sB.speedClasses)) return true;
+  if (checkConflict(sA.speeds, sB.speeds)) return true;
   if (checkConflict(sA.lengths, sB.lengths)) return true;
   if (checkConflict(sA.versions, sB.versions)) return true;
   if (checkConflict(sA.resolutions, sB.resolutions)) return true;
   if (checkConflict(sA.refreshRates, sB.refreshRates)) return true;
-  if (checkConflict(sA.speeds, sB.speeds)) return true;
   if (checkConflict(sA.wattages, sB.wattages)) return true;
   if (checkConflict(sA.amperages, sB.amperages)) return true;
-  if (checkConflict(sA.capacities, sB.capacities)) return true;
   if (checkConflict(sA.colors, sB.colors)) return true;
   if (checkConflict(sA.portCounts, sB.portCounts)) return true;
   if (checkConflict(sA.formFactors, sB.formFactors)) return true;
@@ -711,16 +711,81 @@ export function haveConflictingTechnicalSpecs(a: string, b: string): boolean {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// MOTOR DE ÁLGEBRA LINEAL: ESPACIO VECTORIAL Y SIMILITUD DE COSENOS
+// ---------------------------------------------------------------------------
+
+/**
+ * Construye un vector de pesos en R^D para los tokens de un producto.
+ */
+function buildFeatureVector(tokens: string[]): Map<string, number> {
+  const vec = new Map<string, number>();
+  for (const token of tokens) {
+    const baseWeight = GENERIC_WEIGHTS[token] ?? (/[0-9]/.test(token) ? 2.0 : 1.5);
+    vec.set(token, (vec.get(token) ?? 0) + baseWeight);
+  }
+  return vec;
+}
+
+/**
+ * Calcula la Similitud del Coseno entre dos vectores en el espacio de características:
+ * cos(theta) = (u · v) / (||u||_2 * ||v||_2)
+ */
+export function computeCosineSimilarity(vecA: Map<string, number>, vecB: Map<string, number>): number {
+  if (vecA.size === 0 || vecB.size === 0) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const [, weight] of vecA) {
+    normA += weight * weight;
+  }
+  for (const [, weight] of vecB) {
+    normB += weight * weight;
+  }
+
+  for (const [term, weightA] of vecA) {
+    const weightB = vecB.get(term);
+    if (weightB !== undefined) {
+      dotProduct += weightA * weightB;
+    }
+  }
+
+  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denominator === 0) return 0;
+  return dotProduct / denominator;
+}
+
+/**
+ * Calcula el coeficiente de Jaccard sobre conjuntos finitos de tokens:
+ * J(A, B) = |A ∩ B| / |A ∪ B|
+ */
+export function computeJaccardSimilarity(tokensA: string[], tokensB: string[]): number {
+  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+  const setA = new Set(tokensA);
+  const setB = new Set(tokensB);
+
+  let intersectionCount = 0;
+  for (const item of setA) {
+    if (setB.has(item)) intersectionCount++;
+  }
+
+  const unionSize = new Set([...tokensA, ...tokensB]).size;
+  if (unionSize === 0) return 0;
+  return intersectionCount / unionSize;
+}
+
 /**
  * Evaluates whether an input product matches an existing catalog product.
- * ZERO MARGIN OF ERROR: Takes into account both name and description.
- * If technical characteristics differ (length, speed, version, etc.), it is NEVER a duplicate.
+ * CERO MARGEN DE ERROR: Utiliza Álgebra Lineal en espacios vectoriales.
+ * Los productos parecidos pero de diferente marca, capacidad o serie NUNCA son duplicados.
  */
 export function evaluateDuplicateMatch(
   input: { name: string; barcode?: string | null; description?: string | null },
   candidate: ProductSummary
 ): DuplicateDetectionResult {
-  // 1. Barcode check (100% indisputable physical SKU match)
+  // 1. Verificación por código de barras exacto (SKU físico 100% certero)
   const inputBarcode = input.barcode?.trim();
   const candBarcode = candidate.barcode?.trim();
   if (inputBarcode && candBarcode) {
@@ -742,16 +807,17 @@ export function evaluateDuplicateMatch(
     return { isDuplicate: false };
   }
 
-  // Combined full text (name + description) for deep technical characteristic checking
+  // Texto completo combinado para análisis técnico profundo
   const inputFull = `${rawInputName} ${input.description ?? ""}`;
   const candFull = `${rawCandName} ${candidate.description ?? ""}`;
 
-  // Conflicting technical specifications check (length, version, speed, wattage, etc.)
+  // 2. Comprobación algebraica de ortogonalidad por especificaciones técnicas:
+  // Si difieren en capacidad (ej: 32GB vs 64GB), velocidad, serie o clase, NO son duplicados
   if (haveConflictingTechnicalSpecs(inputFull, candFull)) {
     return { isDuplicate: false };
   }
 
-  // 2. Exact match (case insensitive)
+  // 3. Coincidencia exacta de nombre (sin distinción de mayúsculas/minúsculas)
   if (rawInputName.toLowerCase() === rawCandName.toLowerCase()) {
     return {
       isDuplicate: true,
@@ -764,7 +830,7 @@ export function evaluateDuplicateMatch(
   const normInput = normalizeText(rawInputName);
   const normCand = normalizeText(rawCandName);
 
-  // 3. Normalized match
+  // 4. Coincidencia exacta de texto normalizado
   if (normInput === normCand) {
     return {
       isDuplicate: true,
@@ -774,17 +840,23 @@ export function evaluateDuplicateMatch(
     };
   }
 
-  // 4. Conflicting brands check (e.g. Logitech vs Razer, Epson vs HP, Ugreen vs Cabletime)
+  // 5. Restricción dura de marcas (Subespacio de Marca):
+  // Si una es Kingston y la otra es Hiksemi, Biwin o WD, son ortogonales => JAMÁS coinciden
   const brandInput = extractBrand(inputFull);
   const brandCand = extractBrand(candFull);
   if (brandInput && brandCand && brandInput !== brandCand) {
+    return { isDuplicate: false };
+  }
+  // Si uno tiene marca identificada y el otro tiene una marca completamente distinta no listada
+  if ((brandInput && !brandCand) || (!brandInput && brandCand)) {
+    // Si uno tiene marca y el otro no, no asociar
     return { isDuplicate: false };
   }
 
   const tokensInput = extractDistinctiveTokens(rawInputName);
   const tokensCand = extractDistinctiveTokens(rawCandName);
 
-  // 5. Canonical word-sorted permutation match
+  // 6. Permutación idéntica de palabras clave
   if (tokensInput.length > 0 && tokensCand.length > 0 && tokensInput.length === tokensCand.length) {
     const sortedInput = [...tokensInput].sort().join(" ");
     const sortedCand = [...tokensCand].sort().join(" ");
@@ -798,9 +870,7 @@ export function evaluateDuplicateMatch(
     }
   }
 
-  // 6. Specific Model Code matching IN PRODUCT NAMES
-  // Crucial: Only compare model codes found in the PRODUCT NAMES, never in descriptions.
-  // Descriptions contain compatible models, OS versions, chipsets, etc. that cause false positives.
+  // 7. Códigos de modelo específicos en el título
   const modelsInputName = extractModelCodes(rawInputName);
   const modelsCandName = extractModelCodes(rawCandName);
 
@@ -808,12 +878,12 @@ export function evaluateDuplicateMatch(
     const sharedModels = modelsInputName.filter((m) => modelsCandName.includes(m));
     const differentModels = modelsInputName.filter((m) => !modelsCandName.includes(m));
 
-    // If both product names explicitly have different model codes (e.g. G203 vs G502, NV2 vs A400, M170 vs M185):
+    // Si ambos tienen códigos de modelo y son distintos (ej. MS100 vs G502 vs NV2):
     if (differentModels.length > 0 && sharedModels.length === 0) {
       return { isDuplicate: false };
     }
 
-    // If they share the exact model code in the title and have the same brand:
+    // Si comparten el código de modelo exacto y misma marca:
     if (sharedModels.length > 0 && (!brandInput || !brandCand || brandInput === brandCand)) {
       return {
         isDuplicate: true,
@@ -824,10 +894,29 @@ export function evaluateDuplicateMatch(
     }
   }
 
-  // If one specifies a brand and the other specifies no brand at all, do not match generic vs branded
-  if ((brandInput && !brandCand) || (!brandInput && brandCand)) {
-    return { isDuplicate: false };
+  // 8. Algoritmo Algebraico de Similitud Vectorial del Coseno (Vector Space Model)
+  // Evalúa el coseno del ángulo entre los dos vectores en R^D
+  const vecInput = buildFeatureVector(tokensInput);
+  const vecCand = buildFeatureVector(tokensCand);
+  const cosine = computeCosineSimilarity(vecInput, vecCand);
+  const jaccard = computeJaccardSimilarity(tokensInput, tokensCand);
+
+  // Dos productos solo son duplicados si su similitud vectorial es casi idéntica (>= 94%)
+  // Productos parecidos (como tarjetas de memoria de distinta marca o modelo) suelen tener cosenos < 0.70
+  if (cosine >= 0.94 && jaccard >= 0.88) {
+    return {
+      isDuplicate: true,
+      reason: "high_similarity",
+      message: `Alta similitud vectorial (${(cosine * 100).toFixed(0)}%) con "${candidate.name}".`,
+      existingProduct: candidate,
+      cosineSimilarity: cosine,
+      jaccardSimilarity: jaccard,
+    };
   }
 
-  return { isDuplicate: false };
+  return {
+    isDuplicate: false,
+    cosineSimilarity: cosine,
+    jaccardSimilarity: jaccard,
+  };
 }

@@ -44,6 +44,7 @@ export function ProductForm({
   const [scannedImagePath, setScannedImagePath] = useState<string | null>(null);
   const [scannedGalleryImages, setScannedGalleryImages] = useState<string[] | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateDetectionResult | null>(null);
+  const [ignoredExistingIds, setIgnoredExistingIds] = useState<Set<string>>(new Set());
 
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLInputElement>(null);
@@ -66,7 +67,7 @@ export function ProductForm({
 
     try {
       const res = await checkDuplicateProduct(currentName, currentBarcode, product?.id, currentDesc);
-      if (res.isDuplicate && res.existingProduct) {
+      if (res.isDuplicate && res.existingProduct && !ignoredExistingIds.has(res.existingProduct.id)) {
         setDuplicateWarning(res);
       } else {
         setDuplicateWarning(null);
@@ -179,6 +180,9 @@ export function ProductForm({
                   if (stockRef.current) stockRef.current.value = String(plannedTotal);
                 }}
                 onDismissExisting={() => {
+                  if (matchedProduct?.id) {
+                    setIgnoredExistingIds((prev) => new Set([...prev, matchedProduct.id]));
+                  }
                   setDuplicateWarning(null);
                 }}
               />
