@@ -1,5 +1,45 @@
 /** Helpers puros de la cobranza de internet (sin "use server": se usan también en el cliente). */
 
+export const MONTH_NAMES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Setiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+] as const;
+
+export const MONTH_SHORT_NAMES = [
+  "ENE",
+  "FEB",
+  "MAR",
+  "ABR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AGO",
+  "SET",
+  "OCT",
+  "NOV",
+  "DIC",
+] as const;
+
+export interface MonthPaymentRecord {
+  status: "paid" | "unpaid";
+  paidAt?: string; // YYYY-MM-DD
+  amount?: number;
+  method?: string; // "YAPE" | "PLIN" | "EFECTIVO" | "TRANSFERENCIA" | "OTRO"
+  note?: string;
+}
+
+export type PaidMonthsMap = Record<string, MonthPaymentRecord>; // Key: "YYYY-MM" (ej: "2026-01")
+
 export interface InternetClientRow {
   id: string;
   clientName: string;
@@ -8,6 +48,7 @@ export interface InternetClientRow {
   nextPaymentDate: string; // YYYY-MM-DD
   amount: number;
   concept: string | null;
+  paidMonths?: string | null; // JSON string
 }
 
 /** Días hasta la fecha de pago, contando calendario (negativo = vencido). */
@@ -38,4 +79,197 @@ export function whatsappLink(row: InternetClientRow, days: number): string {
         ? `Hola ${row.clientName}, te escribimos de Infosistel. Hoy vence tu pago del servicio de internet${monto}. Gracias.`
         : `Hola ${row.clientName}, te recordamos de Infosistel que tu pago del servicio de internet${monto} vence en ${days} día(s). Gracias.`;
   return `https://wa.me/${row.whatsapp}?text=${encodeURIComponent(msg)}`;
+}
+
+/**
+ * Parsea el mapa de meses pagados o deriva el historial de pagos para clientes
+ * existentes basándose en startDate y nextPaymentDate.
+ */
+export function parsePaidMonths(
+  raw?: string | null,
+  startDate?: string,
+  nextPaymentDate?: string,
+  defaultAmount: number = 0
+): PaidMonthsMap {
+  const result: PaidMonthsMap = {};
+
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return parsed as PaidMonthsMap;
+      }
+    } catch {
+      // fallback a derivación
+    }
+  }
+
+  // Derivación automática para clientes preexistentes
+  if (startDate && nextPaymentDate) {
+    const [sy, sm] = startDate.split("-").map(Number);
+    const [ny, nm] = nextPaymentDate.split("-").map(Number);
+
+    let cy = sy;
+    let cm = sm;
+    const endKey = `${ny}-${String(nm).padStart(2, "0")}`;
+
+    while (true) {
+      const key = `${cy}-${String(cm).padStart(2, "0")}`;
+      if (key >= endKey) break;
+      result[key] = {
+        status: "paid",
+        paidAt: `${cy}-${String(cm).padStart(2, "0")}-01`,
+        amount: defaultAmount,
+        note: "Registrado al inicio",
+      };
+      cm++;
+      if (cm > 12) {
+        cm = 1;
+        cy++;
+      }
+      if (cy > ny + 2) break;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Calcula la próxima fecha de pago buscando el primer mes pendiente (unpaid).
+ * Conserva el día original de corte de nextPaymentDate / startDate.
+ */
+export function calculateNextPaymentDate(
+  startDate: string,
+  currentNextPaymentDate: string,
+  paidMonths: PaidMonthsMap
+): string {
+  const [, , origDay] = currentNextPaymentDate.split("-").map(Number);
+  const [sy, sm] = startDate.split("-").map(Number);
+
+  let cy = sy;
+  let cm = sm;
+  const maxYear = new Date().getFullYear() + 4;
+
+  while (cy <= maxYear) {
+    const key = `${cy}-${String(cm).padStart(2, "0")}`;
+    const rec = paidMonths[key];
+    if (!rec || rec.status !== "paid") {
+      const lastDayOfMonth = new Date(Date.UTC(cy, cm, 0)).getUTCDate();
+      const day = Math.min(origDay || 1, lastDayOfMonth);
+      return `${cy}-${String(cm).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+    cm++;
+    if (cm > 12) {
+      cm = 1;
+      cy++;
+    }
+  }
+
+  const lastDay = new Date(Date.UTC(cy, cm, 0)).getUTCDate();
+  return `${cy}-${String(cm).padStart(2, "0")}-${String(Math.min(origDay || 1, lastDay)).padStart(2, "0")}`;
+}
+
+export interface MonthUIInfo {
+  monthIndex: number; // 0..11
+  monthNum: number; // 1..12
+  monthName: string;
+  monthShort: string;
+  key: string; // "YYYY-MM"
+  isPaid: boolean;
+  paidAt?: string;
+  amount?: number;
+  method?: string;
+  note?: string;
+  isOverdue: boolean;
+  isDueThisMonth: boolean;
+  isAdvance: boolean;
+  isFuture: boolean;
+  badgeText: string;
+  badgeStyle: "paid" | "advance" | "overdue" | "due" | "future";
+}
+
+/**
+ * Obtiene la información para pintar los 12 meses (Enero a Diciembre) de un año dado.
+ */
+export function getYearMonthsInfo(
+  year: number,
+  paidMonths: PaidMonthsMap,
+  today: Date = new Date(),
+  clientAmount: number = 0
+): {
+  months: MonthUIInfo[];
+  paidCount: number;
+  advanceCount: number;
+  overdueCount: number;
+  totalCollected: number;
+} {
+  const currentKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  let paidCount = 0;
+  let advanceCount = 0;
+  let overdueCount = 0;
+  let totalCollected = 0;
+
+  const months: MonthUIInfo[] = MONTH_NAMES.map((name, idx) => {
+    const monthNum = idx + 1;
+    const key = `${year}-${String(monthNum).padStart(2, "0")}`;
+    const rec = paidMonths[key];
+    const isPaid = rec?.status === "paid";
+
+    const isAdvance = isPaid && key > currentKey;
+    const isOverdue = !isPaid && key < currentKey;
+    const isDueThisMonth = !isPaid && key === currentKey;
+    const isFuture = !isPaid && key > currentKey;
+
+    if (isPaid) {
+      paidCount++;
+      totalCollected += rec?.amount ?? clientAmount;
+      if (isAdvance) advanceCount++;
+    } else if (isOverdue) {
+      overdueCount++;
+    }
+
+    let badgeText = "Pendiente";
+    let badgeStyle: MonthUIInfo["badgeStyle"] = "future";
+
+    if (isAdvance) {
+      badgeText = "Adelantado";
+      badgeStyle = "advance";
+    } else if (isPaid) {
+      badgeText = "Pagado";
+      badgeStyle = "paid";
+    } else if (isOverdue) {
+      badgeText = "Vencido";
+      badgeStyle = "overdue";
+    } else if (isDueThisMonth) {
+      badgeText = "Por pagar";
+      badgeStyle = "due";
+    }
+
+    return {
+      monthIndex: idx,
+      monthNum,
+      monthName: name,
+      monthShort: MONTH_SHORT_NAMES[idx],
+      key,
+      isPaid,
+      paidAt: rec?.paidAt,
+      amount: rec?.amount ?? clientAmount,
+      method: rec?.method,
+      note: rec?.note,
+      isOverdue,
+      isDueThisMonth,
+      isAdvance,
+      isFuture,
+      badgeText,
+      badgeStyle,
+    };
+  });
+
+  return {
+    months,
+    paidCount,
+    advanceCount,
+    overdueCount,
+    totalCollected,
+  };
 }

@@ -4,7 +4,12 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { dateToInputValue, parseDateInput } from "../caja/month";
-import type { InternetClientRow } from "./cobranza";
+import {
+  calculateNextPaymentDate,
+  parsePaidMonths,
+  type InternetClientRow,
+  type PaidMonthsMap,
+} from "./cobranza";
 
 const PATH = "/taller-control/cobranza-internet";
 
@@ -18,6 +23,7 @@ export async function getInternetClients(): Promise<InternetClientRow[]> {
     nextPaymentDate: dateToInputValue(r.nextPaymentDate),
     amount: r.amount,
     concept: r.concept,
+    paidMonths: r.paidMonths,
   }));
 }
 
@@ -63,8 +69,19 @@ export async function createInternetClient(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
 
   const { startDate, nextPaymentDate, ...rest } = parsed.data;
+  const start = parseDateInput(startDate)!;
+  const nextPay = parseDateInput(nextPaymentDate)!;
+
+  // Inicializar mapa de meses pagados
+  const map = parsePaidMonths(null, startDate, nextPaymentDate, rest.amount);
+
   await prisma.internetClient.create({
-    data: { ...rest, startDate: parseDateInput(startDate)!, nextPaymentDate: parseDateInput(nextPaymentDate)! },
+    data: {
+      ...rest,
+      startDate: start,
+      nextPaymentDate: nextPay,
+      paidMonths: JSON.stringify(map),
+    },
   });
   revalidatePath(PATH);
   return {};
@@ -78,13 +95,36 @@ function addOneMonthUTC(date: Date): Date {
   return new Date(Date.UTC(y, m, Math.min(date.getUTCDate(), lastDayNext)));
 }
 
-/** "Pagó": corre la próxima fecha de pago un mes. */
+/** "Pagó": corre la próxima fecha de pago un mes y marca el mes pagado en paidMonths. */
 export async function markInternetPaid(id: string): Promise<void> {
   const row = await prisma.internetClient.findUnique({ where: { id } });
   if (!row) return;
+
+  const startStr = dateToInputValue(row.startDate);
+  const nextPayStr = dateToInputValue(row.nextPaymentDate);
+  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+
+  const [ny, nm] = nextPayStr.split("-").map(Number);
+  const key = `${ny}-${String(nm).padStart(2, "0")}`;
+  const todayStr = dateToInputValue(new Date());
+
+  map[key] = {
+    status: "paid",
+    paidAt: todayStr,
+    amount: row.amount,
+    method: "YAPE",
+    note: "Pago puntual",
+  };
+
+  const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+  const newNextPay = parseDateInput(newNextPaymentDateStr) ?? addOneMonthUTC(row.nextPaymentDate);
+
   await prisma.internetClient.update({
     where: { id },
-    data: { nextPaymentDate: addOneMonthUTC(row.nextPaymentDate) },
+    data: {
+      paidMonths: JSON.stringify(map),
+      nextPaymentDate: newNextPay,
+    },
   });
   revalidatePath(PATH);
 }
@@ -163,3 +203,164 @@ export async function updateInternetClientDirect(
   return { ok: true };
 }
 
+/**
+ * Alterna (o fija) el estado de pago de un mes específico (ej: "2026-08").
+ * Recalcula automáticamente la próxima fecha de pago para mantener total coherencia.
+ */
+export async function toggleInternetClientMonth(
+  id: string,
+  yearMonth: string,
+  details?: {
+    paid?: boolean;
+    amount?: number;
+    method?: string;
+    note?: string;
+  }
+): Promise<{ ok: boolean; newNextPaymentDate?: string; error?: string }> {
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+
+  const startStr = dateToInputValue(row.startDate);
+  const nextPayStr = dateToInputValue(row.nextPaymentDate);
+  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+
+  const currentlyPaid = map[yearMonth]?.status === "paid";
+  const shouldBePaid = details?.paid !== undefined ? details.paid : !currentlyPaid;
+  const todayStr = dateToInputValue(new Date());
+
+  if (shouldBePaid) {
+    map[yearMonth] = {
+      status: "paid",
+      paidAt: map[yearMonth]?.paidAt || todayStr,
+      amount: details?.amount !== undefined ? details.amount : (map[yearMonth]?.amount ?? row.amount),
+      method: details?.method ?? map[yearMonth]?.method ?? "YAPE",
+      note: details?.note ?? map[yearMonth]?.note ?? "Pago registrado",
+    };
+  } else {
+    map[yearMonth] = {
+      status: "unpaid",
+    };
+  }
+
+  // Recalcular la fecha del primer mes que queda impago
+  const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+  const newNextPayDate = parseDateInput(newNextPaymentDateStr);
+
+  await prisma.internetClient.update({
+    where: { id },
+    data: {
+      paidMonths: JSON.stringify(map),
+      ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
+    },
+  });
+
+  revalidatePath(PATH);
+  return { ok: true, newNextPaymentDate: newNextPaymentDateStr };
+}
+
+/**
+ * Paga N meses por adelantado (ej. 2 meses adelantados).
+ * Marca los siguientes N meses impagos como pagados y actualiza la fecha de próximo pago.
+ */
+export async function payAdvanceInternetMonths(
+  id: string,
+  count: number = 2,
+  options?: {
+    amountPerMonth?: number;
+    method?: string;
+    note?: string;
+  }
+): Promise<{ ok: boolean; countPaid?: number; newNextPaymentDate?: string; error?: string }> {
+  if (count <= 0) return { ok: false, error: "Cantidad de meses inválida." };
+
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+
+  const startStr = dateToInputValue(row.startDate);
+  const nextPayStr = dateToInputValue(row.nextPaymentDate);
+  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+
+  const todayStr = dateToInputValue(new Date());
+  const [ny, nm] = nextPayStr.split("-").map(Number);
+
+  let cy = ny;
+  let cm = nm;
+  let paidSoFar = 0;
+
+  while (paidSoFar < count && cy <= new Date().getFullYear() + 4) {
+    const key = `${cy}-${String(cm).padStart(2, "0")}`;
+    if (map[key]?.status !== "paid") {
+      map[key] = {
+        status: "paid",
+        paidAt: todayStr,
+        amount: options?.amountPerMonth ?? row.amount,
+        method: options?.method ?? "YAPE",
+        note: options?.note || `Adelanto (${paidSoFar + 1}/${count} meses)`,
+      };
+      paidSoFar++;
+    }
+    cm++;
+    if (cm > 12) {
+      cm = 1;
+      cy++;
+    }
+  }
+
+  const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+  const newNextPayDate = parseDateInput(newNextPaymentDateStr);
+
+  await prisma.internetClient.update({
+    where: { id },
+    data: {
+      paidMonths: JSON.stringify(map),
+      ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
+    },
+  });
+
+  revalidatePath(PATH);
+  return { ok: true, countPaid: paidSoFar, newNextPaymentDate: newNextPaymentDateStr };
+}
+
+/**
+ * Actualiza los detalles específicos de un mes (monto especial, método de pago, nota).
+ */
+export async function updateInternetMonthDetails(
+  id: string,
+  yearMonth: string,
+  details: {
+    status: "paid" | "unpaid";
+    amount: number;
+    method?: string;
+    note?: string;
+    paidAt?: string;
+  }
+): Promise<{ ok: boolean; newNextPaymentDate?: string; error?: string }> {
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+
+  const startStr = dateToInputValue(row.startDate);
+  const nextPayStr = dateToInputValue(row.nextPaymentDate);
+  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+
+  map[yearMonth] = {
+    status: details.status,
+    amount: details.amount,
+    method: details.method,
+    note: details.note,
+    paidAt: details.paidAt || dateToInputValue(new Date()),
+  };
+
+  const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+  const newNextPayDate = parseDateInput(newNextPaymentDateStr);
+
+  await prisma.internetClient.update({
+    where: { id },
+    data: {
+      paidMonths: JSON.stringify(map),
+      ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
+    },
+  });
+
+  revalidatePath(PATH);
+  return { ok: true, newNextPaymentDate: newNextPaymentDateStr };
+}

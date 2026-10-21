@@ -299,6 +299,7 @@ model InternetClient {
   nextPaymentDate DateTime
   amount          Float    @default(0)
   concept         String? // nota/concepto (ej. "Pagó 3 meses por adelantado")
+  paidMonths      String? // JSON-encoded record de meses pagados: { "YYYY-MM": { status: "PAID", paidAt: "...", amount: 30, method: "YAPE", note: "..." } }
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
