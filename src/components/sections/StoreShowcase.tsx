@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, ShoppingBag, Star } from "lucide-react";
+import { ArrowRight, ShoppingBag, Star, Sparkles, CheckCircle2 } from "lucide-react";
 import { getProducts } from "@/app/tienda/actions";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import { Reveal } from "@/components/scroll/Reveal";
@@ -21,23 +21,38 @@ export async function StoreShowcase() {
         <Reveal>
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-accent">
-                <span className="h-px w-6 bg-accent" />
-                Tienda
-              </span>
-              <h2 className="mt-4 max-w-xl font-display text-[clamp(2rem,4vw,3rem)] font-bold leading-tight text-fg">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/8 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-accent shadow-sm">
+                <Sparkles size={14} className="text-accent" />
+                ¡Bienvenido a la Tienda Oficial Infosistel!
+              </div>
+              <h2 className="mt-2 max-w-2xl font-display text-[clamp(2rem,4vw,3rem)] font-bold leading-tight text-fg">
                 Repuestos y equipos listos para llevar
               </h2>
-              <p className="mt-3 max-w-md text-fg-muted">
-                Cargadores, baterías, pantallas, laptops y más — con la misma garantía de taller.
+              <p className="mt-3 max-w-xl text-base text-fg-muted">
+                ¡Te damos la bienvenida a nuestra tienda virtual! Encuentra cargadores originales,
+                pantallas, baterías, repuestos de microelectrónica y laptops certificadas con
+                garantía directa de nuestro laboratorio.
               </p>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2.5 text-xs font-semibold text-fg-muted">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-alt px-3 py-1 text-fg shadow-xs">
+                  <CheckCircle2 size={13} className="text-accent" /> Stock en Huancayo
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-alt px-3 py-1 text-fg shadow-xs">
+                  <CheckCircle2 size={13} className="text-accent" /> Envíos a todo el Perú
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-alt px-3 py-1 text-fg shadow-xs">
+                  <CheckCircle2 size={13} className="text-accent" /> Garantía de laboratorio
+                </span>
+              </div>
             </div>
+
             <Link
               href="/tienda"
               className="group inline-flex shrink-0 items-center gap-2.5 rounded-full bg-accent px-7 py-3.5 text-sm font-bold uppercase tracking-wide text-accent-fg shadow-lg shadow-accent/25 transition-transform hover:-translate-y-0.5 active:translate-y-0"
             >
               <ShoppingBag size={16} />
-              Ir a la tienda
+              Explorar toda la tienda
               <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
             </Link>
           </div>

@@ -16,9 +16,9 @@ const NAV_LINKS = [
 ];
 
 export function Navbar() {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const pathname = usePathname();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -38,37 +38,64 @@ export function Navbar() {
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-shadow duration-300 ${
-        scrolled || menuOpen ? "bg-bg-alt/90 shadow-[0_1px_0_0_var(--border)] backdrop-blur-md" : "bg-transparent"
+      className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
+        scrolled || menuOpen
+          ? "bg-white/95 shadow-[0_4px_24px_rgba(11,18,48,0.06)] backdrop-blur-md text-fg"
+          : "bg-white/80 backdrop-blur-md border-b border-slate-200/60 text-fg"
       }`}
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-10">
-        <Link href="/" className="flex shrink-0 items-center">
+      {/* Línea de acento cibernético ultra fina superior */}
+      <div className="h-[2px] w-full bg-gradient-to-r from-blue-600 via-cyan-400 to-indigo-600" />
+
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3 md:px-10">
+        <Link href="/" className="flex shrink-0 items-center transition-transform hover:scale-105">
           <Image
             src="/brand/infosistel-logo-v3.png"
             alt="Infosistel"
             width={1366}
             height={166}
             priority
-            className="h-9 w-auto object-contain"
+            className="h-8 md:h-9 w-auto object-contain"
           />
         </Link>
 
-        <nav className="hidden items-center gap-8 lg:flex">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className="group relative py-1 text-xs font-bold uppercase tracking-widest text-fg-muted transition-colors hover:text-fg"
-            >
-              {link.label}
-              <span className="absolute -bottom-0.5 left-0 h-0.5 w-0 rounded-full bg-accent transition-all duration-300 group-hover:w-full" />
-            </Link>
-          ))}
+        {/* Cápsula de navegación flotante elegante con color y contraste */}
+        <nav className="hidden items-center gap-1 rounded-full border border-slate-200/80 bg-slate-100/70 p-1 backdrop-blur-md shadow-sm lg:flex">
+          {NAV_LINKS.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={`relative rounded-full px-4 py-1.5 text-xs font-extrabold uppercase tracking-wider transition-all duration-200 ${
+                  isActive
+                    ? "bg-accent text-white shadow-md shadow-accent/25"
+                    : "text-slate-700 hover:text-accent hover:bg-white"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-3">
           <SocialLinks className="hidden lg:flex" />
+
+          {/* CTA Rápido de Laboratorio */}
+          <a
+            href="https://wa.me/51964648202?text=Hola%20Infosistel,%20deseo%20una%20consulta%20técnica%20para%20mi%20laptop"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-accent to-blue-600 hover:from-blue-600 hover:to-accent px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-accent/20 transition-all hover:scale-105 active:scale-95"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+            </span>
+            Laboratorio Express
+          </a>
+
           <Link
             href="/tienda"
             aria-label="Ir a la tienda"
