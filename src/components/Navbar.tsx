@@ -47,15 +47,15 @@ export function Navbar() {
       {/* Línea de acento cibernético ultra fina superior */}
       <div className="h-[2px] w-full bg-gradient-to-r from-blue-600 via-cyan-400 to-indigo-600" />
 
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3 md:px-10">
-        <Link href="/" className="flex shrink-0 items-center transition-transform hover:scale-105">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-3.5 py-2 sm:px-6 sm:py-3 md:px-10">
+        <Link href="/" className="flex shrink-0 items-center transition-transform hover:scale-105 max-w-[165px] xs:max-w-[200px] sm:max-w-none">
           <Image
             src="/brand/infosistel-logo-v3.png"
             alt="Infosistel"
             width={1366}
             height={166}
             priority
-            className="h-8 md:h-9 w-auto object-contain"
+            className="h-6 sm:h-8 md:h-9 w-auto object-contain"
           />
         </Link>
 
@@ -79,7 +79,7 @@ export function Navbar() {
           })}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <SocialLinks className="hidden lg:flex" />
 
           <Link
@@ -87,7 +87,7 @@ export function Navbar() {
             aria-label="Ir a la tienda"
             className="rounded-full p-2 text-fg-muted transition-colors hover:text-accent lg:hidden"
           >
-            <ShoppingCart size={20} />
+            <ShoppingCart size={19} className="sm:w-5 sm:h-5" />
           </Link>
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -95,7 +95,7 @@ export function Navbar() {
             aria-expanded={menuOpen}
             className="rounded-full p-2 text-fg transition-colors hover:text-accent lg:hidden"
           >
-            {menuOpen ? <X size={22} /> : <Menu size={22} />}
+            {menuOpen ? <X size={21} className="sm:w-[22px] sm:h-[22px]" /> : <Menu size={21} className="sm:w-[22px] sm:h-[22px]" />}
           </button>
         </div>
       </div>

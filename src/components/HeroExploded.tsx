@@ -518,7 +518,7 @@ export function HeroExploded() {
       {/* CONTENEDOR PINNEADO POR SCROLLTRIGGER - 100DVH BLANCO PURO */}
       <div
         ref={pinContainerRef}
-        className="relative flex h-[100dvh] w-full flex-col justify-between overflow-hidden bg-white px-4 pt-20 pb-3 sm:pt-24 sm:pb-4 lg:px-8"
+        className="relative flex h-[100dvh] w-full flex-col justify-between overflow-hidden bg-white px-3.5 pt-16 pb-2 sm:px-6 sm:pt-22 sm:pb-3 md:pt-24 md:pb-4 lg:px-8"
       >
         {/* ========================================================= */}
         {/* CABECERA / TITULAR PRINCIPAL                             */}
@@ -527,23 +527,24 @@ export function HeroExploded() {
           ref={headerContentRef}
           className="relative z-20 mx-auto flex w-full max-w-3xl shrink-0 flex-col items-center text-center transition-transform"
         >
-          {/* Badge superior */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/8 px-3.5 py-1 text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-[0.2em] text-accent shadow-sm backdrop-blur-md">
+          {/* Badge superior con texto responsivo para evitar saltos en pantallas de 360px */}
+          <div className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/8 px-3 py-0.5 sm:px-3.5 sm:py-1 text-[9px] sm:text-[11px] font-mono font-bold uppercase tracking-wider sm:tracking-[0.2em] text-accent shadow-sm backdrop-blur-md">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
             </span>
-            Laboratorio Microelectrónico & Hardware en Huancayo
+            <span className="hidden xs:inline">Laboratorio Microelectrónico & Hardware Huancayo</span>
+            <span className="xs:hidden">Laboratorio Microelectrónico Huancayo</span>
           </div>
 
-          <h1 className="mt-2 font-display text-[clamp(1.5rem,3vw,2.5rem)] font-black tracking-tight text-fg leading-tight">
+          <h1 className="mt-1.5 sm:mt-2 font-display text-[clamp(1.35rem,4.5vw,2.5rem)] font-black tracking-tight text-fg leading-tight">
             Ingeniería por dentro.{" "}
             <span className="bg-gradient-to-r from-accent via-sky-600 to-cyan-600 bg-clip-text text-transparent">
               Rendimiento extremo por fuera.
             </span>
           </h1>
 
-          <p className="mt-1 max-w-xl text-xs sm:text-sm text-fg-muted leading-relaxed">
+          <p className="mt-1 max-w-xl text-[11px] sm:text-xs md:text-sm text-fg-muted leading-relaxed line-clamp-2 sm:line-clamp-none">
             Diagnóstico avanzado a nivel de componente, micro-soldadura BGA, repuestos certificados
             y repotenciación térmica de alto nivel.
           </p>
@@ -553,7 +554,7 @@ export function HeroExploded() {
         {/* ÁREA CENTRAL: CÁLCULO CINEMÁTICO Y DESPIECE VECTORIAL 3D */}
         {/* ========================================================= */}
         <div
-          className="relative z-10 mx-auto my-auto flex w-full max-w-6xl items-center justify-center flex-1 min-h-0 py-1"
+          className="relative z-10 mx-auto my-auto flex w-full max-w-6xl items-center justify-center flex-1 min-h-0 py-0.5 sm:py-1"
           style={{ perspective: "1200px" }}
         >
           {/* Contenedor con matriz de rotación elástica en 3D */}
@@ -565,7 +566,7 @@ export function HeroExploded() {
             {/* Canvas / Visor de la Laptop - Escala calibrada con cota máxima de altura (Zero Collision) */}
             <div
               ref={explodedWrapRef}
-              className="relative aspect-[16/9] w-full max-w-[850px] xl:max-w-[920px] max-h-[44vh] sm:max-h-[47vh] flex items-center justify-center overflow-visible"
+              className="relative aspect-[16/9] w-full max-w-[850px] xl:max-w-[920px] max-h-[36vh] sm:max-h-[44vh] md:max-h-[47vh] flex items-center justify-center overflow-visible"
             >
               {imageError ? (
                 <div className="flex h-full w-full flex-col items-center justify-center rounded-2xl border border-border-strong bg-white p-6 text-center shadow-md">
@@ -876,37 +877,42 @@ export function HeroExploded() {
         {/* ========================================================= */}
         {/* CARRUSEL DE HOTSPOTS SINCRONIZADO PARA MÓVIL (< 1024px)   */}
         {/* ========================================================= */}
-        <div className="block lg:hidden relative z-20 mx-auto w-full max-w-md px-2">
-          {activeMobileHotspot > 0 && (
-            <div className="transition-all duration-300">
+        <div className="block lg:hidden relative z-20 mx-auto w-full max-w-sm px-2 min-h-[52px] flex items-center justify-center">
+          {activeMobileHotspot === 0 ? (
+            <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 py-1">
+              <ChevronDown size={12} className="animate-bounce text-accent" />
+              <span>Desliza para explorar la arquitectura interna</span>
+            </div>
+          ) : (
+            <div className="w-full transition-all duration-300 animate-in fade-in zoom-in-95">
               {activeMobileHotspot === 1 && (
-                <div className="rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-md">
-                  <div className="flex items-center gap-2">
-                    <Eye size={14} className="text-accent" />
+                <div className="rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-md backdrop-blur-md">
+                  <div className="flex items-center gap-1.5">
+                    <Eye size={13} className="text-accent" />
                     <span className="font-mono text-[9px] font-bold text-accent">01 // VISUALIZACIÓN</span>
                   </div>
-                  <h3 className="text-xs font-bold text-slate-900 mt-1">Pantallas Originales & Bisagras</h3>
-                  <p className="text-[11px] text-slate-600 mt-0.5">Reemplazo de paneles IPS, FHD, 144Hz y bisagras.</p>
+                  <h3 className="text-xs font-bold text-slate-900 mt-0.5">Pantallas Originales & Bisagras</h3>
+                  <p className="text-[10px] text-slate-600">Reemplazo de paneles IPS, FHD, 144Hz y calibración.</p>
                 </div>
               )}
               {activeMobileHotspot === 2 && (
-                <div className="rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-md">
-                  <div className="flex items-center gap-2">
-                    <Cpu size={14} className="text-accent" />
+                <div className="rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-md backdrop-blur-md">
+                  <div className="flex items-center gap-1.5">
+                    <Cpu size={13} className="text-accent" />
                     <span className="font-mono text-[9px] font-bold text-accent">02 // MICROELECTRÓNICA</span>
                   </div>
-                  <h3 className="text-xs font-bold text-slate-900 mt-1">Reparación de Placas a Nivel Componente</h3>
-                  <p className="text-[11px] text-slate-600 mt-0.5">Diagnóstico con osciloscopio, cortos SMD y reballing.</p>
+                  <h3 className="text-xs font-bold text-slate-900 mt-0.5">Reparación de Placas SMD & BGA</h3>
+                  <p className="text-[10px] text-slate-600">Diagnóstico con osciloscopio y microsoldadura certificada.</p>
                 </div>
               )}
               {activeMobileHotspot === 3 && (
-                <div className="rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-md">
-                  <div className="flex items-center gap-2">
-                    <Flame size={14} className="text-accent" />
+                <div className="rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-md backdrop-blur-md">
+                  <div className="flex items-center gap-1.5">
+                    <Flame size={13} className="text-accent" />
                     <span className="font-mono text-[9px] font-bold text-accent">03 // POTENCIA & TÉRMICA</span>
                   </div>
-                  <h3 className="text-xs font-bold text-slate-900 mt-1">Upgrades NVMe, RAM & Mantenimiento Pro</h3>
-                  <p className="text-[11px] text-slate-600 mt-0.5">Pastas térmicas de alta conductividad y ventilación.</p>
+                  <h3 className="text-xs font-bold text-slate-900 mt-0.5">Upgrades NVMe, RAM & Disipación</h3>
+                  <p className="text-[10px] text-slate-600">Pastas térmicas de alta conductividad y mantenimiento pro.</p>
                 </div>
               )}
             </div>
@@ -916,7 +922,7 @@ export function HeroExploded() {
         {/* ========================================================= */}
         {/* PARTE INFERIOR: CONTROLES HÍBRIDOS CENTRADOS              */}
         {/* ========================================================= */}
-        <div className="relative z-20 mx-auto mt-1 flex w-full max-w-4xl shrink-0 flex-wrap items-center justify-center gap-3 sm:gap-4">
+        <div className="relative z-20 mx-auto mt-0.5 sm:mt-1 flex w-full max-w-4xl shrink-0 flex-wrap items-center justify-center gap-2 sm:gap-4">
           {/* Indicador de Scroll / Desarmado */}
           <div
             ref={scrollIndicatorRef}
@@ -927,27 +933,27 @@ export function HeroExploded() {
           </div>
 
           {/* Control Híbrido: Botón + Slider Táctil */}
-          <div className="flex items-center gap-2.5 rounded-full border border-slate-200/90 bg-white px-3 py-1.5 shadow-[0_4px_16px_rgba(11,18,48,0.06)]">
+          <div className="flex items-center gap-2 rounded-full border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 shadow-[0_4px_16px_rgba(11,18,48,0.06)]">
             <button
               onClick={handleToggleExplode}
               type="button"
-              className="flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold text-accent transition-colors hover:bg-accent/20 active:scale-95"
+              className="flex items-center gap-1 sm:gap-1.5 rounded-full bg-accent/10 px-2.5 py-0.5 sm:px-3 sm:py-1 text-[11px] sm:text-xs font-bold text-accent transition-colors hover:bg-accent/20 active:scale-95"
             >
               {isExploded ? (
                 <>
                   <RotateCcw size={12} className="text-accent" />
-                  Armar Equipo
+                  <span>Armar</span>
                 </>
               ) : (
                 <>
                   <Layers size={12} className="text-accent" />
-                  Explosionar Piezas
+                  <span>Explosionar</span>
                 </>
               )}
             </button>
 
             {/* Slider de Progreso */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <input
                 type="range"
                 min="0"
@@ -955,18 +961,18 @@ export function HeroExploded() {
                 value={scrollProgress}
                 onChange={handleSliderChange}
                 aria-label="Progreso del despiece 3D"
-                className="h-1.5 w-20 sm:w-28 cursor-pointer accent-accent"
+                className="h-1.5 w-16 sm:w-28 cursor-pointer accent-accent"
               />
-              <span className="w-8 font-mono text-[10px] text-fg-muted">{scrollProgress}%</span>
+              <span className="w-7 font-mono text-[9px] sm:text-[10px] text-fg-muted">{scrollProgress}%</span>
             </div>
           </div>
 
-          {/* CTA WhatsApp Directo */}
+          {/* CTA WhatsApp Directo (visible en pantallas medianas hacia arriba para evitar duplicidad con el botón flotante en móvil) */}
           <a
             href="https://wa.me/51964648202?text=Hola%20Infosistel,%20estoy%20en%20su%20web%20y%20deseo%20un%20diagn%C3%B3stico%20especializado%20para%20mi%20laptop"
             target="_blank"
             rel="noopener noreferrer"
-            className="group inline-flex items-center gap-2 rounded-full bg-[#25D366] hover:bg-[#20ba59] px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-emerald-500/20 transition-transform hover:scale-105 active:scale-95"
+            className="group hidden sm:inline-flex items-center gap-2 rounded-full bg-[#25D366] hover:bg-[#20ba59] px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-emerald-500/20 transition-transform hover:scale-105 active:scale-95"
           >
             <MessageCircle size={14} className="fill-white text-white" />
             Diagnóstico WhatsApp

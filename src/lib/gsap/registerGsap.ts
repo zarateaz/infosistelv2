@@ -14,6 +14,9 @@ let registered = false;
 export function registerGsap() {
   if (registered) return gsap;
   gsap.registerPlugin(ScrollTrigger);
+  if (typeof window !== "undefined") {
+    ScrollTrigger.config({ ignoreMobileResize: true });
+  }
   registered = true;
   return gsap;
 }

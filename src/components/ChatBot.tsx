@@ -192,7 +192,8 @@ export function ChatBot() {
     setIsAutoDismissing(false);
   };
 
-  // Saludo automático al cargar la web y auto-desaparición exacta a los 3 segundos tras el saludo
+  // Saludo inteligente y no invasivo: en vez de abrir un modal gigante que bloquea la pantalla,
+  // mostramos un toast flotante elegante a los 2.5s que no oscurece la pantalla ni bloquea el scroll
   useEffect(() => {
     try {
       localStorage.setItem(LS_RETURNING_KEY, "1");
@@ -200,29 +201,16 @@ export function ChatBot() {
       // no crítico
     }
 
-    // Abre el asistente para dar el saludo tras 1.2 segundos
-    const greetTimer = setTimeout(() => {
-      if (!hasInteractedRef.current) {
-        setIsOpen(true);
-        setIsAutoDismissing(true);
-
-        // Desaparece en 3 segundos luego del saludo si el visitante no interactúa
-        autoCloseTimerRef.current = setTimeout(() => {
-          if (!hasInteractedRef.current) {
-            setIsOpen(false);
-            setIsAutoDismissing(false);
-            setShowToast(true);
-            setTimeout(() => setShowToast(false), 5000);
-          }
-        }, 3000);
+    const toastTimer = setTimeout(() => {
+      if (!hasInteractedRef.current && !isOpen) {
+        setShowToast(true);
       }
-    }, 1200);
+    }, 2200);
 
     return () => {
-      clearTimeout(greetTimer);
-      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+      clearTimeout(toastTimer);
     };
-  }, []);
+  }, [isOpen]);
 
   // "Aprende" qué categorías le interesan a este visitante a partir de lo
   // que buscarProductos/productosPopulares ya le mostró en esta conversación
@@ -287,7 +275,7 @@ export function ChatBot() {
         {isOpen ? <X size={22} /> : <Sparkles size={22} />}
       </button>
 
-      {/* Toast discreto de invitación si se auto-cerró a los 3s */}
+      {/* Toast discreto de invitación (Speech bubble a la izquierda del botón) */}
       {showToast && !isOpen && (
         <div
           onClick={() => {
@@ -295,7 +283,7 @@ export function ChatBot() {
             cancelAutoDismiss();
             setIsOpen(true);
           }}
-          className="fixed right-4 sm:right-6 z-40 flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2 text-xs font-bold text-gray-800 shadow-xl border border-blue-100 backdrop-blur-md cursor-pointer hover:scale-105 transition-all max-w-[270px] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:bottom-[calc(6rem+env(safe-area-inset-bottom))]"
+          className="fixed right-18 sm:right-22 z-40 flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2 text-xs font-bold text-gray-800 shadow-[0_8px_25px_rgba(0,0,0,0.12)] border border-blue-100 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 transition-all max-w-[240px] sm:max-w-[280px] bottom-[calc(1.15rem+env(safe-area-inset-bottom))] sm:bottom-[calc(1.65rem+env(safe-area-inset-bottom))] animate-in fade-in slide-in-from-right-4 duration-300"
         >
           <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
           <span className="truncate">👋 ¿En qué te ayudo? Chatea aquí</span>
