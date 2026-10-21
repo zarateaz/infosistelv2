@@ -266,7 +266,7 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
           paymentMethod={transaction.paymentMethod}
           date={dateToInputValue(new Date(transaction.date))}
           notes={transaction.notes}
-          minLength={16}
+          minLength={1}
         >
           <span className="cursor-help hover:text-accent transition-colors">{transaction.description}</span>
         </CajaHoverTooltip>

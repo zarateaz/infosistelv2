@@ -117,7 +117,7 @@ export function MonthlyReportRow({
           paymentMethod={draft.paymentMethod}
           date={formatDate(transaction.date)}
           notes={transaction.notes}
-          minLength={12}
+          minLength={1}
         >
           <input
             value={draft.description}
@@ -143,7 +143,7 @@ export function MonthlyReportRow({
             content={transaction.notes.trim()}
             title="Nota de Caja"
             date={formatDate(transaction.date)}
-            minLength={6}
+            minLength={1}
           >
             <span className="truncate block cursor-help underline decoration-dotted decoration-border/80 hover:decoration-accent hover:text-fg transition-colors">
               {transaction.notes.trim()}
