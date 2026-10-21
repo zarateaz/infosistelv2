@@ -7,6 +7,7 @@ export interface InternetClientRow {
   startDate: string; // YYYY-MM-DD
   nextPaymentDate: string; // YYYY-MM-DD
   amount: number;
+  concept: string | null;
 }
 
 /** Días hasta la fecha de pago, contando calendario (negativo = vencido). */

@@ -17,6 +17,7 @@ export async function getInternetClients(): Promise<InternetClientRow[]> {
     startDate: dateToInputValue(r.startDate),
     nextPaymentDate: dateToInputValue(r.nextPaymentDate),
     amount: r.amount,
+    concept: r.concept,
   }));
 }
 
@@ -35,6 +36,12 @@ const clientSchema = z.object({
   startDate: z.string().refine((v) => parseDateInput(v) !== null, "Fecha de inicio inválida"),
   nextPaymentDate: z.string().refine((v) => parseDateInput(v) !== null, "Fecha de pago inválida"),
   amount: z.coerce.number().min(0, "El monto no puede ser negativo").default(0),
+  concept: z
+    .string()
+    .trim()
+    .max(200, "El concepto no puede superar 200 caracteres")
+    .optional()
+    .transform((v) => (v ? v : null)),
 });
 
 export interface InternetFormState {
@@ -51,6 +58,7 @@ export async function createInternetClient(
     startDate: formData.get("startDate"),
     nextPaymentDate: formData.get("nextPaymentDate"),
     amount: formData.get("amount") || 0,
+    concept: formData.get("concept")?.toString() ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
 
@@ -99,6 +107,7 @@ export async function updateInternetClient(
     startDate: formData.get("startDate"),
     nextPaymentDate: formData.get("nextPaymentDate"),
     amount: formData.get("amount") || 0,
+    concept: formData.get("concept")?.toString() ?? "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
 
@@ -127,6 +136,7 @@ export async function updateInternetClientDirect(
     startDate: string;
     nextPaymentDate: string;
     amount: number;
+    concept?: string;
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const parsed = clientSchema.safeParse(data);

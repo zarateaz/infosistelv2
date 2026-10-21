@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { X, Pencil, Check, Calendar, AlertCircle, User, MessageCircle, DollarSign, Clock } from "lucide-react";
+import { X, Pencil, Check, Calendar, AlertCircle, User, MessageCircle, DollarSign, Clock, StickyNote } from "lucide-react";
 import { updateInternetClientDirect } from "./internetActions";
 import { cobranzaState, daysUntil, type InternetClientRow } from "./cobranza";
 
@@ -30,6 +30,7 @@ export function EditInternetClientModal({
   const [startDate, setStartDate] = useState(client.startDate);
   const [nextPaymentDate, setNextPaymentDate] = useState(client.nextPaymentDate);
   const [amount, setAmount] = useState<number | string>(client.amount > 0 ? client.amount : "");
+  const [concept, setConcept] = useState(client.concept ?? "");
 
   useEffect(() => {
     setMounted(true);
@@ -55,6 +56,7 @@ export function EditInternetClientModal({
         startDate,
         nextPaymentDate,
         amount: Number(amount) || 0,
+        concept: concept.trim(),
       });
 
       if (!res.ok) {
@@ -215,6 +217,35 @@ export function EditInternetClientModal({
                 onChange={(e) => setNextPaymentDate(e.target.value)}
                 className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
               />
+            </div>
+          </div>
+
+          {/* Concepto / nota */}
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5" htmlFor="edit-concept">
+              <StickyNote size={13} className="text-amber-600" /> Concepto / nota
+              <span className="ml-auto text-[10px] font-semibold normal-case tracking-normal text-slate-400">{concept.length}/200</span>
+            </label>
+            <textarea
+              id="edit-concept"
+              rows={2}
+              maxLength={200}
+              value={concept}
+              onChange={(e) => setConcept(e.target.value)}
+              className="w-full resize-none rounded-xl border border-slate-200/90 bg-slate-50/70 px-4 py-2.5 text-sm font-medium text-slate-800 placeholder:text-slate-400 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
+              placeholder="Ej: Pagó 3 meses por adelantado (hasta enero)"
+            />
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {["Pagó por adelantado", "Pagó 2 meses adelantado", "Pagó 3 meses adelantado", "Descuento especial"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setConcept(s)}
+                  className="rounded-lg border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 transition-all hover:bg-amber-100 active:scale-95"
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
 

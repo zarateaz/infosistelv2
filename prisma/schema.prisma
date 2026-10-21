@@ -298,6 +298,7 @@ model InternetClient {
   startDate       DateTime
   nextPaymentDate DateTime
   amount          Float    @default(0)
+  concept         String? // nota/concepto (ej. "Pagó 3 meses por adelantado")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

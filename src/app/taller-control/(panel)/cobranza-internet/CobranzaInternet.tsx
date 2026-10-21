@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { BellRing, MessageCircle, Wifi, X, Check, Trash2, Users, AlertTriangle, Pencil } from "lucide-react";
+import { BellRing, MessageCircle, Wifi, X, Check, Trash2, Users, AlertTriangle, Pencil, StickyNote } from "lucide-react";
 import { createInternetClient, markInternetPaid, deleteInternetClient, type InternetFormState } from "./internetActions";
 import { cobranzaState, daysUntil, whatsappLink, type InternetClientRow } from "./cobranza";
 import { EditInternetClientModal } from "./EditInternetClientModal";
@@ -193,6 +193,16 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
             <label className={labelClass} htmlFor="ic-amount">Monto (S/.) — opcional</label>
             <input id="ic-amount" name="amount" type="number" min={0} step={0.01} className={inputClass} />
           </div>
+          <div className="sm:col-span-2 lg:col-span-5">
+            <label className={labelClass} htmlFor="ic-concept">Concepto / nota — opcional</label>
+            <input
+              id="ic-concept"
+              name="concept"
+              maxLength={200}
+              placeholder="Ej: Pagó 3 meses por adelantado (hasta enero)"
+              className={inputClass}
+            />
+          </div>
           {state.error && <p className="text-sm font-medium text-red-600 sm:col-span-2 lg:col-span-5">{state.error}</p>}
           <div className="sm:col-span-2 lg:col-span-5">
             <button
@@ -259,6 +269,12 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                       +{c.whatsapp}
                       {c.amount > 0 ? ` · S/. ${c.amount.toFixed(2)}` : ""}
                     </p>
+                    {c.concept && (
+                      <p className="mt-1 inline-flex max-w-[320px] items-start gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700" title={c.concept}>
+                        <StickyNote size={11} className="mt-0.5 shrink-0" />
+                        <span className="truncate">{c.concept}</span>
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-fg-muted">{fmt(c.startDate)}</td>
                   <td className="px-4 py-3 font-medium text-fg">{fmt(c.nextPaymentDate)}</td>
