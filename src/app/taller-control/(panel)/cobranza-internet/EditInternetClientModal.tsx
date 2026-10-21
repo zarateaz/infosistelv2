@@ -2,12 +2,9 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { X, Pencil, Check, Calendar, AlertCircle } from "lucide-react";
+import { X, Pencil, Check, Calendar, AlertCircle, User, MessageCircle, DollarSign, Clock } from "lucide-react";
 import { updateInternetClientDirect } from "./internetActions";
 import { cobranzaState, daysUntil, type InternetClientRow } from "./cobranza";
-
-const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
-const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
 
 function cleanPhoneForInput(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -85,24 +82,24 @@ export function EditInternetClientModal({
   if (!mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-in fade-in duration-150">
       <div
-        className="relative w-full max-w-lg rounded-2xl bg-bg-surface border border-border p-6 shadow-2xl animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-white text-slate-800 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] ring-1 ring-slate-200/90 animate-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-client-title"
       >
-        {/* Cabecera */}
-        <div className="flex items-center justify-between border-b border-border/60 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
-              <Pencil size={18} />
+        {/* Cabecera Blanco Puro con Icono Gradiente */}
+        <div className="flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25">
+              <Pencil size={19} />
             </div>
             <div>
-              <h3 id="edit-client-title" className="text-base font-bold text-fg">
+              <h3 id="edit-client-title" className="text-base font-extrabold tracking-tight text-slate-900">
                 Editar Cliente de Internet
               </h3>
-              <p className="text-xs text-fg-muted">
+              <p className="text-xs font-medium text-slate-500 mt-0.5">
                 Modifica los datos del cliente, contacto o fecha de corte
               </p>
             </div>
@@ -111,17 +108,19 @@ export function EditInternetClientModal({
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="rounded-full p-1.5 text-fg-muted hover:bg-bg-raised hover:text-fg transition-colors disabled:opacity-40"
+            className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:opacity-40"
+            title="Cerrar"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Formulario */}
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Nombre */}
           <div>
-            <label className={labelClass} htmlFor="edit-name">
-              Nombre del Cliente
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5" htmlFor="edit-name">
+              <User size={13} className="text-blue-600" /> Nombre del Cliente
             </label>
             <input
               id="edit-name"
@@ -129,47 +128,60 @@ export function EditInternetClientModal({
               maxLength={150}
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
-              className={inputClass}
+              className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
               placeholder="Ej: Juan Pérez"
             />
           </div>
 
+          {/* WhatsApp y Monto */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelClass} htmlFor="edit-wa">
-                WhatsApp
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5" htmlFor="edit-wa">
+                <MessageCircle size={13} className="text-emerald-600" /> WhatsApp
               </label>
-              <input
-                id="edit-wa"
-                type="tel"
-                required
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                className={inputClass}
-                placeholder="964 648 202"
-              />
+              <div className="flex">
+                <span className="inline-flex items-center rounded-l-xl border border-r-0 border-slate-200/90 bg-slate-100 px-3 text-xs font-bold text-slate-600 select-none">
+                  +51
+                </span>
+                <input
+                  id="edit-wa"
+                  type="tel"
+                  required
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  className="w-full rounded-r-xl border border-slate-200/90 bg-slate-50/70 px-3.5 py-2.5 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
+                  placeholder="964 648 202"
+                />
+              </div>
             </div>
+
             <div>
-              <label className={labelClass} htmlFor="edit-amount">
-                Monto Mensual (S/.)
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5" htmlFor="edit-amount">
+                <DollarSign size={13} className="text-amber-600" /> Monto Mensual (S/.)
               </label>
-              <input
-                id="edit-amount"
-                type="number"
-                min={0}
-                step={0.01}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className={inputClass}
-                placeholder="0.00"
-              />
+              <div className="flex">
+                <span className="inline-flex items-center rounded-l-xl border border-r-0 border-slate-200/90 bg-slate-100 px-3 text-xs font-bold text-slate-600 select-none">
+                  S/.
+                </span>
+                <input
+                  id="edit-amount"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full rounded-r-xl border border-slate-200/90 bg-slate-50/70 px-3.5 py-2.5 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
           </div>
 
+          {/* Fechas */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelClass} htmlFor="edit-start">
-                Fecha de Inicio
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5" htmlFor="edit-start">
+                <Calendar size={13} className="text-blue-600" /> Fecha de Inicio
               </label>
               <input
                 id="edit-start"
@@ -177,22 +189,22 @@ export function EditInternetClientModal({
                 required
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className={inputClass}
+                className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
               />
             </div>
 
             <div>
-              <div className="flex items-center justify-between">
-                <label className={labelClass} htmlFor="edit-pay">
-                  Próxima Fecha de Pago
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5" htmlFor="edit-pay">
+                  <Clock size={13} className="text-indigo-600" /> Próximo Pago
                 </label>
                 <button
                   type="button"
                   onClick={advanceOneMonth}
-                  className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-1"
-                  title="Sumar 1 mes a la fecha actual"
+                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 px-2 py-0.5 text-[10px] font-bold transition-all shadow-2xs active:scale-95"
+                  title="Avanzar un mes a la fecha seleccionada"
                 >
-                  <Calendar size={11} /> +1 Mes
+                  <Calendar size={10} /> +1 Mes
                 </button>
               </div>
               <input
@@ -201,17 +213,23 @@ export function EditInternetClientModal({
                 required
                 value={nextPaymentDate}
                 onChange={(e) => setNextPaymentDate(e.target.value)}
-                className={inputClass}
+                className="w-full rounded-xl border border-slate-200/90 bg-slate-50/70 px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 shadow-2xs"
               />
             </div>
           </div>
 
-          {/* Vista previa de estado */}
-          <div className="rounded-xl border border-border/80 bg-bg-raised/40 p-3 flex items-center justify-between text-xs">
-            <span className="text-fg-muted font-medium">Estado calculado:</span>
+          {/* Tarjeta de Estado en Vivo */}
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+              <span>Estado según fecha:</span>
+            </span>
             <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                st === "ok" ? "bg-emerald-500/10 text-emerald-600" : "bg-red-600 text-white"
+              className={`rounded-full px-3 py-1 text-xs font-bold shadow-2xs ${
+                st === "ok"
+                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300/80"
+                  : days === 0
+                  ? "bg-amber-500 text-white shadow-xs"
+                  : "bg-red-600 text-white shadow-sm shadow-red-600/30"
               }`}
             >
               {st === "ok"
@@ -225,28 +243,28 @@ export function EditInternetClientModal({
           </div>
 
           {error && (
-            <div className="rounded-xl bg-red-500/10 border border-red-500/30 p-3 text-xs text-red-600 flex items-center gap-2">
-              <AlertCircle size={15} className="shrink-0" />
+            <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-700 flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0 text-red-600" />
               <span>{error}</span>
             </div>
           )}
 
           {/* Botones de acción */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border/60">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
               disabled={isPending}
-              className="rounded-xl px-4 py-2.5 text-xs font-semibold text-fg-muted hover:bg-bg-raised hover:text-fg transition-colors disabled:opacity-40"
+              className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors disabled:opacity-40"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={isPending || !clientName.trim() || !whatsapp.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-accent-fg hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs font-bold text-white transition-all shadow-sm shadow-blue-600/25 active:scale-95 disabled:opacity-50"
             >
-              <Check size={14} />
+              <Check size={15} />
               {isPending ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
