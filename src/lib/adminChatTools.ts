@@ -19,8 +19,8 @@ export async function findAdminProduct(query: string | number) {
   const clean = String(query).trim();
   if (!clean) return null;
 
-  // 1. Si es número o tiene formato "#14", "producto 14", "n° 14"
-  const matchNum = clean.match(/^(?:#|producto\s*|n[°º.]*\s*|item\s*)?(\d+)$/i);
+  // 1. Si es número o tiene formato "#14", "# 14", "producto 14", "n° 14", "nro 14", "item 14"
+  const matchNum = clean.match(/^(?:#\s*|producto\s*|n[°º.]*\s*|item\s*|nro\.?\s*|número\s*)?(\d+)$/i);
   if (matchNum) {
     const num = parseInt(matchNum[1], 10);
     const byNum = await prisma.product.findUnique({ where: { itemNumber: num } });
@@ -261,3 +261,70 @@ export const ajustarStockAdmin = tool({
     };
   },
 });
+
+export const quitarStockAdmin = tool({
+  description:
+    "Descuenta, quita o reduce stock de un producto directamente en el inventario (por ajuste manual, salida de inventario, merma, retiro de almacén o devolución). " +
+    "Puedes proporcionar el número de producto (ej: 14 o #14), el nombre del producto (ej: 'Kingston NV2'), el código de barras o el ID del producto, y la cantidad a descontar.",
+  inputSchema: z.object({
+    producto: z
+      .string()
+      .optional()
+      .describe("Número de producto (ej: 14 o #14), nombre del producto, código de barras o ID."),
+    productId: z
+      .string()
+      .optional()
+      .describe("ID del producto (opcional si se pasa 'producto')."),
+    cantidad: z.number().int().positive().describe("Cantidad de unidades a descontar del stock."),
+    motivo: z
+      .string()
+      .optional()
+      .describe("Motivo opcional del retiro o ajuste (ej: 'Ajuste de inventario', 'Merma', 'Retiro de tienda')."),
+  }),
+  execute: async ({ producto, productId, cantidad, motivo = "Ajuste de inventario" }) => {
+    const target = producto || productId;
+    if (!target) return { error: "Debes especificar qué producto descontar (número, nombre o ID)." };
+
+    const product = await findAdminProduct(target);
+    if (!product) {
+      return { error: `No se encontró ningún producto con "${target}". Puedes buscarlo primero con buscarProductoAdmin.` };
+    }
+    if (product.stock < cantidad) {
+      return { error: `Stock insuficiente para [#${product.itemNumber}] ${product.name}. Solo quedan ${product.stock} unidades en almacén.` };
+    }
+
+    const [updatedProduct] = await prisma.$transaction([
+      prisma.product.update({
+        where: { id: product.id },
+        data: { stock: { decrement: cantidad } },
+        select: { id: true, itemNumber: true, name: true, stock: true },
+      }),
+      prisma.stockMovement.create({
+        data: {
+          productId: product.id,
+          quantity: -cantidad,
+          type: "AJUSTE_SALIDA",
+          description: `Descuento de stock mediante chatbot admin (-${cantidad} u.): ${motivo}`,
+        },
+      }),
+    ]);
+
+    try {
+      revalidatePath("/taller-control/productos");
+      revalidatePath("/taller-control/inventario");
+      revalidatePath("/taller-control/seguimiento-stock");
+      revalidatePath("/tienda");
+    } catch {}
+
+    return {
+      exito: true,
+      itemNumber: updatedProduct.itemNumber,
+      nombre: updatedProduct.name,
+      unidadesDescontadas: cantidad,
+      stockAnterior: product.stock,
+      nuevoStock: updatedProduct.stock,
+      mensaje: `Stock descontado con éxito: Se restaron -${cantidad} u. a [#${updatedProduct.itemNumber}] ${updatedProduct.name}. Nuevo stock en tienda: ${updatedProduct.stock} unidades.`,
+    };
+  },
+});
+
