@@ -85,3 +85,71 @@ export async function deleteInternetClient(id: string): Promise<void> {
   await prisma.internetClient.deleteMany({ where: { id } });
   revalidatePath(PATH);
 }
+
+export async function updateInternetClient(
+  _prev: InternetFormState,
+  formData: FormData
+): Promise<InternetFormState> {
+  const id = formData.get("id")?.toString();
+  if (!id) return { error: "ID de cliente no proporcionado." };
+
+  const parsed = clientSchema.safeParse({
+    clientName: formData.get("clientName"),
+    whatsapp: formData.get("whatsapp") ?? "",
+    startDate: formData.get("startDate"),
+    nextPaymentDate: formData.get("nextPaymentDate"),
+    amount: formData.get("amount") || 0,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+
+  const { startDate, nextPaymentDate, ...rest } = parsed.data;
+  const start = parseDateInput(startDate);
+  const nextPay = parseDateInput(nextPaymentDate);
+  if (!start || !nextPay) return { error: "Fechas inválidas." };
+
+  await prisma.internetClient.update({
+    where: { id },
+    data: {
+      ...rest,
+      startDate: start,
+      nextPaymentDate: nextPay,
+    },
+  });
+  revalidatePath(PATH);
+  return {};
+}
+
+export async function updateInternetClientDirect(
+  id: string,
+  data: {
+    clientName: string;
+    whatsapp: string;
+    startDate: string;
+    nextPaymentDate: string;
+    amount: number;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  const parsed = clientSchema.safeParse(data);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const { startDate, nextPaymentDate, ...rest } = parsed.data;
+  const start = parseDateInput(startDate);
+  const nextPay = parseDateInput(nextPaymentDate);
+  if (!start || !nextPay) {
+    return { ok: false, error: "Fechas inválidas." };
+  }
+
+  await prisma.internetClient.update({
+    where: { id },
+    data: {
+      ...rest,
+      startDate: start,
+      nextPaymentDate: nextPay,
+    },
+  });
+  revalidatePath(PATH);
+  return { ok: true };
+}
+

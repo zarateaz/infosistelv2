@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { BellRing, MessageCircle, Wifi, X, Check, Trash2, Users, AlertTriangle } from "lucide-react";
+import { BellRing, MessageCircle, Wifi, X, Check, Trash2, Users, AlertTriangle, Pencil } from "lucide-react";
 import { createInternetClient, markInternetPaid, deleteInternetClient, type InternetFormState } from "./internetActions";
 import { cobranzaState, daysUntil, whatsappLink, type InternetClientRow } from "./cobranza";
+import { EditInternetClientModal } from "./EditInternetClientModal";
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
 const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
@@ -27,6 +28,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
   const formRef = useRef<HTMLFormElement>(null);
   const [dismissed, setDismissed] = useState<boolean>(false);
   const [tab, setTab] = useState<"all" | "deudores">("all");
+  const [editingClient, setEditingClient] = useState<InternetClientRow | null>(null);
   // `today` se fija tras montar para no desfasar hidratación (servidor en UTC, navegador en Lima).
   const [today, setToday] = useState<Date | null>(null);
 
@@ -292,6 +294,14 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                       </button>
                       <button
                         type="button"
+                        title="Editar cliente"
+                        onClick={() => setEditingClient(c)}
+                        className="rounded-full p-2 text-blue-600 hover:bg-blue-500/10 transition-colors"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
                         title="Eliminar cliente"
                         onClick={() => {
                           if (confirm(`¿Eliminar a ${c.clientName}?`)) startTransition(() => deleteInternetClient(c.id));
@@ -317,6 +327,13 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
           </table>
         </div>
       </div>
+
+      {editingClient && (
+        <EditInternetClientModal
+          client={editingClient}
+          onClose={() => setEditingClient(null)}
+        />
+      )}
     </section>
   );
 }
