@@ -82,20 +82,6 @@ export function Navbar() {
         <div className="flex items-center gap-3">
           <SocialLinks className="hidden lg:flex" />
 
-          {/* CTA Rápido de Laboratorio */}
-          <a
-            href="https://wa.me/51964648202?text=Hola%20Infosistel,%20deseo%20una%20consulta%20técnica%20para%20mi%20laptop"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-accent to-blue-600 hover:from-blue-600 hover:to-accent px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-accent/20 transition-all hover:scale-105 active:scale-95"
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
-            </span>
-            Laboratorio Express
-          </a>
-
           <Link
             href="/tienda"
             aria-label="Ir a la tienda"
