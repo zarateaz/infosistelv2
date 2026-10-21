@@ -117,26 +117,10 @@ function useDeviceCapabilities(): DeviceCapabilities {
       reducedMotion,
       width: w,
       height: h,
-      refreshRate: 60,
+      refreshRate: 120,
       gpuRenderer,
       isLowPowerGpu,
     });
-
-    // Muestreo dinámico de Hz para pantallas 90Hz / 120Hz / 144Hz (ProMotion / Gaming monitors)
-    let frameCount = 0;
-    let startTime = performance.now();
-    const sampleRefreshRate = (now: number) => {
-      frameCount++;
-      if (frameCount >= 15) {
-        const elapsed = now - startTime;
-        const measuredHz = Math.round((frameCount / elapsed) * 1000);
-        const calibratedHz = measuredHz > 110 ? 120 : measuredHz > 80 ? 90 : 60;
-        setCapabilities((prev) => ({ ...prev, refreshRate: calibratedHz }));
-        return;
-      }
-      requestAnimationFrame(sampleRefreshRate);
-    };
-    requestAnimationFrame(sampleRefreshRate);
   }, []);
 
   return capabilities;
@@ -208,7 +192,7 @@ export function HeroExploded() {
     const alpha = isMobile ? 0.85 : 1.0;
 
     return AXIAL_WEIGHTS.map((w) => -w * aMax * alpha);
-  }, [capabilities]);
+  }, [capabilities.tier]);
 
   // Precarga y decodificación asíncrona de texturas en VRAM (Zero-Jank first scroll)
   useEffect(() => {
@@ -296,39 +280,23 @@ export function HeroExploded() {
       scrollTriggerInstanceRef.current = tl.scrollTrigger || null;
 
       // --- CONFIGURACIÓN DE ESTADOS INICIALES MEDIANTE ÁLGEBRA VECTORIAL ---
-      if (isLowEnd) {
-        // Modo Low-End Safe: Crossfade simple en translate3d para garantizar 60 FPS
-        gsap.set(assembledImgRef.current, { opacity: 1 });
-        gsap.set(fullExplodedRef.current, { opacity: 0 });
+      // Estado de reposo absoluto (0% scroll): Únicamente la laptop armada es visible
+      gsap.set(assembledImgRef.current, { opacity: 1, y: 0 });
+      gsap.set(fullExplodedRef.current, { opacity: 0 });
 
-        tl.to(scrollIndicatorRef.current, { opacity: 0, duration: 0.15 }, 0)
-          .to(headerContentRef.current, { opacity: 0, y: -40, duration: 0.25 }, 0.05)
-          .to(assembledImgRef.current, { opacity: 0, duration: 0.4 }, 0.1)
-          .to(fullExplodedRef.current, { opacity: 1, duration: 0.4 }, 0.1)
-          .to([hotspot1Ref.current, hotspot2Ref.current, hotspot3Ref.current], {
-            opacity: 1,
-            y: 0,
-            stagger: 0.1,
-            duration: 0.25,
-          }, 0.6);
-        return;
-      }
-
-      // Modo Completo (Desktop Ultra y Mobile Pro)
-      // Capa 1 a 5 con desplazamiento vectorial matemático Delta Y
+      // Capas 1 a 5 con desplazamiento vectorial matemático Delta Y inicial y opacidad 0
       gsap.set(layer1Ref.current, { y: initialLayerY[0], scale: 0.96, opacity: 0 });
       gsap.set(layer2Ref.current, { y: initialLayerY[1], opacity: 0 });
       gsap.set(layer3Ref.current, { y: initialLayerY[2], opacity: 0 });
       gsap.set(layer4Ref.current, { y: initialLayerY[3], opacity: 0 });
       gsap.set(layer5Ref.current, { y: initialLayerY[4], opacity: 0 });
-      gsap.set(fullExplodedRef.current, { opacity: 0 });
 
-      // Core glow optimizado en GPU (cero layout/paint, solo opacity + scale)
+      // Core glow optimizado en GPU
       if (coreGlowRef.current) {
         gsap.set(coreGlowRef.current, { opacity: 0, scale: 0.85 });
       }
 
-      // Hotspots Desktop
+      // Hotspots técnicos: estrictamente ocultos en reposo inicial (0% scroll)
       gsap.set([hotspot1Ref.current, hotspot2Ref.current, hotspot3Ref.current], {
         opacity: 0,
         scale: 0.94,
@@ -374,7 +342,7 @@ export function HeroExploded() {
     return () => {
       ctx.revert();
     };
-  }, [capabilities, initialLayerY]);
+  }, [capabilities.tier, initialLayerY]);
 
   // ---------------------------------------------------------------------------
   // 3. CINEMÁTICA 3D Y FÍSICA DE OSCILADOR ARMÓNICO AMORTIGUADO (120 FPS NATIVO)
@@ -584,6 +552,7 @@ export function HeroExploded() {
                   <div
                     ref={coreGlowRef}
                     aria-hidden="true"
+                    style={{ opacity: 0 }}
                     className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center will-change-transform"
                   >
                     <div className="h-3/5 w-4/5 rounded-full bg-gradient-to-r from-blue-600/25 via-cyan-400/35 to-sky-500/20 blur-3xl transform-gpu" />
@@ -625,6 +594,7 @@ export function HeroExploded() {
                       mixBlendMode: "multiply",
                       transform: "translate3d(0,0,0)",
                       backfaceVisibility: "hidden",
+                      opacity: 0,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -646,6 +616,7 @@ export function HeroExploded() {
                       mixBlendMode: "multiply",
                       transform: "translate3d(0,0,0)",
                       backfaceVisibility: "hidden",
+                      opacity: 0,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -667,6 +638,7 @@ export function HeroExploded() {
                       mixBlendMode: "multiply",
                       transform: "translate3d(0,0,0)",
                       backfaceVisibility: "hidden",
+                      opacity: 0,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -688,6 +660,7 @@ export function HeroExploded() {
                       mixBlendMode: "multiply",
                       transform: "translate3d(0,0,0)",
                       backfaceVisibility: "hidden",
+                      opacity: 0,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -709,6 +682,7 @@ export function HeroExploded() {
                       mixBlendMode: "multiply",
                       transform: "translate3d(0,0,0)",
                       backfaceVisibility: "hidden",
+                      opacity: 0,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -732,6 +706,7 @@ export function HeroExploded() {
                       mixBlendMode: "multiply",
                       transform: "translate3d(0,0,0)",
                       backfaceVisibility: "hidden",
+                      opacity: 0,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -753,6 +728,7 @@ export function HeroExploded() {
                 {/* HOTSPOT 1: VISUALIZACIÓN (Despejado a la derecha) */}
                 <div
                   ref={hotspot1Ref}
+                  style={{ opacity: 0 }}
                   className="absolute top-0 -right-16 xl:-right-32 z-30 w-72 xl:w-80 will-change-transform"
                 >
                   <div className="relative rounded-2xl border border-slate-200/90 bg-white/95 p-4 text-left shadow-[0_12px_32px_rgba(11,18,48,0.06)] backdrop-blur-md transition-all hover:scale-105 hover:border-accent hover:shadow-[0_16px_36px_rgba(10,95,219,0.12)]">
@@ -793,6 +769,7 @@ export function HeroExploded() {
                 {/* HOTSPOT 2: MICROELECTRÓNICA (Despejado a la izquierda) */}
                 <div
                   ref={hotspot2Ref}
+                  style={{ opacity: 0 }}
                   className="absolute top-[46%] -left-16 xl:-left-32 z-30 w-72 xl:w-80 -translate-y-1/2 will-change-transform"
                 >
                   <div className="relative rounded-2xl border border-slate-200/90 bg-white/95 p-4 text-left shadow-[0_12px_32px_rgba(11,18,48,0.06)] backdrop-blur-md transition-all hover:scale-105 hover:border-accent hover:shadow-[0_16px_36px_rgba(10,95,219,0.12)]">
@@ -833,6 +810,7 @@ export function HeroExploded() {
                 {/* HOTSPOT 3: POTENCIA & TÉRMICA (Despejado abajo a la derecha) */}
                 <div
                   ref={hotspot3Ref}
+                  style={{ opacity: 0 }}
                   className="absolute bottom-0 -right-16 xl:-right-32 z-30 w-72 xl:w-80 will-change-transform"
                 >
                   <div className="relative rounded-2xl border border-slate-200/90 bg-white/95 p-4 text-left shadow-[0_12px_32px_rgba(11,18,48,0.06)] backdrop-blur-md transition-all hover:scale-105 hover:border-accent hover:shadow-[0_16px_36px_rgba(10,95,219,0.12)]">
@@ -922,11 +900,11 @@ export function HeroExploded() {
         {/* ========================================================= */}
         {/* PARTE INFERIOR: CONTROLES HÍBRIDOS CENTRADOS              */}
         {/* ========================================================= */}
-        <div className="relative z-20 mx-auto mt-0.5 sm:mt-1 flex w-full max-w-4xl shrink-0 flex-wrap items-center justify-center gap-2 sm:gap-4">
+        <div className="relative z-20 mx-auto mt-0.5 sm:mt-1 flex w-full max-w-4xl shrink-0 flex-nowrap items-center justify-center gap-2 sm:gap-4">
           {/* Indicador de Scroll / Desarmado */}
           <div
             ref={scrollIndicatorRef}
-            className="hidden items-center gap-2 text-[11px] font-mono text-fg-muted md:flex"
+            className="hidden lg:flex items-center gap-2 text-[11px] font-mono text-fg-muted"
           >
             <ChevronDown size={14} className="animate-bounce text-accent" />
             <span>Desliza para desarmar el equipo ↓</span>
@@ -978,15 +956,6 @@ export function HeroExploded() {
             Diagnóstico WhatsApp
             <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
           </a>
-
-          {/* Acceso a la Tienda */}
-          <Link
-            href="/tienda"
-            className="hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-fg transition-colors hover:border-accent hover:text-accent shadow-sm"
-          >
-            <ShoppingBag size={13} />
-            Tienda
-          </Link>
         </div>
       </div>
 
