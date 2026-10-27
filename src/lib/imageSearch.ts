@@ -1,14 +1,18 @@
 /**
- * Product photo search — src/lib/imageSearch.ts
+ * Product photo search & verification engine — src/lib/imageSearch.ts
  *
- * Multi-engine search pipeline designed for 0 error margin and guaranteed 4+ crisp product photos:
- * 1. Primary API: Serper.dev (Google Images) when SERPER_API_KEY is set.
- * 2. Primary Engine (No key required): Bing Images direct search — fast,
- *    extracts both original high-res `murl` and Bing CDN `turl` fallback.
- * 3. Fallback Engine: DuckDuckGo Images.
+ * Motor de Búsqueda y Validación de Fotos de Productos con CERO MARGEN DE ERROR:
+ * Integra un modelo de Espacio Vectorial y Álgebra Lineal (Cosine Similarity en R^D,
+ * proyección ortogonal sobre subespacios prohibidos y anclas semánticas de hardware).
  *
- * Includes negative keyword filtering and automatic low-quality domain exclusion
- * (excludes YouTube video frames, social media posts, SVGs, tiny icons).
+ * Arquitectura:
+ * 1. Motor 1 (API Oficial): Serper.dev (Google Images) cuando SERPER_API_KEY está configurado.
+ * 2. Motor 2 (Principal Gratuito): DuckDuckGo Images — respuestas estructuradas con títulos oficiales.
+ * 3. Motor 3 (Respaldo): Bing Images — extracción estructurada JSON de alta resolución con verificación estricta.
+ * 4. Validador Algebraico:
+ *    - Proyección ortogonal en Subespacio Prohibido: descarta de inmediato aviación/aviones, aerolíneas, ropa o farándula.
+ *    - Vector Space Model (VSM): calcula la Similitud del Coseno cos(theta) = (u · v) / (||u|| ||v||) entre el producto y la imagen.
+ *    - Ordenamiento por afinidad matemática: las imágenes con mayor similitud vectorial encabezan la lista.
  */
 
 const USER_AGENT =
@@ -36,7 +40,7 @@ export function getImageFallbackUrl(primaryUrl: string): string | undefined {
   return FALLBACK_URL_MAP.get(primaryUrl);
 }
 
-function registerFallbackUrl(primaryUrl: string, fallbackUrl?: string) {
+export function registerFallbackUrl(primaryUrl: string, fallbackUrl?: string) {
   if (!primaryUrl || !fallbackUrl || !fallbackUrl.startsWith("https://")) return;
   if (FALLBACK_URL_MAP.size > 2000) {
     FALLBACK_URL_MAP.clear();
@@ -47,7 +51,7 @@ function registerFallbackUrl(primaryUrl: string, fallbackUrl?: string) {
 const BLOCKED_URL_PATTERNS =
   /\.(svg|gif|ico)(\?|$)|i\.ytimg\.com|img\.youtube\.com|fbsbx\.com|instagram\.com|tiktokcdn\.com|pinterest\.com\/.*\/236x/i;
 
-function isValidProductImageUrl(url: string): boolean {
+export function isValidProductImageUrl(url: string): boolean {
   if (!url || typeof url !== "string" || !url.startsWith("https://")) return false;
   if (BLOCKED_URL_PATTERNS.test(url)) return false;
   return true;
@@ -55,6 +59,378 @@ function isValidProductImageUrl(url: string): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOTOR DE ÁLGEBRA LINEAL: ESPACIO VECTORIAL Y SIMILITUD DE COSENOS PARA IMÁGENES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Normaliza y tokeniza cadenas de texto en tokens para el espacio vectorial en R^D.
+ */
+export function tokenizeForVectorSpace(text: string): string[] {
+  if (!text) return [];
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 1);
+}
+
+/**
+ * Subespacio prohibido ortogonal: Cualquier candidato que tenga proyección no nula
+ * sobre este subespacio representa entidades no deseadas (aviones, aerolíneas, ropa, farándula)
+ * y debe ser RECHAZADO de inmediato (score = -Infinity).
+ */
+export const PROHIBITED_NEGATIVE_TERMS = new Set([
+  // Aviación y aerolíneas (evita confundir "American NET" con "American Airlines" o aviones)
+  "avion",
+  "aviones",
+  "airplane",
+  "airplanes",
+  "aircraft",
+  "airline",
+  "airlines",
+  "airways",
+  "boeing",
+  "airbus",
+  "flight",
+  "flights",
+  "vuelo",
+  "vuelos",
+  "aerolinea",
+  "aerolineas",
+  "aeropuerto",
+  "airport",
+  "airfield",
+  "runway",
+  "pista",
+  "cockpit",
+  "pilot",
+  "piloto",
+  "hangar",
+  "jet",
+  "flyer",
+  "aeroplane",
+  "aviation",
+  "aeronave",
+  "despegue",
+  "aterrizaje",
+  "tarmac",
+  // Abecedario, letras, clipart, caligrafía, dibujos y manualidades infantiles (evita confundir "D-Link" con la letra D)
+  "letter",
+  "letters",
+  "letra",
+  "letras",
+  "alphabet",
+  "alphabets",
+  "alphabetical",
+  "abecedario",
+  "printable",
+  "worksheet",
+  "worksheets",
+  "coloring",
+  "colorear",
+  "preschool",
+  "kindergarten",
+  "nursery",
+  "handwriting",
+  "tracing",
+  "caligrafia",
+  "font",
+  "fonts",
+  "typography",
+  "tipografia",
+  "clipart",
+  "cliparts",
+  "vector",
+  "vectors",
+  "monogram",
+  "monograma",
+  "dog",
+  "puppy",
+  "perro",
+  "perrito",
+  "cat",
+  "gato",
+  "brick",
+  "ladrillo",
+  "text effect",
+  "render 3d text",
+  "3d text",
+  "drawing",
+  "illustration",
+  "sketch",
+  "cartoon",
+  "dibujo",
+  // Deportes / ropa / farándula / temas ajenos a informática y ferretería técnica
+  "disfraz",
+  "espantapajaros",
+  "scarecrow",
+  "costume",
+  "halloween",
+  "futbol",
+  "football",
+  "soccer",
+  "nfl",
+  "jersey",
+  "camiseta",
+  "zapatos",
+  "sneakers",
+  "zapatillas",
+  "vestido",
+  "falda",
+  "pelicula",
+  "movie",
+  "cinema",
+  "actor",
+  "actriz",
+  "estreno",
+  "celebrity",
+  "hospital",
+  "nightingale",
+  "war",
+  "guerra",
+  "politica",
+  "noticia",
+  "inundacion",
+  "fenomeno",
+  "terremoto",
+]);
+
+/**
+ * Términos de anclaje de dominio técnico/hardware:
+ * Para productos tecnológicos (fuentes, adaptadores, cables, memorias),
+ * las imágenes candidatas deben presentar afinidad semántica con el rubro.
+ */
+export const HARDWARE_DOMAIN_ANCHORS = new Set([
+  // Redes, Conmutadores, KVM y Conectividad
+  "kvm",
+  "switch",
+  "splitter",
+  "conmutador",
+  "puerto",
+  "puertos",
+  "port",
+  "ports",
+  "ps2",
+  "ps/2",
+  "vga",
+  "dvi",
+  "dp",
+  "displayport",
+  "dlink",
+  "d-link",
+  "tplink",
+  "tp-link",
+  "router",
+  "modem",
+  "ethernet",
+  "lan",
+  "rj45",
+  "antena",
+  "hub",
+  // Adaptadores, Cables y Energía
+  "adaptador",
+  "adapter",
+  "adaptadores",
+  "cargador",
+  "charger",
+  "chargers",
+  "corriente",
+  "voltaje",
+  "voltage",
+  "fuente",
+  "power",
+  "supply",
+  "cable",
+  "cables",
+  "plug",
+  "enchufe",
+  "conector",
+  "connector",
+  "usb",
+  "usbc",
+  "hdmi",
+  "5v",
+  "12v",
+  "24v",
+  "9v",
+  "19v",
+  "20v",
+  "amperio",
+  "amp",
+  "amperios",
+  "amperes",
+  "watt",
+  "watts",
+  "w",
+  // Computadoras, Componentes y Periféricos
+  "sata",
+  "disco",
+  "mouse",
+  "teclado",
+  "auricular",
+  "audifono",
+  "parlante",
+  "pantalla",
+  "monitor",
+  "laptop",
+  "computadora",
+  "case",
+  "memoria",
+  "ram",
+  "ssd",
+  "impresora",
+  "tinta",
+  "toner",
+  "net",
+  "networking",
+  "wifi",
+]);
+
+/**
+ * Construye el vector de características objetivo en R^D para el producto.
+ */
+export function buildProductTargetVector(
+  productName: string,
+  category?: string,
+  queries: string[] = []
+): Map<string, number> {
+  const vec = new Map<string, number>();
+
+  const nameTokens = tokenizeForVectorSpace(productName);
+  for (const token of nameTokens) {
+    const isSpec = /[0-9]/.test(token);
+    const weight = isSpec ? 3.5 : 2.5;
+    vec.set(token, (vec.get(token) ?? 0) + weight);
+  }
+
+  // Si la marca es compuesta (e.g. "american net"), dar peso fuerte a los dos tokens
+  if (nameTokens.includes("american") && nameTokens.includes("net")) {
+    vec.set("american", (vec.get("american") ?? 0) + 2.0);
+    vec.set("net", (vec.get("net") ?? 0) + 2.5);
+  }
+
+  if (category) {
+    const catTokens = tokenizeForVectorSpace(category);
+    for (const token of catTokens) {
+      vec.set(token, (vec.get(token) ?? 0) + 2.0);
+    }
+  }
+
+  for (const q of queries) {
+    const qTokens = tokenizeForVectorSpace(q);
+    for (const token of qTokens) {
+      vec.set(token, (vec.get(token) ?? 0) + 0.5);
+    }
+  }
+
+  return vec;
+}
+
+/**
+ * Construye el vector de características en R^D para una imagen candidata
+ * basándose en su título descriptivo y en la estructura de su URL.
+ */
+export function buildCandidateFeatureVector(title: string, url: string): Map<string, number> {
+  const vec = new Map<string, number>();
+
+  const titleTokens = tokenizeForVectorSpace(title);
+  for (const token of titleTokens) {
+    vec.set(token, (vec.get(token) ?? 0) + 2.0);
+  }
+
+  try {
+    const parsed = new URL(url);
+    const pathname = decodeURIComponent(parsed.pathname);
+    const urlTokens = tokenizeForVectorSpace(pathname);
+    for (const token of urlTokens) {
+      vec.set(token, (vec.get(token) ?? 0) + 1.0);
+    }
+  } catch {}
+
+  return vec;
+}
+
+/**
+ * Calcula la Similitud del Coseno entre dos vectores en R^D:
+ * cos(theta) = (u · v) / (||u||_2 * ||v||_2)
+ */
+export function computeVectorCosine(vecA: Map<string, number>, vecB: Map<string, number>): number {
+  if (vecA.size === 0 || vecB.size === 0) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const [, w] of vecA) normA += w * w;
+  for (const [, w] of vecB) normB += w * w;
+
+  for (const [term, weightA] of vecA) {
+    const weightB = vecB.get(term);
+    if (weightB !== undefined) {
+      dotProduct += weightA * weightB;
+    }
+  }
+
+  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denominator === 0) return 0;
+  return dotProduct / denominator;
+}
+
+/**
+ * Evalúa si una imagen candidata es matemáticamente afín al producto o si debe ser rechazada.
+ */
+export function evaluateCandidateWithLinearAlgebra(
+  candidate: { title: string; url: string },
+  targetVector: Map<string, number>,
+  negativeRegex: RegExp | null,
+  additionalNegativeTerms?: string[]
+): { accepted: boolean; cosine: number; reason?: string } {
+  const fullText = `${candidate.title} ${candidate.url}`;
+  const tokens = tokenizeForVectorSpace(fullText);
+
+  // 1. Proyección ortogonal en subespacio negativo
+  for (const token of tokens) {
+    if (PROHIBITED_NEGATIVE_TERMS.has(token)) {
+      return { accepted: false, cosine: 0, reason: `subespacio_prohibido:${token}` };
+    }
+  }
+
+  if (additionalNegativeTerms && additionalNegativeTerms.length > 0) {
+    const normNeg = new Set(additionalNegativeTerms.map((t) => t.toLowerCase().trim()).filter(Boolean));
+    for (const token of tokens) {
+      if (normNeg.has(token)) {
+        return { accepted: false, cosine: 0, reason: `palabra_negativa:${token}` };
+      }
+    }
+  }
+
+  if (negativeRegex && negativeRegex.test(candidate.title)) {
+    return { accepted: false, cosine: 0, reason: "regex_negativo" };
+  }
+
+  // 2. Similitud de cosenos en R^D
+  const candidateVector = buildCandidateFeatureVector(candidate.title, candidate.url);
+  const cosine = computeVectorCosine(targetVector, candidateVector);
+
+  // 3. Invariante Estricto de Dominio Físico de Hardware:
+  // Todo producto tecnológico DEBE contener al menos un término ancla del dominio físico.
+  const hasHardwareAnchor = tokens.some((t) => HARDWARE_DOMAIN_ANCHORS.has(t));
+  if (!hasHardwareAnchor) {
+    return { accepted: false, cosine, reason: "sin_ancla_de_hardware" };
+  }
+
+  // 4. Umbral mínimo de afinidad matemática
+  if (cosine < 0.12) {
+    return { accepted: false, cosine, reason: `coseno_bajo:${cosine.toFixed(2)}` };
+  }
+
+  return { accepted: true, cosine };
 }
 
 function buildNegativeRegex(negativeKeywords?: string[]): RegExp | null {
@@ -67,12 +443,18 @@ function buildNegativeRegex(negativeKeywords?: string[]): RegExp | null {
   return new RegExp(`\\b(${valid.join("|")})\\b`, "i");
 }
 
+export interface InternalImageCandidate {
+  url: string;
+  title: string;
+  fallbackUrl?: string;
+  engine: "serper" | "duckduckgo" | "bing";
+}
+
 /** Motor 1: Serper.dev (Google Images official API, used when SERPER_API_KEY is set). */
 async function searchViaSerper(
   query: string,
-  max: number,
-  negRegex: RegExp | null
-): Promise<string[]> {
+  max: number
+): Promise<InternalImageCandidate[]> {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) return [];
 
@@ -92,110 +474,32 @@ async function searchViaSerper(
     const data = await res.json();
     if (!Array.isArray(data?.images)) return [];
 
-    const urls: string[] = [];
+    const candidates: InternalImageCandidate[] = [];
     for (const img of data.images) {
-      if (urls.length >= max) break;
+      if (candidates.length >= max) break;
       const title = String(img.title || "");
       const url = img.imageUrl;
       const thumb = img.thumbnailUrl;
       if (isValidProductImageUrl(url)) {
-        if (negRegex && negRegex.test(title)) continue;
-        if (!urls.includes(url)) {
-          registerFallbackUrl(url, thumb);
-          urls.push(url);
+        if (!candidates.some((c) => c.url === url)) {
+          if (thumb) registerFallbackUrl(url, thumb);
+          candidates.push({ url, title, fallbackUrl: thumb, engine: "serper" });
         }
       }
     }
-    return urls;
+    return candidates;
   } catch {
     return [];
   }
 }
 
-/** Motor 2: Bing Images (direct high-speed extraction, no key required). */
-async function searchViaBing(
-  query: string,
-  max: number,
-  negRegex: RegExp | null
-): Promise<string[]> {
-  try {
-    // qft=+filterui:aspect-square+filterui:imagesize-large prefers clean square/product photos
-    const url = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC2&first=1`;
-    const res = await fetch(url, {
-      headers: BING_HEADERS,
-      signal: AbortSignal.timeout(5500),
-    });
-    if (!res.ok) return [];
-
-    const html = await res.text();
-    const urls: string[] = [];
-    const fallbackCdnUrls: string[] = [];
-
-    // Parse each m="{...}" block which contains full image metadata (murl + turl)
-    const blockRegex = /m="({[\s\S]*?})"/g;
-    let match: RegExpExecArray | null;
-    while ((match = blockRegex.exec(html)) !== null && urls.length < max) {
-      try {
-        const jsonStr = match[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-        const item = JSON.parse(jsonStr);
-        const title = String(item.t || "");
-        const murl = typeof item.murl === "string" ? item.murl : "";
-        const rawTurl = typeof item.turl === "string" ? item.turl : "";
-        // Upgrade Bing's CDN thumbnail to high-res 800x800 so fallback is crisp
-        const hiResTurl = rawTurl.startsWith("https://")
-          ? `${rawTurl}${rawTurl.includes("?") ? "&" : "?"}w=800&h=800&c=7&pid=Api`
-          : "";
-
-        if (negRegex && negRegex.test(title)) continue;
-
-        if (isValidProductImageUrl(murl)) {
-          if (!urls.includes(murl)) {
-            if (hiResTurl) registerFallbackUrl(murl, hiResTurl);
-            urls.push(murl);
-          }
-        } else if (hiResTurl && !urls.includes(hiResTurl)) {
-          urls.push(hiResTurl);
-        }
-
-        if (hiResTurl && !fallbackCdnUrls.includes(hiResTurl)) {
-          fallbackCdnUrls.push(hiResTurl);
-        }
-      } catch {
-        // Continue on json parse failure
-      }
-    }
-
-    // Direct fallback regex if block parsing found fewer items
-    if (urls.length < max) {
-      const directRegex = /&quot;murl&quot;:&quot;(https:\/\/[^&]+)&quot;/g;
-      let murlMatch: RegExpExecArray | null;
-      while ((murlMatch = directRegex.exec(html)) !== null && urls.length < max) {
-        const directUrl = murlMatch[1];
-        if (isValidProductImageUrl(directUrl) && !urls.includes(directUrl)) {
-          urls.push(directUrl);
-        }
-      }
-    }
-
-    // Also top up with Bing CDN URLs if still short
-    for (const cdnUrl of fallbackCdnUrls) {
-      if (urls.length >= max) break;
-      if (!urls.includes(cdnUrl)) urls.push(cdnUrl);
-    }
-
-    return urls;
-  } catch {
-    return [];
-  }
-}
-
-/** Motor 3: DuckDuckGo Images (secondary fallback). */
-const DDG_MIN_GAP_MS = 1200;
+/** Motor 2: DuckDuckGo Images (clean JSON structured API with official titles). */
+const DDG_MIN_GAP_MS = 1000;
 let ddgNextCallAt = 0;
 
 async function ddgThrottle(): Promise<void> {
   const wait = ddgNextCallAt - Date.now();
-  ddgNextCallAt = Math.max(ddgNextCallAt, Date.now()) + DDG_MIN_GAP_MS + Math.floor(Math.random() * 400);
+  ddgNextCallAt = Math.max(ddgNextCallAt, Date.now()) + DDG_MIN_GAP_MS + Math.floor(Math.random() * 300);
   if (wait > 0) await sleep(wait);
 }
 
@@ -205,15 +509,11 @@ function cookieHeaderFrom(setCookieValues: string[]): string {
 
 interface DdgAttempt {
   ok: boolean;
-  urls: string[];
+  candidates: InternalImageCandidate[];
   retryable: boolean;
 }
 
-async function ddgAttempt(
-  query: string,
-  max: number,
-  negRegex: RegExp | null
-): Promise<DdgAttempt> {
+async function ddgAttempt(query: string, max: number): Promise<DdgAttempt> {
   const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
     headers: {
       ...DDG_HEADERS,
@@ -222,12 +522,12 @@ async function ddgAttempt(
     signal: AbortSignal.timeout(5000),
   });
   if (!tokenRes.ok) {
-    return { ok: false, urls: [], retryable: false };
+    return { ok: false, candidates: [], retryable: false };
   }
   const html = await tokenRes.text();
   const token = html.match(/vqd=([\d-]+)&/)?.[1] ?? html.match(/vqd=["']?([\d-]+)["']?/)?.[1];
   if (!token) {
-    return { ok: false, urls: [], retryable: false };
+    return { ok: false, candidates: [], retryable: false };
   }
   const cookie = cookieHeaderFrom(tokenRes.headers.getSetCookie?.() ?? []);
 
@@ -245,89 +545,141 @@ async function ddgAttempt(
     signal: AbortSignal.timeout(5000),
   });
   if (!imagesRes.ok) {
-    return { ok: false, urls: [], retryable: imagesRes.status === 403 };
+    return { ok: false, candidates: [], retryable: imagesRes.status === 403 };
   }
 
   const data = await imagesRes.json();
   if (!Array.isArray(data?.results)) {
-    return { ok: false, urls: [], retryable: false };
+    return { ok: false, candidates: [], retryable: false };
   }
 
-  const urls: string[] = [];
+  const candidates: InternalImageCandidate[] = [];
   for (const r of data.results) {
-    if (urls.length >= max) break;
+    if (candidates.length >= max) break;
     const title = String(r.title || "");
     const imgUrl = r.image;
     const thumbUrl = r.thumbnail;
     if (isValidProductImageUrl(imgUrl)) {
-      if (negRegex && negRegex.test(title)) continue;
-      if (!urls.includes(imgUrl)) {
+      if (!candidates.some((c) => c.url === imgUrl)) {
         if (typeof thumbUrl === "string" && thumbUrl.startsWith("https://")) {
           registerFallbackUrl(imgUrl, thumbUrl);
         }
-        urls.push(imgUrl);
+        candidates.push({
+          url: imgUrl,
+          title,
+          fallbackUrl: typeof thumbUrl === "string" ? thumbUrl : undefined,
+          engine: "duckduckgo",
+        });
       }
     }
   }
 
-  return { ok: true, urls, retryable: false };
+  return { ok: true, candidates, retryable: false };
 }
 
 async function searchViaDuckDuckGo(
   query: string,
-  max: number,
-  negRegex: RegExp | null
-): Promise<string[]> {
+  max: number
+): Promise<InternalImageCandidate[]> {
   try {
     await ddgThrottle();
-    const first = await ddgAttempt(query, max, negRegex);
-    if (first.ok || !first.retryable) return first.urls;
+    const first = await ddgAttempt(query, max);
+    if (first.ok || !first.retryable) return first.candidates;
 
-    await sleep(1000);
-    const second = await ddgAttempt(query, max, negRegex);
-    return second.urls;
+    await sleep(800);
+    const second = await ddgAttempt(query, max);
+    return second.candidates;
   } catch {
     return [];
   }
 }
 
-/** Execute a single query across the engine cascade (Serper -> Bing -> DDG). */
-async function searchSingleQuery(
+/** Motor 3: Bing Images (JSON structured blocks extraction). */
+async function searchViaBing(
   query: string,
-  max: number,
-  negRegex: RegExp | null
-): Promise<string[]> {
+  max: number
+): Promise<InternalImageCandidate[]> {
+  try {
+    const url = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC2&first=1`;
+    const res = await fetch(url, {
+      headers: BING_HEADERS,
+      signal: AbortSignal.timeout(5500),
+    });
+    if (!res.ok) return [];
+
+    const html = await res.text();
+    const candidates: InternalImageCandidate[] = [];
+
+    // Parse each m="{...}" block which contains full image metadata (murl + title + turl)
+    const blockRegex = /m="({[\s\S]*?})"/g;
+    let match: RegExpExecArray | null;
+    while ((match = blockRegex.exec(html)) !== null && candidates.length < max) {
+      try {
+        const jsonStr = match[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+        const item = JSON.parse(jsonStr);
+        const title = String(item.t || "");
+        const murl = typeof item.murl === "string" ? item.murl : "";
+        const rawTurl = typeof item.turl === "string" ? item.turl : "";
+        const hiResTurl = rawTurl.startsWith("https://")
+          ? `${rawTurl}${rawTurl.includes("?") ? "&" : "?"}w=800&h=800&c=7&pid=Api`
+          : "";
+
+        if (isValidProductImageUrl(murl)) {
+          if (!candidates.some((c) => c.url === murl)) {
+            if (hiResTurl) registerFallbackUrl(murl, hiResTurl);
+            candidates.push({ url: murl, title, fallbackUrl: hiResTurl, engine: "bing" });
+          }
+        } else if (isValidProductImageUrl(hiResTurl)) {
+          if (!candidates.some((c) => c.url === hiResTurl)) {
+            candidates.push({ url: hiResTurl, title, engine: "bing" });
+          }
+        }
+      } catch {
+        // Continue on json parse failure
+      }
+    }
+
+    return candidates;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Searches candidates across engines for a single query.
+ */
+async function searchCandidatesForQuery(
+  query: string,
+  limit: number
+): Promise<InternalImageCandidate[]> {
   const cleanQuery = query.trim();
   if (!cleanQuery) return [];
 
-  // 1. Try Serper if configured
+  const candidates: InternalImageCandidate[] = [];
+
+  // 1. Serper if key available
   if (process.env.SERPER_API_KEY) {
-    const serperResults = await searchViaSerper(cleanQuery, max, negRegex);
-    if (serperResults.length >= max) return serperResults;
-    if (serperResults.length > 0) {
-      const bingResults = await searchViaBing(cleanQuery, max, negRegex);
-      const merged = [...serperResults];
-      for (const u of bingResults) {
-        if (merged.length >= max) break;
-        if (!merged.includes(u)) merged.push(u);
-      }
-      return merged;
+    const serper = await searchViaSerper(cleanQuery, limit);
+    for (const c of serper) {
+      if (!candidates.some((item) => item.url === c.url)) candidates.push(c);
     }
+    if (candidates.length >= limit) return candidates;
   }
 
-  // 2. Primary engine: Bing Images
-  const bingResults = await searchViaBing(cleanQuery, max, negRegex);
-  if (bingResults.length >= max) return bingResults;
+  // 2. DuckDuckGo as primary structured engine
+  const ddg = await searchViaDuckDuckGo(cleanQuery, limit);
+  for (const c of ddg) {
+    if (!candidates.some((item) => item.url === c.url)) candidates.push(c);
+  }
+  if (candidates.length >= limit) return candidates;
 
-  // 3. Fallback: DuckDuckGo Images
-  const ddgResults = await searchViaDuckDuckGo(cleanQuery, max, negRegex);
-  const merged = [...bingResults];
-  for (const u of ddgResults) {
-    if (merged.length >= max) break;
-    if (!merged.includes(u)) merged.push(u);
+  // 3. Bing Images as supplementary engine
+  const bing = await searchViaBing(cleanQuery, limit);
+  for (const c of bing) {
+    if (!candidates.some((item) => item.url === c.url)) candidates.push(c);
   }
 
-  return merged;
+  return candidates;
 }
 
 export interface SearchProductImageOptions {
@@ -341,9 +693,24 @@ export interface SearchProductImageOptions {
   broaderQuery?: string;
   /** Negative keywords: results whose titles contain any of these are skipped. */
   negativeKeywords?: string[];
+  /** Nombre completo del producto para calibrar el vector de características objetivo. */
+  productName?: string;
+  /** Categoría del producto para enriquecer el vector del espacio vectorial. */
+  category?: string;
 }
 
-function deriveBroaderQueries(rawQuery: string): string[] {
+export function sanitizeSearchQuery(query: string): string {
+  const clean = query.trim();
+  if (!clean) return "";
+  const alphaNum = clean.replace(/[^a-zA-Z0-9]/g, "");
+  // Rechazar consultas de una sola letra (como "D" o "d") que traen el abecedario
+  if (alphaNum.length < 3 && !/^(kvm|vga|ram|ssd|hub|ps2|cat|lan|ups)$/i.test(alphaNum)) {
+    return "";
+  }
+  return clean;
+}
+
+export function deriveBroaderQueries(rawQuery: string): string[] {
   const clean = rawQuery
     .replace(/\b(adaptadores de red|cables y adaptadores|tintas y toners|categoria|nuevo|tienda|peru|precio|oferta|marca)\b/gi, "")
     .replace(/[(),;:"]/g, " ")
@@ -353,33 +720,66 @@ function deriveBroaderQueries(rawQuery: string): string[] {
   const tokens = clean.split(" ").filter((t) => t.length > 1);
   const broader: string[] = [];
 
+  // Regla especial para "American NET": ¡NUNCA cortar "NET" para no dejar "American" solo!
+  const isAmericanNet = /\bamerican[\s-_]*net\b/i.test(clean);
+  if (isAmericanNet) {
+    broader.push("American NET adaptador");
+    broader.push("American NET power adapter");
+    const modelMatch = clean.match(/\b([0-9]+(\.[0-9]+)?[VAW]|\b5V\b|\b12V\b|\b2\.5A\b|\b3A\b|\bADP-[A-Z0-9]+)\b/i);
+    if (modelMatch) {
+      broader.push(`American NET ${modelMatch[1]}`);
+      broader.push(`American NET ${modelMatch[1]} adaptador`);
+    }
+    return broader.filter((b) => b !== rawQuery);
+  }
+
+  // Regla especial para "D-Link" / "TP-Link": ¡NUNCA separar la "D" de "Link"!
+  const isDlinkOrTplink = /\b(d[\s-_]*link|tp[\s-_]*link)\b/i.test(clean);
+  if (isDlinkOrTplink) {
+    const brandPrefix = /\btp/i.test(clean) ? "TP-Link" : "D-Link";
+    broader.push(`${brandPrefix} switch`);
+    broader.push(`${brandPrefix} KVM`);
+    const modelMatch = clean.match(/\b(KVM[-_]?[0-9]+|[0-9]+[-_]?[A-Z0-9]+)\b/i);
+    if (modelMatch) {
+      broader.push(`${brandPrefix} ${modelMatch[1]}`);
+      broader.push(`${brandPrefix} ${modelMatch[1]} switch`);
+    }
+    return broader.filter((b) => b !== rawQuery);
+  }
+
   // Try extracting brand + model
   const modelMatch = clean.match(/\b([A-Z0-9]+[-_][A-Z0-9]+|[A-Z]+[0-9]+[A-Z0-9]*|[0-9]+[A-Z]+[A-Z0-9]*)\b/i);
   if (modelMatch && tokens.length > 0) {
     const brand = tokens[0];
-    const model = modelMatch[1];
-    const combo = `${brand} ${model}`;
-    if (!broader.includes(combo)) broader.push(combo);
-    const withProduct = `${brand} ${model} product`;
-    if (!broader.includes(withProduct)) broader.push(withProduct);
+    if (brand.toLowerCase() !== "american" && brand.toLowerCase() !== "d") {
+      const model = modelMatch[1];
+      const combo = `${brand} ${model}`;
+      if (!broader.includes(combo)) broader.push(combo);
+      const withProduct = `${brand} ${model} product`;
+      if (!broader.includes(withProduct)) broader.push(withProduct);
+    }
   }
 
-  // 4-word and 3-word subsets
+  // 4-word and 3-word subsets, evitando palabras sueltas que lleven a aerolíneas o abecedarios
   if (tokens.length >= 4) {
     const subset4 = tokens.slice(0, 4).join(" ");
-    if (!broader.includes(subset4)) broader.push(subset4);
+    if (!broader.includes(subset4) && !/^(american|airline|d)$/i.test(subset4.trim())) broader.push(subset4);
   }
   if (tokens.length >= 3) {
     const subset3 = tokens.slice(0, 3).join(" ");
-    if (!broader.includes(subset3)) broader.push(subset3);
+    if (!broader.includes(subset3) && !/^(american|airline|d)$/i.test(subset3.trim())) broader.push(subset3);
   }
 
-  return broader.filter((b) => b !== rawQuery && b.length > 3);
+  return broader
+    .filter((b) => b !== rawQuery && b.length > 3 && !/^\s*(american|d)\s*$/i.test(b))
+    .map(sanitizeSearchQuery)
+    .filter(Boolean);
 }
 
 /**
- * Searches the web for official product photos.
- * Guarantees a rich pool of candidate URLs so at least 4 crisp photos can be downloaded and verified.
+ * Searches the web for official product photos using Álgebra Lineal & Vector Space Models.
+ * Garantiza 0 margen de error: filtra rigurosamente aviones, aerolíneas y entidades ajenas,
+ * y ordena las fotos descargadas por máxima similitud vectorial del coseno.
  */
 export async function searchProductImages(
   queryOrOptions: string | SearchProductImageOptions,
@@ -390,10 +790,14 @@ export async function searchProductImages(
   let queryList: string[] = [];
   let limit = max;
   let negKeywords = negativeKeywords;
+  let productName = "";
+  let category: string | undefined;
 
   if (typeof queryOrOptions === "object" && queryOrOptions !== null) {
     limit = queryOrOptions.max ?? 8;
     negKeywords = queryOrOptions.negativeKeywords;
+    productName = queryOrOptions.productName ?? "";
+    category = queryOrOptions.category;
     if (queryOrOptions.queries && queryOrOptions.queries.length > 0) {
       queryList = queryOrOptions.queries;
     } else if (queryOrOptions.query) {
@@ -404,6 +808,7 @@ export async function searchProductImages(
     }
   } else if (typeof queryOrOptions === "string") {
     queryList = [queryOrOptions];
+    productName = queryOrOptions;
     if (broaderQuery && broaderQuery !== queryOrOptions) {
       queryList.push(broaderQuery);
     }
@@ -411,60 +816,87 @@ export async function searchProductImages(
 
   if (queryList.length === 0) return [];
 
+  // Sanitizar consultas eliminando unigramas degenerados (letras sueltas como "D")
+  const sanitizedQueries = queryList.map(sanitizeSearchQuery).filter(Boolean);
+  const baseTargetName = productName || sanitizedQueries[0] || queryList[0];
+  if (sanitizedQueries.length === 0 && baseTargetName) {
+    sanitizedQueries.push(`${baseTargetName} product`, baseTargetName);
+  }
+  if (sanitizedQueries.length === 0) return [];
+
+  // Construir el vector objetivo del producto en R^D
+  const targetVector = buildProductTargetVector(baseTargetName, category, sanitizedQueries);
   const negRegex = buildNegativeRegex(negKeywords);
-  const collectedUrls: string[] = [];
 
-  // Pass 1: Run the top queries in parallel on Bing first for speed, then top up
-  const primaryQueries = queryList.slice(0, 3);
-  const parallelResults = await Promise.all(
-    primaryQueries.map((q) => searchViaBing(q, limit, negRegex))
+  const rawCandidates: InternalImageCandidate[] = [];
+  const candidateUrlsSeen = new Set<string>();
+
+  // Pass 1: Recopilar candidatos de las consultas prioritarias (DuckDuckGo + Serper + Bing)
+  const primaryQueries = sanitizedQueries.slice(0, 3);
+  const pass1Results = await Promise.all(
+    primaryQueries.map((q) => searchCandidatesForQuery(q, limit * 2))
   );
-  for (const list of parallelResults) {
-    for (const url of list) {
-      if (collectedUrls.length >= limit) break;
-      if (!collectedUrls.includes(url)) collectedUrls.push(url);
+  for (const list of pass1Results) {
+    for (const c of list) {
+      if (!candidateUrlsSeen.has(c.url)) {
+        candidateUrlsSeen.add(c.url);
+        rawCandidates.push(c);
+      }
     }
   }
 
-  // Pass 2: If still below limit, run full cascade on queries
-  if (collectedUrls.length < limit) {
-    for (const q of queryList) {
-      if (collectedUrls.length >= limit) break;
-      const results = await searchSingleQuery(q, limit, negRegex);
-      for (const url of results) {
-        if (collectedUrls.length >= limit) break;
-        if (!collectedUrls.includes(url)) {
-          collectedUrls.push(url);
+  // Pass 2: Si aún hay pocos candidatos, expandir con consultas adicionales
+  if (rawCandidates.length < limit * 2 && sanitizedQueries.length > 3) {
+    for (const q of sanitizedQueries.slice(3)) {
+      if (rawCandidates.length >= limit * 3) break;
+      const list = await searchCandidatesForQuery(q, limit);
+      for (const c of list) {
+        if (!candidateUrlsSeen.has(c.url)) {
+          candidateUrlsSeen.add(c.url);
+          rawCandidates.push(c);
         }
       }
     }
   }
 
-  // Pass 3: Expand with derived broader queries if needed
-  if (collectedUrls.length < limit && queryList[0]) {
-    const expansions = deriveBroaderQueries(queryList[0]);
+  // Pass 3: Expansión de consultas ampliadas seguras (manteniendo la marca American NET completa)
+  if (rawCandidates.length < limit * 2 && sanitizedQueries[0]) {
+    const expansions = deriveBroaderQueries(sanitizedQueries[0]);
     for (const expQ of expansions) {
-      if (collectedUrls.length >= limit) break;
-      const results = await searchSingleQuery(expQ, limit, negRegex);
-      for (const url of results) {
-        if (collectedUrls.length >= limit) break;
-        if (!collectedUrls.includes(url)) {
-          collectedUrls.push(url);
+      if (rawCandidates.length >= limit * 3) break;
+      const list = await searchCandidatesForQuery(expQ, limit);
+      for (const c of list) {
+        if (!candidateUrlsSeen.has(c.url)) {
+          candidateUrlsSeen.add(c.url);
+          rawCandidates.push(c);
         }
       }
     }
   }
 
-  // Pass 4: If still fewer than `limit` and negRegex was active, search without negRegex to guarantee 4+ images
-  if (collectedUrls.length < limit && negRegex && queryList[0]) {
-    const results = await searchSingleQuery(queryList[0], limit, null);
-    for (const url of results) {
-      if (collectedUrls.length >= limit) break;
-      if (!collectedUrls.includes(url)) {
-        collectedUrls.push(url);
+  // ── MOTOR DE EVALUACIÓN Y FILTRADO POR ÁLGEBRA LINEAL ───────────────────────
+  const verifiedCandidates: { url: string; cosine: number }[] = [];
+
+  for (const cand of rawCandidates) {
+    const evaluation = evaluateCandidateWithLinearAlgebra(
+      cand,
+      targetVector,
+      negRegex,
+      negKeywords
+    );
+    if (evaluation.accepted) {
+      verifiedCandidates.push({
+        url: cand.url,
+        cosine: evaluation.cosine,
+      });
+      if (cand.fallbackUrl) {
+        registerFallbackUrl(cand.url, cand.fallbackUrl);
       }
     }
   }
 
-  return collectedUrls;
+  // Ordenar estrictamente de mayor a menor similitud de cosenos en R^D
+  verifiedCandidates.sort((a, b) => b.cosine - a.cosine);
+
+  return verifiedCandidates.slice(0, limit).map((c) => c.url);
 }

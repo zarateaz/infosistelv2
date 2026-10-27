@@ -109,18 +109,22 @@ function useDeviceCapabilities(): DeviceCapabilities {
       tier = "DESKTOP_120FPS_ULTRA";
     }
 
-    setCapabilities({
-      tier,
-      isCoarsePointer: isCoarse,
-      concurrency,
-      deviceMemory: memory,
-      reducedMotion,
-      width: w,
-      height: h,
-      refreshRate: 120,
-      gpuRenderer,
-      isLowPowerGpu,
+    const rafId = requestAnimationFrame(() => {
+      setCapabilities({
+        tier,
+        isCoarsePointer: isCoarse,
+        concurrency,
+        deviceMemory: memory,
+        reducedMotion,
+        width: w,
+        height: h,
+        refreshRate: 120,
+        gpuRenderer,
+        isLowPowerGpu,
+      });
     });
+
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   return capabilities;
@@ -154,8 +158,10 @@ const FEATURES = [
 export function HeroExploded() {
   const capabilities = useDeviceCapabilities();
   const [imageError, setImageError] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [isExploded, setIsExploded] = useState(false);
+  const isExplodedRef = useRef(false);
+  const sliderInputRef = useRef<HTMLInputElement>(null);
+  const progressTextRef = useRef<HTMLSpanElement>(null);
   const [activeMobileHotspot, setActiveMobileHotspot] = useState<number>(0);
 
   // Contenedores
@@ -255,19 +261,27 @@ export function HeroExploded() {
           anticipatePin: 1,
           onUpdate: (self) => {
             const p = self.progress;
-            setScrollProgress(Math.round(p * 100));
-            setIsExploded(p > 0.5);
+            const pct = Math.round(p * 100);
+
+            if (sliderInputRef.current && document.activeElement !== sliderInputRef.current) {
+              sliderInputRef.current.value = String(pct);
+            }
+            if (progressTextRef.current) {
+              progressTextRef.current.textContent = `${pct}%`;
+            }
+
+            const exploded = p > 0.5;
+            if (isExplodedRef.current !== exploded) {
+              isExplodedRef.current = exploded;
+              setIsExploded(exploded);
+            }
 
             // Sincronización del hotspot activo en móvil
-            if (p < 0.6) {
-              setActiveMobileHotspot(0);
-            } else if (p < 0.76) {
-              setActiveMobileHotspot(1);
-            } else if (p < 0.88) {
-              setActiveMobileHotspot(2);
-            } else {
-              setActiveMobileHotspot(3);
-            }
+            let nextSpot = 0;
+            if (p >= 0.88) nextSpot = 3;
+            else if (p >= 0.76) nextSpot = 2;
+            else if (p >= 0.6) nextSpot = 1;
+            setActiveMobileHotspot((prev) => (prev !== nextSpot ? nextSpot : prev));
 
             if (floatTween) {
               if (p > 0.05) floatTween.pause();
@@ -390,13 +404,6 @@ export function HeroExploded() {
       // Inyección vectorial directa al hardware GPU (Compositor Layer: Zero Reflow/Paint)
       tiltEl.style.transform = `rotateX(${currentRotX.toFixed(3)}deg) rotateY(${currentRotY.toFixed(3)}deg)`;
 
-      // Micro-paralaje cinemático diferencial desacoplado por profundidad Z
-      const factor = currentRotY * 0.45;
-      if (layer1Ref.current) layer1Ref.current.style.transform = `translate3d(${(factor * Z_DEPTH[0]).toFixed(2)}px, 0, 0)`;
-      if (layer2Ref.current) layer2Ref.current.style.transform = `translate3d(${(factor * Z_DEPTH[1]).toFixed(2)}px, 0, 0)`;
-      if (layer4Ref.current) layer4Ref.current.style.transform = `translate3d(${(factor * Z_DEPTH[3]).toFixed(2)}px, 0, 0)`;
-      if (layer5Ref.current) layer5Ref.current.style.transform = `translate3d(${(factor * Z_DEPTH[4]).toFixed(2)}px, 0, 0)`;
-
       // Loop ultra-eficiente: duerme automáticamente cuando alcanza reposo absoluto (0% uso de CPU idle)
       const isResting =
         !isMouseActive &&
@@ -409,21 +416,26 @@ export function HeroExploded() {
         animFrameId = requestAnimationFrame(updatePhysics);
       } else {
         tiltEl.style.transform = "rotateX(0deg) rotateY(0deg)";
-        if (layer1Ref.current) layer1Ref.current.style.transform = "translate3d(0, 0, 0)";
-        if (layer2Ref.current) layer2Ref.current.style.transform = "translate3d(0, 0, 0)";
-        if (layer4Ref.current) layer4Ref.current.style.transform = "translate3d(0, 0, 0)";
-        if (layer5Ref.current) layer5Ref.current.style.transform = "translate3d(0, 0, 0)";
       }
     };
 
+    let cachedRect: DOMRect | null = null;
+    const updateRect = () => {
+      if (tiltEl) cachedRect = tiltEl.getBoundingClientRect();
+    };
+    updateRect();
+    window.addEventListener("resize", updateRect, { passive: true });
+
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = tiltEl.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
+      if (!cachedRect) updateRect();
+      if (!cachedRect) return;
+
+      const centerX = cachedRect.left + cachedRect.width / 2;
+      const centerY = cachedRect.top + cachedRect.height / 2;
 
       // Coordenadas normalizadas n_x, n_y en [-1, 1]
-      const nx = Math.max(-1, Math.min(1, (e.clientX - centerX) / (rect.width / 2)));
-      const ny = Math.max(-1, Math.min(1, (e.clientY - centerY) / (rect.height / 2)));
+      const nx = Math.max(-1, Math.min(1, (e.clientX - centerX) / (cachedRect.width / 2)));
+      const ny = Math.max(-1, Math.min(1, (e.clientY - centerY) / (cachedRect.height / 2)));
 
       targetRotY = nx * 7.5;
       targetRotX = -ny * 5.5;
@@ -447,34 +459,54 @@ export function HeroExploded() {
 
     return () => {
       cancelAnimationFrame(animFrameId);
+      window.removeEventListener("resize", updateRect);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseleave", handleMouseLeave);
     };
   }, [capabilities.tier]);
 
-  // Manejo de interacción de botón y slider
+  // Manejo de interacción de botón y slider coordinado con Lenis
   const handleToggleExplode = useCallback(() => {
     if (!scrollTriggerInstanceRef.current) return;
     const st = scrollTriggerInstanceRef.current;
     const targetProgress = isExploded ? 0 : 0.95;
     const targetScroll = st.start + (st.end - st.start) * targetProgress;
 
-    window.scrollTo({
-      top: targetScroll,
-      behavior: "smooth",
-    });
+    const win = window as unknown as {
+      __lenis?: { scrollTo: (t: number, opts?: { duration?: number }) => void };
+    };
+
+    if (win.__lenis?.scrollTo) {
+      win.__lenis.scrollTo(targetScroll, { duration: 1 });
+    } else {
+      window.scrollTo({
+        top: targetScroll,
+        behavior: "smooth",
+      });
+    }
   }, [isExploded]);
 
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value) / 100;
-    setScrollProgress(Number(e.target.value));
+    if (progressTextRef.current) {
+      progressTextRef.current.textContent = `${e.target.value}%`;
+    }
     if (!scrollTriggerInstanceRef.current) return;
     const st = scrollTriggerInstanceRef.current;
     const targetScroll = st.start + (st.end - st.start) * val;
-    window.scrollTo({
-      top: targetScroll,
-      behavior: "auto",
-    });
+
+    const win = window as unknown as {
+      __lenis?: { scrollTo: (t: number, opts?: { immediate?: boolean }) => void };
+    };
+
+    if (win.__lenis?.scrollTo) {
+      win.__lenis.scrollTo(targetScroll, { immediate: true });
+    } else {
+      window.scrollTo({
+        top: targetScroll,
+        behavior: "auto",
+      });
+    }
   }, []);
 
   return (
@@ -534,6 +566,7 @@ export function HeroExploded() {
             {/* Canvas / Visor de la Laptop - Escala calibrada con cota máxima de altura (Zero Collision) */}
             <div
               ref={explodedWrapRef}
+              style={{ isolation: "isolate" }}
               className="relative aspect-[16/9] w-full max-w-[850px] xl:max-w-[920px] max-h-[36vh] sm:max-h-[44vh] md:max-h-[47vh] flex items-center justify-center overflow-visible"
             >
               {imageError ? (
@@ -930,18 +963,19 @@ export function HeroExploded() {
               )}
             </button>
 
-            {/* Slider de Progreso */}
+            {/* Slider de Progreso (Direct DOM ref updates para 0 re-renders en scroll) */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               <input
+                ref={sliderInputRef}
                 type="range"
                 min="0"
                 max="100"
-                value={scrollProgress}
+                defaultValue={0}
                 onChange={handleSliderChange}
                 aria-label="Progreso del despiece 3D"
                 className="h-1.5 w-16 sm:w-28 cursor-pointer accent-accent"
               />
-              <span className="w-7 font-mono text-[9px] sm:text-[10px] text-fg-muted">{scrollProgress}%</span>
+              <span ref={progressTextRef} className="w-7 font-mono text-[9px] sm:text-[10px] text-fg-muted">0%</span>
             </div>
           </div>
 

@@ -24,6 +24,7 @@ const NAV_LINKS = [
   { href: "/taller-control/papelera", label: "Papelera" },
   { href: "/taller-control/facturas", label: "Facturas" },
   { href: "/taller-control/cuentas", label: "Cuentas" },
+  { href: "/taller-control/deudas", label: "Deudas" },
   { href: "/taller-control/seguridad", label: "Seguridad" },
 ];
 

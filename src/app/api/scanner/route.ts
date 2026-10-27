@@ -136,7 +136,11 @@ export async function POST(request: NextRequest) {
 
     // ── Manual query path (no barcode, just a text search for photos) ────
     if (!barcode && manualQuery) {
-      const images = await searchDuckDuckGoImages(manualQuery);
+      const images = await searchDuckDuckGoImages({
+        query: manualQuery,
+        productName: manualQuery,
+        max: 8,
+      });
       return Response.json({
         found: false,
         images,
@@ -174,7 +178,12 @@ export async function POST(request: NextRequest) {
         .filter(Boolean)
         .join(" ");
       if (searchQuery) {
-        images = await searchDuckDuckGoImages(searchQuery);
+        images = await searchDuckDuckGoImages({
+          query: searchQuery,
+          productName: result.title || searchQuery,
+          category: result.category,
+          max: 8,
+        });
       }
     }
 

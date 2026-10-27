@@ -177,6 +177,8 @@ async function lookupExternalUPC(
 
     const searchedImages = await searchProductImages({
       queries: [title, `${title} product`, finalName],
+      productName: finalName,
+      category,
       max: 8,
     });
 
@@ -432,12 +434,14 @@ export async function recognizeProductImage(
 Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa todos los datos:
 
 1. PRECISIÓN DE RECONOCIMIENTO (0 MARGEN DE ERROR):
-- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo exacto + Medida/Capacidad/Color/Versión). Ejemplos: "MOUSE LOGITECH G203 LIGHTSYNC RGB NEGRO", "CABLE UGREEN USB-C A USB-C 100W 1M", "MEMORIA RAM KINGSTON FURY BEAST 16GB DDR4 3200MHZ".
+- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo exacto + Medida/Capacidad/Color/Versión). Ejemplos: "MOUSE LOGITECH G203 LIGHTSYNC RGB NEGRO", "CABLE UGREEN USB-C A USB-C 100W 1M", "ADAPTADOR DE CORRIENTE AMERICAN NET 5V 2.5A".
+  REGLA DE MARCA CRÍTICA: Si la marca en el producto o caja es 'American NET', escribe siempre 'AMERICAN NET' completo (NUNCA solo 'American', para no confundir con aerolíneas u otros rubros).
 - 'category': Categoría exacta en español ${categories.length > 0 ? `(elige entre: ${categories.join(", ")})` : "('LAPTOPS', 'ACCESORIOS', 'ALMACENAMIENTO', 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC')"}.
 - 'description': Redacción comercial y técnica impecable en español para la ficha del producto. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
 - 'suggestedPrice' y 'suggestedCostPrice': Precios reales en Soles (S/.) para el mercado peruano.
 - 'barcode': Si se ven los números bajo un código de barras, extráelos exactamente.
-- 'searchQueries': 3 búsquedas precisas (ej: "UGREEN LP130 car phone mount", "Logitech G203 mouse", etc.) para obtener 4 fotos profesionales del producto.`,
+- 'searchQueries': 3 búsquedas precisas combinando tipo de producto de hardware y marca completa (ej: "American NET adaptador corriente 5V 2.5A", "American NET 5V 2.5A power adapter", etc.). PROHIBIDO escribir solo 'American' o términos genéricos sin producto tecnológico.
+- 'negativeKeywords': Incluye términos que deben filtrarse (ej: 'avion', 'aviones', 'airplane', 'airline', 'airlines', 'boeing', 'flight', 'vuelo', 'aerolinea', 'aeropuerto', 'ropa', 'deporte').`,
             },
             { type: "file", data: base64, mediaType: mimeType },
           ],
@@ -484,6 +488,8 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
     const candidateUrls = await searchProductImages({
       queries,
       negativeKeywords: object.negativeKeywords,
+      productName: cleanName,
+      category: categoryInSpanish,
       max: 10,
     }).catch((err) => {
       console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
@@ -536,6 +542,7 @@ export async function searchImagesManually(query: string): Promise<string[]> {
 
   return searchProductImages({
     queries: [`${clean} product`, clean],
+    productName: clean,
     max: 8,
   }).catch(() => []);
 }

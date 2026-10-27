@@ -961,3 +961,52 @@ export function UsersAdminIcon({ size = 22, className = "" }: SidebarIconProps) 
     </svg>
   );
 }
+
+// 22. Deudas: Calendar schedule with clock & payment slip alert
+export function DebtsScheduleIcon({ size = 22, className = "" }: SidebarIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 28 28"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`shrink-0 transition-transform duration-200 group-hover:scale-110 ${className}`}
+    >
+      <defs>
+        <linearGradient id="cal-header" x1="4" y1="4" x2="24" y2="10" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#EF4444" />
+          <stop offset="1" stopColor="#DC2626" />
+        </linearGradient>
+        <linearGradient id="clock-grad" x1="15" y1="13" x2="25" y2="23" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#F59E0B" />
+          <stop offset="1" stopColor="#D97706" />
+        </linearGradient>
+      </defs>
+
+      {/* Calendar back shadow */}
+      <rect x="3" y="6" width="18" height="18" rx="3.5" fill="#1E293B" opacity="0.12" />
+
+      {/* Calendar body */}
+      <rect x="3.5" y="5.5" width="17" height="17" rx="3" fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="1" />
+
+      {/* Red Calendar Top Header */}
+      <path d="M3.5 8.5C3.5 6.84315 4.84315 5.5 6.5 5.5H17.5C19.1569 5.5 20.5 6.84315 20.5 8.5V10.5H3.5V8.5Z" fill="url(#cal-header)" />
+
+      {/* Binder rings */}
+      <rect x="7" y="3.5" width="2" height="4" rx="1" fill="#475569" />
+      <rect x="15" y="3.5" width="2" height="4" rx="1" fill="#475569" />
+
+      {/* Grid lines on calendar */}
+      <rect x="6.5" y="13.5" width="2.5" height="2" rx="0.5" fill="#94A3B8" />
+      <rect x="10.5" y="13.5" width="2.5" height="2" rx="0.5" fill="#94A3B8" />
+      <rect x="6.5" y="17.5" width="2.5" height="2" rx="0.5" fill="#94A3B8" />
+
+      {/* Floating Clock / Due timer Badge */}
+      <circle cx="19.5" cy="18.5" r="6" fill="#FFFFFF" stroke="#FDE68A" strokeWidth="1" />
+      <circle cx="19.5" cy="18.5" r="4.8" fill="url(#clock-grad)" />
+      {/* Clock hands */}
+      <path d="M19.5 15.5V18.5L21.5 20" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

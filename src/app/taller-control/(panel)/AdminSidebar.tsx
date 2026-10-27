@@ -33,6 +33,7 @@ import {
   RepairsWrenchIcon,
   TechServicesIcon,
   UsersAdminIcon,
+  DebtsScheduleIcon,
 } from "@/components/admin/SidebarIcons";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string; active?: boolean }>> = {
@@ -56,6 +57,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/papelera": TrashBinIcon,
   "/taller-control/facturas": InvoiceBillIcon,
   "/taller-control/cuentas": AccountsFinanceIcon,
+  "/taller-control/deudas": DebtsScheduleIcon,
   "/taller-control/usuarios": UsersAdminIcon,
 };
 
@@ -79,6 +81,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/papelera": "Ventas",
   "/taller-control/facturas": "Ventas",
   "/taller-control/cuentas": "Ventas",
+  "/taller-control/deudas": "Ventas",
   "/taller-control/inventario": "Inventario",
   "/taller-control/productos": "Inventario",
   "/taller-control/categorias": "Inventario",

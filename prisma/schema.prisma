@@ -17,23 +17,23 @@ model Category {
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  itemNumber  Int      @unique
-  name        String
-  category    String
-  description String
-  price       Float
-  stock       Int      @default(0)
-  image       String? // path under /public, e.g. "/img/products/x.webp" — null renders a category icon placeholder
-  images      String? // JSON-encoded string[] of ADDITIONAL photos (admin reference only — /tienda and the storefront card only ever show `image`, the cover). Up to 3 extra, same path format as `image`.
-  costPrice   Float?   @default(0) // admin-only field, never sent to public API responses
-  barcode     String?  @unique // UPC/EAN scanned at the register — null for products entered without one
-  isFeatured  Boolean  @default(false)
-  onSale      Boolean  @default(false)
-  salePrice   Float?
-  searchHits  Int      @default(0) // veces que este producto apareció en una búsqueda del chatbot — ver chatTools.ts buscarProductos/productosPopulares
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String          @id @default(cuid())
+  itemNumber     Int             @unique
+  name           String
+  category       String
+  description    String
+  price          Float
+  stock          Int             @default(0)
+  image          String? // path under /public, e.g. "/img/products/x.webp" — null renders a category icon placeholder
+  images         String? // JSON-encoded string[] of ADDITIONAL photos (admin reference only — /tienda and the storefront card only ever show `image`, the cover). Up to 3 extra, same path format as `image`.
+  costPrice      Float?          @default(0) // admin-only field, never sent to public API responses
+  barcode        String?         @unique // UPC/EAN scanned at the register — null for products entered without one
+  isFeatured     Boolean         @default(false)
+  onSale         Boolean         @default(false)
+  salePrice      Float?
+  searchHits     Int             @default(0) // veces que este producto apareció en una búsqueda del chatbot — ver chatTools.ts buscarProductos/productosPopulares
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
 }
 
@@ -84,7 +84,6 @@ model Repair {
  * ServicePhoto es el libro interno de trabajos ya ejecutados — cliente,
  * técnico asignado, tipo de equipo, etapa de reparación, monto, forma de
  * pago —incluido pago parcial con saldo— y evidencia fotográfica).
- *
  * Reemplaza en v2 al módulo original (Service tenía `processes`, sin
  * teléfono/tipo de equipo/etapa/pago parcial) por el diseño final que trajo
  * una compañera del equipo — mismo modelo de datos y reglas de negocio,
@@ -114,7 +113,7 @@ model EquipmentType {
 }
 
 model Service {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   clientName  String
   clientPhone String // 9 dígitos numéricos
   title       String
@@ -149,8 +148,8 @@ model Service {
   technicianId String
   technician   Technician @relation(fields: [technicianId], references: [id], onDelete: Restrict)
 
-  equipmentBrand String?
-  equipmentModel String?
+  equipmentBrand  String?
+  equipmentModel  String?
   equipmentTypeId String
   equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id], onDelete: Restrict)
 
@@ -329,7 +328,9 @@ model Receivable {
   updatedAt     DateTime @updatedAt
 }
 
-/** Cuentas por pagar — el espejo de Receivable, para deudas con proveedores. */
+/**
+ * Cuentas por pagar — el espejo de Receivable, para deudas con proveedores.
+ */
 model Payable {
   id            String   @id @default(cuid())
   issueDate     DateTime @default(now())
@@ -364,7 +365,7 @@ model Admin {
   recoveryCodesHash String?
 
   // Brecha V3.3.1/V3.3.3 (Hardening Fase 6+) — Invalidación de sesión del lado del servidor.
-  tokenVersion      Int      @default(0)
+  tokenVersion Int @default(0)
 }
 
 /**
@@ -376,7 +377,7 @@ model Quotation {
   id            String          @id @default(cuid())
   code          String          @unique // "COT-2026-0001"
   clientName    String
-  clientDocType String?         // "DNI" | "RUC" | "OTRO"
+  clientDocType String? // "DNI" | "RUC" | "OTRO"
   clientDocNum  String?
   clientPhone   String?
   clientEmail   String?
@@ -395,7 +396,7 @@ model Quotation {
   paymentMethod String?
   warranty      String?
   notes         String?
-  images        String?         // JSON-encoded string[] de fotos anexas o de referencia
+  images        String? // JSON-encoded string[] de fotos anexas o de referencia
   items         QuotationItem[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -407,20 +408,20 @@ model Quotation {
 }
 
 model QuotationItem {
-  id          String    @id @default(cuid())
-  quotationId String
-  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  productId   String?
-  description String
-  brand       String?
-  model       String?
-  quantity    Int       @default(1)
-  unitPrice   Float
-  total       Float
-  notes       String?
-  costPrice   Float?    @default(0)
-  marginPercent Float?  @default(0)
-  image       String?
+  id            String    @id @default(cuid())
+  quotationId   String
+  quotation     Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId     String?
+  description   String
+  brand         String?
+  model         String?
+  quantity      Int       @default(1)
+  unitPrice     Float
+  total         Float
+  notes         String?
+  costPrice     Float?    @default(0)
+  marginPercent Float?    @default(0)
+  image         String?
 
   @@index([quotationId])
 }
@@ -428,11 +429,11 @@ model QuotationItem {
 // Brecha V7.1.3 / V8.3.5 (Hardening Fase 6+) — Registro estructurado y persistente de eventos de seguridad
 model AuditLog {
   id        String   @id @default(cuid())
-  action    String   // Ej. "LOGIN_FAILED", "LOGIN_SUCCESS", "DATA_ACCESS"
-  adminId   String?  // Puede ser nulo si el usuario no existe o falló el login
-  username  String?  // Nombre de usuario intentado o autenticado
+  action    String // Ej. "LOGIN_FAILED", "LOGIN_SUCCESS", "DATA_ACCESS"
+  adminId   String? // Puede ser nulo si el usuario no existe o falló el login
+  username  String? // Nombre de usuario intentado o autenticado
   ipAddress String
-  details   String?  // Detalles adicionales o contexto
+  details   String? // Detalles adicionales o contexto
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -440,16 +441,62 @@ model AuditLog {
   @@index([adminId])
 }
 
-
 model StockMovement {
   id          String   @id @default(cuid())
   productId   String
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  quantity    Int      // positive for additions, negative for reductions
-  type        String   // "VENTA_FISICA", "VENTA_WEB", "INGRESO", "AJUSTE", etc.
-  description String?  // Optional explanation
+  quantity    Int // positive for additions, negative for reductions
+  type        String // "VENTA_FISICA", "VENTA_WEB", "INGRESO", "AJUSTE", etc.
+  description String? // Optional explanation
   date        DateTime @default(now())
-  
+
   @@index([productId])
   @@index([date])
+}
+
+// ─── Deudas: obligaciones mensuales recurrentes del negocio ────────────────
+// Modelo del Excel "PAGOS DE SERVICIOS" (hoja PAGOS DE <MES>): impuestos,
+// alquiler de locales, personal, luz/servicios, internet fijo, celulares...
+// Cada Debt es una obligación que se repite cada mes (dueDay); cada
+// DebtPayment registra el pago de UN período "YYYY-MM" de esa obligación.
+// Lo que no tiene pago y ya pasó su fecha es deuda (vencida / acumulada).
+model Debt {
+  id         String        @id @default(cuid())
+  name       String // "Alquiler S-25 — Sra. Julia"
+  category   String // IMPUESTOS | ALQUILER | PERSONAL | SERVICIOS | INTERNET | CELULAR | DEFENSA_CIVIL | PRESTAMOS | OTROS
+  payee      String? // beneficiario / proveedor: "Sra. Julia", "Claro", "SUNAT"
+  location   String? // local al que corresponde: "S-25", "B-10", "E-10"
+  reference  String? // código de pago, N° de suministro o de cuenta
+  payTo      String? // a dónde se paga: Yape, cuenta bancaria, QR...
+  phone      String? // contacto del beneficiario (solo dígitos)
+  dueDay     Int // día del mes en que vence (1-31; se ajusta a meses cortos)
+  amount     Float         @default(0) // monto referencial mensual
+  isVariable Boolean       @default(false) // el monto cambia cada mes (luz, IGV...)
+  startMonth String // "YYYY-MM" primer mes en que aplica
+  endMonth   String? // "YYYY-MM" último mes (cuotas de préstamo); null = indefinido
+  notes      String?
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  payments   DebtPayment[]
+
+  @@index([active, category])
+}
+
+model DebtPayment {
+  id                   String   @id @default(cuid())
+  debtId               String
+  debt                 Debt     @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  period               String // "YYYY-MM" mes que se está pagando
+  amount               Float
+  paidAt               DateTime
+  method               String // EFECTIVO | YAPE 1 | YAPE 2 | TRANSFERENCIA | AGENTE | OTRO
+  note                 String?
+  // Si al pagar se registró también el egreso en Caja, aquí queda el id del
+  // CashboxTransaction para mandarlo a la Papelera si se deshace el pago.
+  cashboxTransactionId String?
+  createdAt            DateTime @default(now())
+
+  @@unique([debtId, period])
+  @@index([period])
 }

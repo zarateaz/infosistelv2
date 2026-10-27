@@ -256,6 +256,9 @@ export const KNOWN_BRANDS = [
   "ajazz",
   "keychron",
   "akko",
+  "american net",
+  "american-net",
+  "americannet",
 ];
 
 // Marcas ordenadas de mayor a menor longitud para evitar que "wd" se coma a "wd purple" o "western digital"

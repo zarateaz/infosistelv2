@@ -41,8 +41,9 @@ export function Reveal({
           ease: "power3.out",
           scrollTrigger: {
             trigger: ref.current,
-            start: "top 85%",
-            toggleActions: "play none none reverse",
+            start: "top 88%",
+            once: true,
+            toggleActions: "play none none none",
           },
         }
       );
