@@ -63,6 +63,10 @@ npx tsx scripts/migrate-categories-to-spanish.ts || true
 echo "=== Verificando integridad y restaurando cotizaciones (0 margen de error) ==="
 npx tsx scripts/restore-quotations.ts || true
 
+echo "=== Sembrando y verificando obligaciones de Deudas (0 margen de error) ==="
+node --env-file=.env ./node_modules/.bin/tsx scripts/seed-deudas.ts || true
+node --env-file=.env ./node_modules/.bin/tsx scripts/seed-pagos-historicos.ts || true
+
 echo "=== Build de producción (si esto falla, NO sigas a PM2) ==="
 NODE_ENV=production npm run build
 
