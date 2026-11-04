@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { ChevronLeft, ChevronRight, Banknote, Smartphone } from "lucide-react";
 import {
   getCashboxTransactions,
   getCashboxTransactionsForMonth,
@@ -9,34 +7,7 @@ import {
 } from "./actions";
 import { monthKey } from "./month";
 import { PAYMENT_METHODS, type PaymentMethodType } from "./constants";
-import { AddTransactionForm } from "./AddTransactionForm";
-import { AddTransactionRow } from "./AddTransactionRow";
-import { CajaChart } from "./CajaChart";
-import { TransactionRow } from "./TransactionRow";
-import { PeriodHeader } from "./PeriodHeader";
-import { MonthlyReport } from "./MonthlyReport";
-import { MonthSelector } from "./MonthSelector";
-import { MonthlyReportsArchive } from "./MonthlyReportsArchive";
-import { DownloadHistoryPdfButton } from "./DownloadHistoryPdfButton";
-import { CashboxMethodCards } from "./CashboxMethodCards";
-import { StatCard, type StatTint } from "../StatCard";
-
-const METHOD_ICON: Record<(typeof PAYMENT_METHODS)[number], typeof Banknote> = {
-  EFECTIVO: Banknote,
-  "YAPE 1": Smartphone,
-  "YAPE 2": Smartphone,
-};
-const METHOD_TINT: Record<(typeof PAYMENT_METHODS)[number], StatTint> = {
-  EFECTIVO: "emerald",
-  "YAPE 1": "violet",
-  "YAPE 2": "fuchsia",
-};
-
-function adjacentMonth(month: string, delta: number): string {
-  const [year, monthNum] = month.split("-").map(Number);
-  const d = new Date(year, monthNum - 1 + delta, 1);
-  return monthKey(d);
-}
+import { CashboxInteractiveWorkspace } from "./CashboxInteractiveWorkspace";
 
 export default async function AdminCashboxPage({
   searchParams,
@@ -85,190 +56,19 @@ export default async function AdminCashboxPage({
   const monthLabel = `${monthNames[monthIndex] || month} de ${yearStr}`;
 
   return (
-    <div>
-      <div className="print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-fg">
-                Caja — {showAll ? "Historial Completo" : monthLabel}
-              </h1>
-              {!showAll && (
-                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                  Mes activo · Inicia en S/. 0.00
-                </span>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-fg-muted">
-              {showAll
-                ? `Saldo histórico acumulado: S/. ${balance.toFixed(2)} (${transactions.length} movimientos)`
-                : `Saldo neto de ${monthLabel}: S/. ${balance.toFixed(2)} (${monthTransactions.length} mov.)`}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/taller-control/caja?month=${adjacentMonth(month, -1)}`}
-              aria-label="Mes anterior"
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent"
-            >
-              <ChevronLeft size={15} />
-            </Link>
-            <MonthSelector month={month} availableMonths={availableMonths} monthsSummary={monthsSummary} />
-            <Link
-              href={`/taller-control/caja?month=${adjacentMonth(month, 1)}`}
-              aria-label="Mes siguiente"
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent"
-            >
-              <ChevronRight size={15} />
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <CashboxMethodCards
-            totals={totalsByMethod}
-            periodLabel={showAll ? "Historial Completo" : monthLabel}
-          />
-        </div>
-
-        <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold text-fg">
-              Evolución del saldo — {showAll ? "Historial Completo" : monthLabel}
-            </h2>
-            <span className="text-xs text-fg-muted font-medium">
-              {showAll ? "Historial total acumulado" : `Inicia desde S/. 0.00 en ${monthLabel}`}
-            </span>
-          </div>
-          <div className="mt-4">
-            <CajaChart transactions={displayedTransactions} />
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <AddTransactionForm month={month} />
-        </div>
-      </div>
-
-      <div className="print:hidden mt-10 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-bold text-fg">Reporte mensual</h2>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/taller-control/caja?month=${adjacentMonth(month, -1)}`}
-            aria-label="Mes anterior"
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent"
-          >
-            <ChevronLeft size={15} />
-          </Link>
-          <MonthSelector month={month} availableMonths={availableMonths} monthsSummary={monthsSummary} />
-          <Link
-            href={`/taller-control/caja?month=${adjacentMonth(month, 1)}`}
-            aria-label="Mes siguiente"
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent"
-          >
-            <ChevronRight size={15} />
-          </Link>
-        </div>
-      </div>
-
-      <div className="print:hidden mt-4">
-        <PeriodHeader month={month} period={period} />
-      </div>
-
-      <div className="mt-4">
-        <MonthlyReport
-          month={month}
-          period={period}
-          transactions={monthTransactions}
-          monthsSummary={monthsSummary}
-          allTransactions={showAll ? transactions : undefined}
-        />
-      </div>
-
-      <div className="print:hidden mt-8">
-        <MonthlyReportsArchive
-          monthsSummary={monthsSummary}
-          allTransactions={showAll ? transactions : undefined}
-          currentSelectedMonth={month}
-        />
-      </div>
-
-      <div className="print:hidden mt-10">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-lg font-bold text-fg">
-              Movimientos de caja — {showAll ? "Historial completo" : month}
-            </h2>
-            <p className="text-xs text-fg-muted">
-              {showAll
-                ? `Mostrando todos los ${transactions.length} movimientos históricos.`
-                : `Mostrando ${monthTransactions.length} movimiento(s) de este mes. Los meses anteriores quedan archivados.`}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/taller-control/caja?month=${month}`}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
-                !showAll
-                  ? "bg-accent text-accent-fg shadow-sm"
-                  : "border border-border bg-bg-alt text-fg-muted hover:text-fg"
-              }`}
-            >
-              Mes activo ({month})
-            </Link>
-            <Link
-              href={`/taller-control/caja?month=${month}&view=all`}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
-                showAll
-                  ? "bg-accent text-accent-fg shadow-sm"
-                  : "border border-border bg-bg-alt text-fg-muted hover:text-fg"
-              }`}
-            >
-              Ver todo ({totalCount})
-            </Link>
-            <DownloadHistoryPdfButton
-              transactions={displayedTransactions}
-              label={showAll ? `Descargar PDF (${transactions.length})` : `Descargar PDF (${monthTransactions.length})`}
-              monthKey={showAll ? "HISTORIAL_COMPLETO" : month}
-              monthLabel={showAll ? "Historial Completo de Caja" : `Reporte de Caja ${month}`}
-            />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead>
-              <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
-                <th className="px-5 py-3">Fecha</th>
-                <th className="px-5 py-3">Tipo</th>
-                <th className="px-5 py-3">Descripción</th>
-                <th className="px-5 py-3">Método</th>
-                <th className="px-5 py-3">Monto</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              <AddTransactionRow />
-              {[...displayedTransactions].reverse().map((t) => (
-                <TransactionRow key={t.id} transaction={t} />
-              ))}
-              {displayedTransactions.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-fg-muted">
-                    <p className="font-semibold text-fg">
-                      Todavía no hay movimientos registrados en {month}.
-                    </p>
-                    <p className="mt-1 text-xs">
-                      El nuevo mes inicia en blanco. Usa &quot;+ Agregar movimiento&quot; para registrar el primero.
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    <CashboxInteractiveWorkspace
+      month={month}
+      monthLabel={monthLabel}
+      showAll={showAll}
+      balance={balance}
+      totalCount={totalCount}
+      totalsByMethod={totalsByMethod}
+      displayedTransactions={displayedTransactions}
+      monthTransactions={monthTransactions}
+      allTransactions={showAll ? transactions : undefined}
+      period={period}
+      availableMonths={availableMonths}
+      monthsSummary={monthsSummary}
+    />
   );
 }

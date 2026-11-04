@@ -57,14 +57,23 @@ export function MonthlyReport({
   transactions,
   monthsSummary,
   allTransactions,
+  selectedAccount,
 }: {
   month: string;
   period: AdminCashboxPeriod | null;
   transactions: AdminTransaction[];
   monthsSummary?: CashboxMonthSummary[];
   allTransactions?: AdminTransaction[];
+  selectedAccount?: string | null;
 }) {
-  const rows = useMemo(() => computeRows(transactions), [transactions]);
+  const effectiveTransactions = useMemo(
+    () =>
+      selectedAccount
+        ? transactions.filter((t) => t.paymentMethod === selectedAccount)
+        : transactions,
+    [transactions, selectedAccount]
+  );
+  const rows = useMemo(() => computeRows(effectiveTransactions), [effectiveTransactions]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -92,14 +101,19 @@ export function MonthlyReport({
   }, [rows]);
 
   const finalBalance = rows.length > 0 ? rows[rows.length - 1].running : 0;
+  const netYape1 = totals.incomeYape1 - totals.expenseYape1;
+  const netYape2 = totals.incomeYape2 - totals.expenseYape2;
+  const netCash = totals.incomeCash - totals.expenseCash;
   const displayRows = useMemo(() => [...rows].reverse(), [rows]);
 
   const handleDownloadPDF = () => {
     generateCashboxReportPDF({
-      month,
-      monthLabel: formatMonthLabel(month),
+      month: selectedAccount ? `${month}_${selectedAccount.replace(/\s+/g, "")}` : month,
+      monthLabel: selectedAccount
+        ? `${formatMonthLabel(month)} (Solo ${selectedAccount})`
+        : formatMonthLabel(month),
       responsible: period?.responsible,
-      transactions,
+      transactions: effectiveTransactions,
     });
   };
 
@@ -181,6 +195,9 @@ export function MonthlyReport({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-bold text-fg">
           Reporte de caja — {formatMonthLabel(month)}
+          {selectedAccount && (
+            <span className="ml-2 text-accent">· Filtrado por {selectedAccount}</span>
+          )}
         </h2>
         <div className="flex items-center gap-2">
           <button
@@ -190,7 +207,7 @@ export function MonthlyReport({
             title="Descargar reporte mensual de caja en PDF"
           >
             <Download size={14} />
-            Descargar PDF ({transactions.length} movs.)
+            Descargar PDF ({effectiveTransactions.length} movs.)
           </button>
           <button
             type="button"
@@ -242,19 +259,41 @@ export function MonthlyReport({
         <tfoot>
           <tr className="border-t-2 border-border text-xs font-bold text-fg">
             <td className="px-2 py-2" colSpan={2}>
-              Totales del período
+              Totales del período (Ingresos / Egresos)
             </td>
-            <td className="px-2 py-2 text-right">{money(totals.income)}</td>
+            <td className="px-2 py-2 text-right text-accent">{money(totals.income)}</td>
             <td className="px-2 py-2 text-right">{money(totals.incomeYape1)}</td>
             <td className="px-2 py-2 text-right">{money(totals.incomeYape2)}</td>
             <td className="px-2 py-2 text-right">{money(totals.incomeCash)}</td>
-            <td className="px-2 py-2 text-right">{money(totals.expense)}</td>
+            <td className="px-2 py-2 text-right text-red-600">{money(totals.expense)}</td>
             <td className="px-2 py-2 text-right">{money(totals.expenseYape1)}</td>
             <td className="px-2 py-2 text-right">{money(totals.expenseYape2)}</td>
             <td className="px-2 py-2 text-right">{money(totals.expenseCash)}</td>
             <td className="px-2 py-2 text-right text-accent">{money(finalBalance)}</td>
             <td className="px-2 py-2" />
             <td className="print:hidden px-2 py-2" />
+          </tr>
+          <tr className="border-t border-border/80 bg-accent/[0.04] text-xs font-extrabold text-fg">
+            <td className="px-2 py-2.5" colSpan={3}>
+              Saldos netos por cuenta (Ingreso − Egreso)
+            </td>
+            <td className="px-2 py-2.5 text-right text-[#742284] dark:text-[#c084fc]" title="Saldo Neto Yape 1 (Edgar)">
+              Yape 1: S/. {netYape1.toFixed(2)}
+            </td>
+            <td className="px-2 py-2.5 text-right text-fuchsia-700 dark:text-fuchsia-400" title="Saldo Neto Yape 2 (Caja)">
+              Yape 2: S/. {netYape2.toFixed(2)}
+            </td>
+            <td className="px-2 py-2.5 text-right text-emerald-700 dark:text-emerald-400" title="Saldo Neto Efectivo (Caja Física)">
+              Efect.: S/. {netCash.toFixed(2)}
+            </td>
+            <td className="px-2 py-2.5 text-right text-fg-muted font-semibold" colSpan={4}>
+              Suma de las 3 cuentas =
+            </td>
+            <td className="px-2 py-2.5 text-right text-accent font-black">
+              S/. {finalBalance.toFixed(2)}
+            </td>
+            <td className="px-2 py-2.5" />
+            <td className="print:hidden px-2 py-2.5" />
           </tr>
         </tfoot>
       </table>

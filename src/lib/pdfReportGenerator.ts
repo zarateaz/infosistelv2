@@ -346,9 +346,11 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
   let totalIncome = 0;
   let totalExpense = 0;
   let cashIncome = 0;
-  let yapeIncome = 0;
   let cashExpense = 0;
-  let yapeExpense = 0;
+  let yape1Income = 0;
+  let yape1Expense = 0;
+  let yape2Income = 0;
+  let yape2Expense = 0;
 
   function formatTxDate(dateVal: Date | string): string {
     if (typeof dateVal === "string") {
@@ -365,12 +367,14 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
     if (isInc) {
       totalIncome += t.amount;
       if (t.paymentMethod === "EFECTIVO") cashIncome += t.amount;
-      else yapeIncome += t.amount;
+      else if (t.paymentMethod === "YAPE 1") yape1Income += t.amount;
+      else if (t.paymentMethod === "YAPE 2") yape2Income += t.amount;
       running += t.amount;
     } else {
       totalExpense += t.amount;
       if (t.paymentMethod === "EFECTIVO") cashExpense += t.amount;
-      else yapeExpense += t.amount;
+      else if (t.paymentMethod === "YAPE 1") yape1Expense += t.amount;
+      else if (t.paymentMethod === "YAPE 2") yape2Expense += t.amount;
       running -= t.amount;
     }
 
@@ -388,6 +392,9 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
   });
 
   const finalBalance = running;
+  const cashNet = cashIncome - cashExpense;
+  const yape1Net = yape1Income - yape1Expense;
+  const yape2Net = yape2Income - yape2Expense;
 
   // Summary Metrics Section (4 cards)
   const cardY = 32;
@@ -395,29 +402,32 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
   const cardGap = 4;
   const cardWidth = (pageWidth - 28 - cardGap * 3) / 4;
 
+  const yape1Purple = [116, 34, 132] as const;
+  const yape2Fuchsia = [162, 28, 175] as const;
+
   const metrics = [
     {
-      title: "TOTAL INGRESOS",
-      value: `S/. ${totalIncome.toFixed(2)}`,
-      sub: `Efectivo: S/. ${cashIncome.toFixed(2)} · Yape: S/. ${yapeIncome.toFixed(2)}`,
+      title: "SALDO CAJA EFECTIVO",
+      value: `S/. ${cashNet.toFixed(2)}`,
+      sub: `Ing: S/. ${cashIncome.toFixed(2)} · Egr: S/. ${cashExpense.toFixed(2)}`,
       color: emeraldGreen,
     },
     {
-      title: "TOTAL EGRESOS",
-      value: `S/. ${totalExpense.toFixed(2)}`,
-      sub: `Efectivo: S/. ${cashExpense.toFixed(2)} · Yape: S/. ${yapeExpense.toFixed(2)}`,
-      color: redExpense,
+      title: "SALDO YAPE 1 (EDGAR)",
+      value: `S/. ${yape1Net.toFixed(2)}`,
+      sub: `Ing: S/. ${yape1Income.toFixed(2)} · Egr: S/. ${yape1Expense.toFixed(2)}`,
+      color: yape1Purple,
     },
     {
-      title: "SALDO NETO DEL MES",
+      title: "SALDO YAPE 2 (CAJA)",
+      value: `S/. ${yape2Net.toFixed(2)}`,
+      sub: `Ing: S/. ${yape2Income.toFixed(2)} · Egr: S/. ${yape2Expense.toFixed(2)}`,
+      color: yape2Fuchsia,
+    },
+    {
+      title: "SALDO NETO GENERAL",
       value: `S/. ${finalBalance.toFixed(2)}`,
-      sub: finalBalance >= 0 ? "Balance positivo" : "Balance negativo",
-      color: primaryBlue,
-    },
-    {
-      title: "MOVIMIENTOS REGISTRADOS",
-      value: `${data.transactions.length} registros`,
-      sub: `${data.monthLabel}`,
+      sub: `Ing: S/. ${totalIncome.toFixed(2)} · Egr: S/. ${totalExpense.toFixed(2)} (${data.transactions.length} movs.)`,
       color: primaryBlue,
     },
   ];
