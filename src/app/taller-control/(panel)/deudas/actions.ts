@@ -126,24 +126,8 @@ export async function toggleDebtActive(id: string): Promise<ActionResult> {
 
 export async function deleteDebt(id: string): Promise<ActionResult> {
   await requireSession();
-  // Los egresos de Caja que generaron sus pagos van a la Papelera (recuperables).
-  const payments = await prisma.debtPayment.findMany({
-    where: { debtId: id, cashboxTransactionId: { not: null } },
-    select: { cashboxTransactionId: true },
-  });
-  const cashIds = payments.map((p) => p.cashboxTransactionId!).filter(Boolean);
-  await prisma.$transaction([
-    prisma.cashboxTransaction.updateMany({
-      where: { id: { in: cashIds }, deletedAt: null },
-      data: { deletedAt: new Date() },
-    }),
-    prisma.debt.deleteMany({ where: { id } }),
-  ]);
+  await prisma.debt.deleteMany({ where: { id } });
   revalidatePath(PATH);
-  if (cashIds.length) {
-    revalidatePath("/taller-control/caja");
-    revalidatePath("/taller-control/papelera");
-  }
   return { ok: true };
 }
 
@@ -156,7 +140,7 @@ const paymentSchema = z.object({
   paidAt: z.string().refine((v) => parseDateInput(v) !== null, "Fecha de pago inválida"),
   method: z.enum(DEBT_PAYMENT_METHODS),
   note: optionalText(300),
-  addToCashbox: z.boolean().default(false),
+  addToCashbox: z.boolean().optional(),
 });
 
 export type PaymentInput = z.input<typeof paymentSchema>;
@@ -165,40 +149,20 @@ export async function registerDebtPayment(input: PaymentInput): Promise<ActionRe
   await requireSession();
   const parsed = paymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
-  const { debtId, period, amount, paidAt, method, note, addToCashbox } = parsed.data;
+  const { debtId, period, amount, paidAt, method, note } = parsed.data;
 
   const debt = await prisma.debt.findUnique({ where: { id: debtId } });
   if (!debt) return { ok: false, error: "La obligación ya no existe." };
-  if (addToCashbox && !isCashboxMethod(method)) {
-    return { ok: false, error: "Solo los pagos en Efectivo, Yape 1 o Yape 2 se pueden registrar en Caja." };
-  }
 
   const existing = await prisma.debtPayment.findUnique({ where: { debtId_period: { debtId, period } } });
   if (existing) return { ok: false, error: `${periodLabel(period)} ya figura como pagado.` };
 
   const paidDate = parseDateInput(paidAt)!;
-  await prisma.$transaction(async (tx) => {
-    let cashboxTransactionId: string | null = null;
-    if (addToCashbox) {
-      const cash = await tx.cashboxTransaction.create({
-        data: {
-          date: paidDate,
-          type: "EXPENSE",
-          amount,
-          paymentMethod: method,
-          description: `Pago ${debt.name} — ${periodLabel(period)}`.slice(0, 200),
-          notes: ["Registrado desde Deudas", note].filter(Boolean).join(" · ").slice(0, 500),
-        },
-      });
-      cashboxTransactionId = cash.id;
-    }
-    await tx.debtPayment.create({
-      data: { debtId, period, amount, paidAt: paidDate, method, note, cashboxTransactionId },
-    });
+  await prisma.debtPayment.create({
+    data: { debtId, period, amount, paidAt: paidDate, method, note },
   });
 
   revalidatePath(PATH);
-  if (addToCashbox) revalidatePath("/taller-control/caja");
   return { ok: true };
 }
 
@@ -207,21 +171,8 @@ export async function undoDebtPayment(paymentId: string): Promise<ActionResult> 
   const payment = await prisma.debtPayment.findUnique({ where: { id: paymentId } });
   if (!payment) return { ok: false, error: "El pago ya no existe." };
 
-  await prisma.$transaction(async (tx) => {
-    if (payment.cashboxTransactionId) {
-      // A la Papelera, no borrado definitivo: se puede restaurar desde allí.
-      await tx.cashboxTransaction.updateMany({
-        where: { id: payment.cashboxTransactionId, deletedAt: null },
-        data: { deletedAt: new Date() },
-      });
-    }
-    await tx.debtPayment.delete({ where: { id: paymentId } });
-  });
+  await prisma.debtPayment.delete({ where: { id: paymentId } });
 
   revalidatePath(PATH);
-  if (payment.cashboxTransactionId) {
-    revalidatePath("/taller-control/caja");
-    revalidatePath("/taller-control/papelera");
-  }
   return { ok: true };
 }

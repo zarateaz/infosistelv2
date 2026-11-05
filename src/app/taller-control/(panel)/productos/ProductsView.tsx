@@ -16,8 +16,10 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { DeleteProductButton } from "./DeleteProductButton";
 import { deleteProduct, type AdminProduct } from "./actions";
+import { ProductShareModal } from "./ProductShareModal";
 
 type ViewMode = "list" | "grid";
 type SortOption = "itemNumber_asc" | "itemNumber_desc" | "name_asc" | "price_asc" | "price_desc" | "stock_asc";
@@ -31,6 +33,7 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
   const [sortBy, setSortBy] = useState<SortOption>("itemNumber_asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(25);
+  const [sharingProduct, setSharingProduct] = useState<AdminProduct | null>(null);
 
   // Lista única de categorías con su cantidad de productos
   const categoriesWithCounts = useMemo(() => {
@@ -384,6 +387,15 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
                     {/* Acciones */}
                     <td className="px-4 py-3 whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setSharingProduct(p)}
+                          aria-label={`Compartir ${p.name}`}
+                          title="Compartir por WhatsApp o ver galería"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 transition-colors hover:bg-emerald-600 hover:text-white shadow-sm"
+                        >
+                          <WhatsAppIcon size={14} />
+                        </button>
                         <Link
                           href={`/taller-control/productos/${p.id}`}
                           aria-label={`Editar ${p.name}`}
@@ -480,8 +492,21 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
                     aria-label={`Editar ${p.name}`}
                     className="flex h-8 flex-1 items-center justify-center gap-1 rounded-xl border border-border/60 bg-bg-alt text-xs font-bold text-fg-muted transition-colors hover:border-accent hover:text-accent hover:bg-bg"
                   >
-                    <Pencil size={13} /> Editar
+                    <Pencil size={13} />
+                    <span>Editar</span>
                   </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => setSharingProduct(p)}
+                    aria-label={`Compartir ${p.name}`}
+                    title="Compartir por WhatsApp o ver galería"
+                    className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-600 transition-all hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm active:scale-95"
+                  >
+                    <WhatsAppIcon size={13} />
+                    <span>Compartir</span>
+                  </button>
+
                   <DeleteProductButton productName={p.name} action={() => deleteProduct(p.id)} />
                 </div>
               </div>
@@ -540,6 +565,14 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Modal interactivo de Compartir y Galería */}
+      {sharingProduct && (
+        <ProductShareModal
+          product={sharingProduct}
+          onClose={() => setSharingProduct(null)}
+        />
       )}
     </div>
   );

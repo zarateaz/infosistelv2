@@ -19,7 +19,21 @@ export default function TiendaPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
-    getProducts().then(setProducts);
+    getProducts().then((loaded) => {
+      setProducts(loaded);
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const qParam = params.get("q");
+        if (qParam) {
+          setQuery(qParam);
+          setDebouncedQuery(qParam);
+          const match = loaded.find(
+            (p) => p.name.toLowerCase().trim() === qParam.toLowerCase().trim()
+          );
+          if (match) setSelectedProduct(match);
+        }
+      }
+    });
     getCategories().then((cats) => setCategories(cats.map((c) => c.name)));
   }, []);
 
