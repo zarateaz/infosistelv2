@@ -292,13 +292,17 @@ model CashboxPeriod {
  */
 model InternetClient {
   id              String   @id @default(cuid())
+  clientCode      String?  // Código identificador único (ej. CLI-001, R1-P08)
   clientName      String
-  whatsapp        String // solo dígitos, con código de país (ej. 51964648202)
+  whatsapp        String   // solo dígitos, con código de país (ej. 51964648202)
+  galeria         String?  // Nombre de la galería donde está ubicado el internet
+  router          String?  // Router 1, Router 2, Router 3, Router 4, Router 5
+  portNumber      Int?     // Puerto del switch de 16 puertos (1 al 16)
   startDate       DateTime
   nextPaymentDate DateTime
   amount          Float    @default(0)
-  concept         String? // nota/concepto (ej. "Pagó 3 meses por adelantado")
-  paidMonths      String? // JSON-encoded record de meses pagados: { "YYYY-MM": { status: "PAID", paidAt: "...", amount: 30, method: "YAPE", note: "..." } }
+  concept         String?  // nota/concepto (ej. "Pagó 3 meses por adelantado")
+  paidMonths      String?  // JSON-encoded record de meses pagados: { "YYYY-MM": { status: "PAID", paidAt: "...", amount: 30, method: "YAPE", note: "..." } }
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

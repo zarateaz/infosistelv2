@@ -30,6 +30,19 @@ export const MONTH_SHORT_NAMES = [
   "DIC",
 ] as const;
 
+export const ROUTERS = [
+  "Router 1",
+  "Router 2",
+  "Router 3",
+  "Router 4",
+  "Router 5",
+] as const;
+
+export type RouterType = (typeof ROUTERS)[number];
+
+export const TOTAL_SWITCH_PORTS = 16;
+export const SWITCH_PORTS = Array.from({ length: TOTAL_SWITCH_PORTS }, (_, i) => i + 1); // 1..16
+
 export interface MonthPaymentRecord {
   status: "paid" | "unpaid";
   paidAt?: string; // YYYY-MM-DD
@@ -42,8 +55,12 @@ export type PaidMonthsMap = Record<string, MonthPaymentRecord>; // Key: "YYYY-MM
 
 export interface InternetClientRow {
   id: string;
+  clientCode?: string | null;
   clientName: string;
   whatsapp: string;
+  galeria?: string | null;
+  router?: string | null;
+  portNumber?: number | null;
   startDate: string; // YYYY-MM-DD
   nextPaymentDate: string; // YYYY-MM-DD
   amount: number;
@@ -72,13 +89,30 @@ export function cobranzaState(days: number): CobranzaState {
 
 export function whatsappLink(row: InternetClientRow, days: number): string {
   const monto = row.amount > 0 ? ` por S/. ${row.amount.toFixed(2)}` : "";
+  const infoExtra = [
+    row.galeria ? `Galería: ${row.galeria}` : null,
+    row.router && row.portNumber ? `${row.router} - Pto ${row.portNumber}` : null,
+    row.clientCode ? `Cód: ${row.clientCode}` : null,
+  ].filter(Boolean).join(" · ");
+
+  const conexionTxt = infoExtra ? ` (${infoExtra})` : "";
+
   const msg =
     days < 0
-      ? `Hola ${row.clientName}, te escribimos de Infosistel. Tu pago del servicio de internet${monto} venció hace ${-days} día(s). ¿Nos confirmas tu pago? Gracias.`
+      ? `Hola ${row.clientName}, te escribimos de Infosistel Internet${conexionTxt}. Tu pago mensual del servicio${monto} venció hace ${-days} día(s). ¿Nos confirmas tu pago? Muchas gracias.`
       : days === 0
-        ? `Hola ${row.clientName}, te escribimos de Infosistel. Hoy vence tu pago del servicio de internet${monto}. Gracias.`
-        : `Hola ${row.clientName}, te recordamos de Infosistel que tu pago del servicio de internet${monto} vence en ${days} día(s). Gracias.`;
+        ? `Hola ${row.clientName}, te escribimos de Infosistel Internet${conexionTxt}. Hoy vence tu pago mensual del servicio${monto}. Muchas gracias.`
+        : `Hola ${row.clientName}, te recordamos de Infosistel Internet${conexionTxt} que tu pago mensual del servicio${monto} vence en ${days} día(s). Muchas gracias.`;
   return `https://wa.me/${row.whatsapp}?text=${encodeURIComponent(msg)}`;
+}
+
+export function directWhatsappLink(whatsapp: string, clientName?: string): string {
+  const clean = whatsapp.replace(/\D/g, "");
+  const number = clean.length === 9 ? `51${clean}` : clean;
+  const msg = clientName
+    ? `Hola ${clientName}, te saludamos de Infosistel Internet.`
+    : `Hola, te saludamos del soporte de Infosistel Internet.`;
+  return `https://wa.me/${number}?text=${encodeURIComponent(msg)}`;
 }
 
 /**

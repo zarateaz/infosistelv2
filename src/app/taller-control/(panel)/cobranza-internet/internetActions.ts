@@ -17,8 +17,12 @@ export async function getInternetClients(): Promise<InternetClientRow[]> {
   const rows = await prisma.internetClient.findMany({ orderBy: { nextPaymentDate: "asc" } });
   return rows.map((r) => ({
     id: r.id,
+    clientCode: r.clientCode,
     clientName: r.clientName,
     whatsapp: r.whatsapp,
+    galeria: r.galeria,
+    router: r.router,
+    portNumber: r.portNumber,
     startDate: dateToInputValue(r.startDate),
     nextPaymentDate: dateToInputValue(r.nextPaymentDate),
     amount: r.amount,
@@ -34,11 +38,38 @@ function normalizeWhatsapp(raw: string): string {
 }
 
 const clientSchema = z.object({
+  clientCode: z
+    .string()
+    .trim()
+    .max(50, "El código no puede superar 50 caracteres")
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v.toUpperCase() : null)),
   clientName: z.string().trim().min(1, "El nombre es obligatorio").max(150),
   whatsapp: z
     .string()
     .transform(normalizeWhatsapp)
     .refine((v) => v.length >= 9 && v.length <= 15, "WhatsApp inválido (9 dígitos, ej. 964648202)"),
+  galeria: z
+    .string()
+    .trim()
+    .max(120, "El nombre de la galería no puede superar 120 caracteres")
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v : null)),
+  router: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v : null)),
+  portNumber: z.coerce
+    .number()
+    .min(1, "El puerto debe ser entre 1 y 16")
+    .max(16, "El puerto debe ser entre 1 y 16")
+    .optional()
+    .nullable()
+    .transform((v) => (v && v >= 1 && v <= 16 ? v : null)),
   startDate: z.string().refine((v) => parseDateInput(v) !== null, "Fecha de inicio inválida"),
   nextPaymentDate: z.string().refine((v) => parseDateInput(v) !== null, "Fecha de pago inválida"),
   amount: z.coerce.number().min(0, "El monto no puede ser negativo").default(0),
@@ -47,6 +78,7 @@ const clientSchema = z.object({
     .trim()
     .max(200, "El concepto no puede superar 200 caracteres")
     .optional()
+    .nullable()
     .transform((v) => (v ? v : null)),
 });
 
@@ -59,8 +91,12 @@ export async function createInternetClient(
   formData: FormData
 ): Promise<InternetFormState> {
   const parsed = clientSchema.safeParse({
+    clientCode: formData.get("clientCode")?.toString() || null,
     clientName: formData.get("clientName"),
     whatsapp: formData.get("whatsapp") ?? "",
+    galeria: formData.get("galeria")?.toString() || null,
+    router: formData.get("router")?.toString() || null,
+    portNumber: formData.get("portNumber") ? Number(formData.get("portNumber")) : null,
     startDate: formData.get("startDate"),
     nextPaymentDate: formData.get("nextPaymentDate"),
     amount: formData.get("amount") || 0,
@@ -142,8 +178,12 @@ export async function updateInternetClient(
   if (!id) return { error: "ID de cliente no proporcionado." };
 
   const parsed = clientSchema.safeParse({
+    clientCode: formData.get("clientCode")?.toString() || null,
     clientName: formData.get("clientName"),
     whatsapp: formData.get("whatsapp") ?? "",
+    galeria: formData.get("galeria")?.toString() || null,
+    router: formData.get("router")?.toString() || null,
+    portNumber: formData.get("portNumber") ? Number(formData.get("portNumber")) : null,
     startDate: formData.get("startDate"),
     nextPaymentDate: formData.get("nextPaymentDate"),
     amount: formData.get("amount") || 0,
@@ -171,8 +211,12 @@ export async function updateInternetClient(
 export async function updateInternetClientDirect(
   id: string,
   data: {
+    clientCode?: string | null;
     clientName: string;
     whatsapp: string;
+    galeria?: string | null;
+    router?: string | null;
+    portNumber?: number | null;
     startDate: string;
     nextPaymentDate: string;
     amount: number;
