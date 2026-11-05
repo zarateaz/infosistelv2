@@ -59,7 +59,6 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/cuentas": AccountsFinanceIcon,
   "/taller-control/deudas": DebtsScheduleIcon,
   "/taller-control/usuarios": UsersAdminIcon,
-  "/taller-control/prueba": TechServicesIcon,
 };
 
 // Groups the flat nav list into labeled sections purely for display — the
@@ -88,7 +87,6 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/categorias": "Inventario",
   "/taller-control/reparaciones": "Servicio técnico",
   "/taller-control/servicios": "Servicio técnico",
-  "/taller-control/prueba": "Servicio técnico",
   "/taller-control/usuarios": "Sistema",
 };
 const GROUP_ORDER = ["General", "Ventas", "Inventario", "Servicio técnico", "Sistema"];
