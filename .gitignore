@@ -35,6 +35,12 @@ yarn-error.log*
 # meant to survive a fresh clone, unlike the rest of these.
 .env*
 !.env.example
+# Plantilla del laboratorio (solo documenta el formato, sin secretos).
+!.env.lab.example
+
+# Datos del laboratorio (BD de demo, copias cifradas, claves de demo).
+# Nunca se commitean: son datos de prueba, no código fuente.
+/lab-data/
 
 # vercel
 .vercel

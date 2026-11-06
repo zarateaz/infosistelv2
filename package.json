@@ -8,7 +8,12 @@
     "postbuild": "mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/static && cp -r public/. .next/standalone/public/ 2>/dev/null || true",
     "start": "next start",
     "lint": "eslint",
-    "ship": "tsx scripts/devops/ship.ts"
+    "ship": "tsx scripts/devops/ship.ts",
+    "lab": "bash scripts/lab/run-lab.sh",
+    "lab:prod": "bash scripts/lab/run-lab.sh --prod",
+    "lab:seed": "tsx --env-file=.env.lab scripts/lab/seed-lab.ts",
+    "lab:smoke": "bash scripts/lab/smoke-test.sh",
+    "lab:ransom": "python3 scripts/lab/ransomware-sim.py"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.37",
