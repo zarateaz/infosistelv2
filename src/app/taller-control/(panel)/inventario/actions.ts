@@ -2,12 +2,17 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { registerCounterSale, CounterSaleError } from "@/lib/counterSale";
 import { emitInvoice } from "@/lib/invoicing";
 
 const buyerSchema = z.object({
   productId: z.string().min(1),
   quantity: z.coerce.number().int().min(1).default(1).optional(),
+  paymentMethod: z.enum(PAYMENT_METHODS, {
+    message: "Selecciona el método de pago.",
+  }),
+  clientRequestId: z.string().trim().min(8).max(120).optional(),
   docNumber: z.string().trim().max(20).optional(),
   nombre: z.string().trim().max(100).optional(),
   email: z.string().trim().max(150).optional(),
@@ -21,61 +26,63 @@ export async function sellOneUnit(input: unknown): Promise<{
   productName?: string;
 }> {
   const parsed = buyerSchema.safeParse(input);
-  if (!parsed.success) return { error: "Datos inválidos." };
-  const { productId, docNumber, nombre, email, telefono } = parsed.data;
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const { productId, docNumber, nombre, email, telefono, paymentMethod } =
+    parsed.data;
   const quantity = parsed.data.quantity ?? 1;
 
-  const product = await prisma.product.findUnique({ where: { id: productId } });
-  if (!product) return { error: "Producto no encontrado." };
-  if (product.stock <= 0) return { error: "Sin stock disponible." };
-  if (product.stock < quantity) {
-    return { error: `Stock insuficiente. Solo quedan ${product.stock} unidad(es) disponible(s).` };
+  let sale;
+  try {
+    // Misma transacción atómica que usa Productos → "Vender": descuenta
+    // stock, crea la Sale y registra el ingreso en Caja con su método de pago.
+    sale = await registerCounterSale({
+      productId,
+      quantity,
+      paymentMethod,
+      clientRequestId: parsed.data.clientRequestId ?? null,
+      clientName: nombre?.trim() ? nombre.trim() : null,
+    });
+  } catch (error) {
+    if (error instanceof CounterSaleError) return { error: error.message };
+    console.error("[sellOneUnit] Error al registrar la venta:", error);
+    return {
+      error:
+        "No se pudo registrar la venta. No se descontó stock ni se creó ningún ingreso; inténtalo de nuevo.",
+    };
   }
-
-  const unitPrice = product.onSale && product.salePrice ? product.salePrice : product.price;
-  const unitCost = product.costPrice ?? 0;
-  const totalPrice = unitPrice * quantity;
-  const totalCost = unitCost * quantity;
-  const totalProfit = totalPrice - totalCost;
-
-  const [sale, updatedProduct] = await prisma.$transaction([
-    prisma.sale.create({
-      data: {
-        productId: product.id,
-        pName: product.name,
-        category: product.category,
-        quantity,
-        price: totalPrice,
-        costPrice: totalCost,
-        profit: totalProfit,
-        origin: "FISICA",
-      },
-    }),
-    prisma.product.update({ where: { id: product.id }, data: { stock: { decrement: quantity } } }),
-  ]);
 
   // Fase 5: la venta ya quedó registrada arriba — un problema al emitir el
   // comprobante nunca revierte la venta ni descuenta el stock de vuelta.
   await emitInvoice({
-    saleId: sale.id,
+    saleId: sale.saleId,
     docNumber,
     nombre,
     email,
     telefono,
-    total: totalPrice,
-    items: [{ descripcion: product.name, cantidad: quantity, precioUnitarioConIgv: unitPrice }],
+    total: sale.total,
+    items: [
+      {
+        descripcion: sale.productName,
+        cantidad: quantity,
+        precioUnitarioConIgv: sale.unitPrice,
+      },
+    ],
   });
 
   revalidatePath("/taller-control/inventario");
   revalidatePath("/taller-control/productos");
   revalidatePath("/taller-control/ventas");
+  revalidatePath("/taller-control/caja");
   revalidatePath("/taller-control/reporte-mensual");
+  revalidatePath("/taller-control/seguimiento-stock");
   revalidatePath("/taller-control");
   revalidatePath("/tienda");
 
   return {
-    lowStockAlert: updatedProduct.stock <= 1,
-    remainingStock: updatedProduct.stock,
-    productName: product.name,
+    lowStockAlert: sale.lowStock,
+    remainingStock: sale.remainingStock,
+    productName: sale.productName,
   };
 }

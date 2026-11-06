@@ -2,12 +2,33 @@
 
 import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { ShoppingCart, X, AlertTriangle, MessageCircle, Plus, Minus } from "lucide-react";
+import {
+  ShoppingCart,
+  X,
+  AlertTriangle,
+  MessageCircle,
+  Plus,
+  Minus,
+  Banknote,
+  Smartphone,
+} from "lucide-react";
 import { sellOneUnit } from "./actions";
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_INFO,
+  type PaymentMethodType,
+} from "@/lib/paymentMethods";
 import {
   buildWhatsAppLink,
   generateSingleProductStockAlertMessage,
 } from "@/lib/whatsappStockReport";
+
+function newRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `sale-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export function SellButton({
   productId,
@@ -20,6 +41,8 @@ export function SellButton({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | "">("");
+  const [requestId, setRequestId] = useState("");
   const [docNumber, setDocNumber] = useState("");
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -30,37 +53,51 @@ export function SellButton({
 
   const handleOpen = () => {
     setQuantity(1);
+    setPaymentMethod("");
+    setRequestId(newRequestId());
     setError(null);
     setStockNotice(null);
     setIsOpen(true);
   };
 
   const confirmSale = () => {
+    if (!paymentMethod) {
+      setError("Selecciona el método de pago (Efectivo, Yape 1 o Yape 2).");
+      return;
+    }
     startTransition(async () => {
-      const result = await sellOneUnit({
-        productId,
-        quantity,
-        docNumber: docNumber.trim() || undefined,
-        nombre: nombre.trim() || undefined,
-        email: email.trim() || undefined,
-        telefono: telefono.trim() || undefined,
-      });
+      try {
+        const result = await sellOneUnit({
+          productId,
+          quantity,
+          paymentMethod,
+          clientRequestId: requestId || undefined,
+          docNumber: docNumber.trim() || undefined,
+          nombre: nombre.trim() || undefined,
+          email: email.trim() || undefined,
+          telefono: telefono.trim() || undefined,
+        });
 
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
 
-      setError(null);
-      if (result.lowStockAlert && result.remainingStock != null) {
-        // Show low stock notification modal
-        setStockNotice({ remaining: result.remainingStock });
-      } else {
-        setIsOpen(false);
-        setDocNumber("");
-        setNombre("");
-        setEmail("");
-        setTelefono("");
+        setError(null);
+        if (result.lowStockAlert && result.remainingStock != null) {
+          // Show low stock notification modal
+          setStockNotice({ remaining: result.remainingStock });
+        } else {
+          setIsOpen(false);
+          setDocNumber("");
+          setNombre("");
+          setEmail("");
+          setTelefono("");
+        }
+      } catch {
+        setError(
+          "No se pudo conectar con el servidor. Inténtalo de nuevo; la venta no se duplicará."
+        );
       }
     });
   };
@@ -174,6 +211,47 @@ export function SellButton({
                       </div>
                     </div>
 
+                    {/* Método de pago */}
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
+                        Método de pago <span className="text-red-500">*</span>
+                      </label>
+                      <div className="mt-1 grid grid-cols-3 gap-1.5">
+                        {PAYMENT_METHODS.map((m) => {
+                          const active = paymentMethod === m;
+                          const Icon = m === "EFECTIVO" ? Banknote : Smartphone;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                setPaymentMethod(m);
+                                setError(null);
+                              }}
+                              className={`flex flex-col items-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-bold transition-all active:scale-95 ${
+                                active
+                                  ? "border-accent bg-accent/10 text-accent shadow-sm"
+                                  : "border-border bg-bg text-fg-muted hover:border-accent/50 hover:text-fg"
+                              }`}
+                            >
+                              <Icon size={15} />
+                              <span className="leading-tight text-center">
+                                {PAYMENT_METHOD_INFO[m].name}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {paymentMethod && (
+                        <p className="mt-1.5 text-[10px] font-medium text-fg-muted">
+                          {PAYMENT_METHOD_INFO[paymentMethod].titular}
+                          {PAYMENT_METHOD_INFO[paymentMethod].formattedPhone
+                            ? ` · ${PAYMENT_METHOD_INFO[paymentMethod].formattedPhone}`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+
                     <input
                       type="text"
                       placeholder="Nombre / razón social (opcional)"
@@ -206,7 +284,7 @@ export function SellButton({
 
                   <button
                     onClick={confirmSale}
-                    disabled={isPending}
+                    disabled={isPending || !paymentMethod}
                     className="mt-4 w-full rounded-xl bg-accent py-2.5 text-sm font-bold text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-60"
                   >
                     {isPending ? "Vendiendo..." : `Confirmar venta (x${quantity})`}

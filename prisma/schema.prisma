@@ -186,6 +186,18 @@ model Sale {
   costPrice Float     @default(0)
   profit    Float // (price - costPrice) * quantity, computed at creation time
   origin    String    @default("FISICA") // "WEB" | "FISICA"
+  // Ventas de mostrador (@productos → "Vender"): forma de pago cobrada y
+  // vínculo con el ingreso en Caja que se crea en la misma transacción.
+  // Null en ventas históricas, pedidos web y ventas manuales que no la capturan.
+  paymentMethod        String? // "EFECTIVO" | "YAPE 1" | "YAPE 2"
+  cashboxTransactionId String? // id del movimiento INCOME de Caja generado por esta venta
+  // Idempotencia: id generado por el navegador al abrir el modal "Vender".
+  // Unique — si el usuario pulsa "Confirmar" dos veces (o el navegador
+  // reintenta la petición), el servidor devuelve la venta ya creada en vez
+  // de descontar stock y registrar el ingreso dos veces.
+  clientRequestId String? @unique
+  clientName      String? // comprador en mostrador (opcional)
+  note            String? // nota libre de la venta (opcional)
   date      DateTime  @default(now())
   createdAt DateTime  @default(now())
   // Soft delete — "Eliminar" in Ventas moves a sale to the Papelera instead
@@ -198,6 +210,7 @@ model Sale {
   invoices  Invoice[]
 
   @@index([deletedAt])
+  @@index([paymentMethod])
 }
 
 /**

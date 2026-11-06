@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Barcode,
   Sparkles,
+  ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -20,6 +21,7 @@ import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { DeleteProductButton } from "./DeleteProductButton";
 import { deleteProduct, type AdminProduct } from "./actions";
 import { ProductShareModal } from "./ProductShareModal";
+import { SellProductModal } from "./SellProductModal";
 
 type ViewMode = "list" | "grid";
 type SortOption = "itemNumber_asc" | "itemNumber_desc" | "name_asc" | "price_asc" | "price_desc" | "stock_asc";
@@ -34,6 +36,7 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(25);
   const [sharingProduct, setSharingProduct] = useState<AdminProduct | null>(null);
+  const [sellingProduct, setSellingProduct] = useState<AdminProduct | null>(null);
 
   // Lista única de categorías con su cantidad de productos
   const categoriesWithCounts = useMemo(() => {
@@ -389,6 +392,17 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
+                          onClick={() => setSellingProduct(p)}
+                          disabled={p.stock <= 0}
+                          aria-label={`Registrar venta de ${p.name}`}
+                          title={p.stock <= 0 ? "Sin stock" : "Registrar venta en tienda física"}
+                          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-bold text-accent-fg shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                          <ShoppingBag size={13} />
+                          <span>Vender</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setSharingProduct(p)}
                           aria-label={`Compartir ${p.name}`}
                           title="Compartir por WhatsApp o ver galería"
@@ -486,28 +500,42 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
                   )}
                 </div>
 
-                <div className="mt-3 flex items-center gap-1.5 border-t border-border/50 pt-2.5">
-                  <Link
-                    href={`/taller-control/productos/${p.id}`}
-                    aria-label={`Editar ${p.name}`}
-                    className="flex h-8 flex-1 items-center justify-center gap-1 rounded-xl border border-border/60 bg-bg-alt text-xs font-bold text-fg-muted transition-colors hover:border-accent hover:text-accent hover:bg-bg"
-                  >
-                    <Pencil size={13} />
-                    <span>Editar</span>
-                  </Link>
-
+                <div className="mt-3 space-y-1.5 border-t border-border/50 pt-2.5">
                   <button
                     type="button"
-                    onClick={() => setSharingProduct(p)}
-                    aria-label={`Compartir ${p.name}`}
-                    title="Compartir por WhatsApp o ver galería"
-                    className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-600 transition-all hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm active:scale-95"
+                    onClick={() => setSellingProduct(p)}
+                    disabled={p.stock <= 0}
+                    aria-label={`Registrar venta de ${p.name}`}
+                    title={p.stock <= 0 ? "Sin stock" : "Registrar venta en tienda física"}
+                    className="flex h-8 w-full items-center justify-center gap-1.5 rounded-xl bg-accent text-xs font-bold text-accent-fg shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    <WhatsAppIcon size={13} />
-                    <span>Compartir</span>
+                    <ShoppingBag size={13} />
+                    <span>{p.stock <= 0 ? "Sin stock" : "Vender"}</span>
                   </button>
 
-                  <DeleteProductButton productName={p.name} action={() => deleteProduct(p.id)} />
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href={`/taller-control/productos/${p.id}`}
+                      aria-label={`Editar ${p.name}`}
+                      className="flex h-8 flex-1 items-center justify-center gap-1 rounded-xl border border-border/60 bg-bg-alt text-xs font-bold text-fg-muted transition-colors hover:border-accent hover:text-accent hover:bg-bg"
+                    >
+                      <Pencil size={13} />
+                      <span>Editar</span>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => setSharingProduct(p)}
+                      aria-label={`Compartir ${p.name}`}
+                      title="Compartir por WhatsApp o ver galería"
+                      className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-600 transition-all hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm active:scale-95"
+                    >
+                      <WhatsAppIcon size={13} />
+                      <span>Compartir</span>
+                    </button>
+
+                    <DeleteProductButton productName={p.name} action={() => deleteProduct(p.id)} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -572,6 +600,14 @@ export function ProductsView({ products }: { products: AdminProduct[] }) {
         <ProductShareModal
           product={sharingProduct}
           onClose={() => setSharingProduct(null)}
+        />
+      )}
+
+      {/* Modal de venta de mostrador */}
+      {sellingProduct && (
+        <SellProductModal
+          product={sellingProduct}
+          onClose={() => setSellingProduct(null)}
         />
       )}
     </div>

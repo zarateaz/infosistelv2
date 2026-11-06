@@ -20,6 +20,7 @@
     "ai": "^7.0.85",
     "better-sqlite3": "^12.11.1",
     "gsap": "^3.15.0",
+    "html-to-image": "^1.11.13",
     "jose": "^6.2.10",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",

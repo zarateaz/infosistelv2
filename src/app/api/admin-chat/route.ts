@@ -55,6 +55,7 @@ Herramientas disponibles:
   Parámetro "producto": Número (#14 o 14), nombre o código.
   Parámetro "cantidad": Cantidad vendida.
   Parámetro "origen": "FISICA" (defecto) o "WEB".
+  Parámetro "metodoPago": OBLIGATORIO si origen es FISICA — "EFECTIVO", "YAPE 1" o "YAPE 2". Si el usuario no lo dijo, pregúntale cuál usó antes de ejecutar la venta.
 - "buscarProductoAdmin": Busca productos por número (#), nombre, código de barras o categoría para verificar datos y stock actual.
 
 ENTRENAMIENTO Y REGLAS DE OPERACIÓN:

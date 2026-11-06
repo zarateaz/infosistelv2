@@ -60,6 +60,7 @@ export interface AdminSale {
   profit: number;
   date: Date;
   origin: string;
+  paymentMethod: string | null;
   invoice: { id: string; estado: string; pdfUrl: string | null } | null;
 }
 
@@ -77,6 +78,7 @@ export async function getRecentSales(limit = 30): Promise<AdminSale[]> {
       profit: true,
       date: true,
       origin: true,
+      paymentMethod: true,
       invoices: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, estado: true, pdfUrl: true } },
     },
   });
@@ -93,6 +95,7 @@ export interface DeletedSale {
   profit: number;
   date: Date;
   origin: string;
+  paymentMethod: string | null;
   deletedAt: Date;
 }
 
@@ -100,7 +103,7 @@ export async function getDeletedSales(): Promise<DeletedSale[]> {
   const sales = await prisma.sale.findMany({
     where: { deletedAt: { not: null } },
     orderBy: { deletedAt: "desc" },
-    select: { id: true, pName: true, category: true, quantity: true, price: true, profit: true, date: true, origin: true, deletedAt: true },
+    select: { id: true, pName: true, category: true, quantity: true, price: true, profit: true, date: true, origin: true, paymentMethod: true, deletedAt: true },
   });
   // The `where` above guarantees deletedAt is non-null; Prisma's generated
   // type still widens it to Date | null for the column itself.
@@ -111,17 +114,50 @@ export async function getDeletedSales(): Promise<DeletedSale[]> {
 // destroying it — a wrong click used to lose the price/date for good with
 // no way back (reported directly). `date` is never touched, so a restored
 // sale reappears under its real, original sale date, not today's.
+//
+// Si la venta se registró desde el flujo "Vender" de Productos, también se
+// manda a la Papelera el ingreso de Caja que se creó con ella: de lo
+// contrario el dinero seguiría sumando en los saldos de Caja aunque la
+// venta ya no exista. Restaurar la venta restaura ambos. Stock no se toca
+// aquí (misma semántica histórica de eliminar una venta).
 export async function deleteSale(id: string): Promise<void> {
   const safeId = idSchema.parse(id);
-  await prisma.sale.update({ where: { id: safeId }, data: { deletedAt: new Date() } });
+  const deletedAt = new Date();
+  await prisma.$transaction(async (tx) => {
+    const sale = await tx.sale.findUnique({
+      where: { id: safeId },
+      select: { cashboxTransactionId: true },
+    });
+    await tx.sale.update({ where: { id: safeId }, data: { deletedAt } });
+    if (sale?.cashboxTransactionId) {
+      await tx.cashboxTransaction.updateMany({
+        where: { id: sale.cashboxTransactionId },
+        data: { deletedAt },
+      });
+    }
+  });
   revalidatePath("/taller-control/ventas");
+  revalidatePath("/taller-control/caja");
   revalidatePath("/taller-control/papelera");
 }
 
 export async function restoreSale(id: string): Promise<void> {
   const safeId = idSchema.parse(id);
-  await prisma.sale.update({ where: { id: safeId }, data: { deletedAt: null } });
+  await prisma.$transaction(async (tx) => {
+    const sale = await tx.sale.findUnique({
+      where: { id: safeId },
+      select: { cashboxTransactionId: true },
+    });
+    await tx.sale.update({ where: { id: safeId }, data: { deletedAt: null } });
+    if (sale?.cashboxTransactionId) {
+      await tx.cashboxTransaction.updateMany({
+        where: { id: sale.cashboxTransactionId },
+        data: { deletedAt: null },
+      });
+    }
+  });
   revalidatePath("/taller-control/ventas");
+  revalidatePath("/taller-control/caja");
   revalidatePath("/taller-control/papelera");
 }
 
@@ -129,11 +165,24 @@ export async function restoreSale(id: string): Promise<void> {
 // something already soft-deleted. Cascades to any linked Invoice's `saleId`
 // reference via the schema's `onDelete` (SetNull by default for an
 // optional relation), so this never fails because a SUNAT receipt still
-// points at the sale.
+// points at the sale. Si la venta tenía su ingreso de Caja vinculado, se
+// destruye también para no dejar un movimiento huérfano.
 export async function permanentlyDeleteSale(id: string): Promise<void> {
   const safeId = idSchema.parse(id);
-  await prisma.sale.delete({ where: { id: safeId } });
+  await prisma.$transaction(async (tx) => {
+    const sale = await tx.sale.findUnique({
+      where: { id: safeId },
+      select: { cashboxTransactionId: true },
+    });
+    if (sale?.cashboxTransactionId) {
+      await tx.cashboxTransaction.deleteMany({
+        where: { id: sale.cashboxTransactionId },
+      });
+    }
+    await tx.sale.delete({ where: { id: safeId } });
+  });
   revalidatePath("/taller-control/papelera");
+  revalidatePath("/taller-control/caja");
 }
 
 export async function retrySaleInvoice(invoiceId: string): Promise<void> {

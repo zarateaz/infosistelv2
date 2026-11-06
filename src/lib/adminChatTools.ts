@@ -2,6 +2,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { registerCounterSale, CounterSaleError } from "@/lib/counterSale";
 
 /**
  * Resuelve un producto en el inventario de forma infalible buscando por:
@@ -126,7 +128,8 @@ export const buscarProductoAdmin = tool({
 export const registrarVentaAdmin = tool({
   description:
     "Descuenta stock de un producto registrando una venta física o web. " +
-    "Puedes proporcionar el número de producto (ej: 14 o #14), el nombre del producto, el código de barras o el ID del producto, y la cantidad a descontar.",
+    "Puedes proporcionar el número de producto (ej: 14 o #14), el nombre del producto, el código de barras o el ID del producto, y la cantidad a descontar. " +
+    "Para ventas FISICA indica también metodoPago (EFECTIVO, YAPE 1 o YAPE 2); si el usuario no lo ha dicho, pregúntalo antes de registrar.",
   inputSchema: z.object({
     producto: z
       .string()
@@ -138,8 +141,14 @@ export const registrarVentaAdmin = tool({
       .describe("ID del producto (opcional si se pasa 'producto')."),
     cantidad: z.number().int().positive().describe("Cantidad de unidades a descontar por la venta."),
     origen: z.enum(["WEB", "FISICA"]).default("FISICA").describe("Origen de la venta (por defecto FISICA)."),
+    metodoPago: z
+      .enum(PAYMENT_METHODS)
+      .optional()
+      .describe(
+        "Obligatorio para ventas FISICA: EFECTIVO, YAPE 1 o YAPE 2. Si no lo sabes, pregúntale al usuario antes de registrar la venta."
+      ),
   }),
-  execute: async ({ producto, productId, cantidad, origen = "FISICA" }) => {
+  execute: async ({ producto, productId, cantidad, origen = "FISICA", metodoPago }) => {
     const target = producto || productId;
     if (!target) return { error: "Debes especificar qué producto descontar (número, nombre o ID)." };
 
@@ -149,6 +158,45 @@ export const registrarVentaAdmin = tool({
     }
     if (product.stock < cantidad) {
       return { error: `Stock insuficiente para [#${product.itemNumber}] ${product.name}. Solo quedan ${product.stock} unidades.` };
+    }
+
+    // Venta de mostrador: usa el mismo registro atómico que el botón "Vender"
+    // de Productos (stock + Sale + ingreso en Caja con método de pago).
+    if (origen === "FISICA") {
+      if (!metodoPago) {
+        return {
+          error:
+            "Para una venta de tienda física falta el método de pago. Pregúntale al usuario si fue EFECTIVO, YAPE 1 o YAPE 2 y vuelve a registrar la venta.",
+        };
+      }
+      try {
+        const sale = await registerCounterSale({
+          productId: product.id,
+          quantity: cantidad,
+          paymentMethod: metodoPago,
+          clientRequestId: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        });
+        try {
+          revalidatePath("/taller-control/productos");
+          revalidatePath("/taller-control/inventario");
+          revalidatePath("/taller-control/ventas");
+          revalidatePath("/taller-control/caja");
+          revalidatePath("/taller-control/seguimiento-stock");
+          revalidatePath("/tienda");
+        } catch {}
+        return {
+          exito: true,
+          itemNumber: sale.itemNumber,
+          nombre: sale.productName,
+          unidadesVendidas: sale.quantity,
+          stockRestante: sale.remainingStock,
+          metodoPago,
+          mensaje: `Venta de ${sale.quantity} u. registrada para [#${sale.itemNumber}] ${sale.productName} y cobrada con ${metodoPago}. Stock restante: ${sale.remainingStock} unidades.`,
+        };
+      } catch (error) {
+        if (error instanceof CounterSaleError) return { error: error.message };
+        return { error: "No se pudo registrar la venta. Inténtalo de nuevo." };
+      }
     }
 
     const unitPrice = product.onSale && product.salePrice ? product.salePrice : product.price;

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, TrendingUp, PieChart, FileText } from "lucide-react";
+import { DollarSign, TrendingUp, PieChart, FileText, ShoppingBag } from "lucide-react";
 import { getSaleStats, getRecentSales, deleteSale } from "./actions";
 import { DeleteSaleButton } from "./DeleteSaleButton";
 import { InvoiceCell } from "./InvoiceCell";
@@ -10,6 +10,25 @@ const STAT_CARDS: { key: "day" | "week" | "month"; label: string; icon: typeof T
   { key: "week", label: "Semana actual", icon: PieChart, tint: "violet" },
   { key: "month", label: "Este mes", icon: DollarSign, tint: "cyan" },
 ];
+
+function PaymentMethodBadge({ method }: { method: string | null }) {
+  if (!method) {
+    return <span className="text-xs font-semibold text-fg-muted">—</span>;
+  }
+  const tone =
+    method === "EFECTIVO"
+      ? "bg-emerald-500/10 text-emerald-600"
+      : method === "YAPE 1"
+        ? "bg-violet-500/10 text-violet-600"
+        : "bg-fuchsia-500/10 text-fuchsia-600";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${tone}`}
+    >
+      {method}
+    </span>
+  );
+}
 
 export default async function AdminSalesPage() {
   const [stats, sales] = await Promise.all([getSaleStats(), getRecentSales()]);
@@ -30,6 +49,14 @@ export default async function AdminSalesPage() {
         </Link>
       </div>
 
+      <Link
+        href="/taller-control/productos"
+        className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-accent transition-colors hover:underline"
+      >
+        <ShoppingBag size={13} />
+        ¿Hiciste una venta en tienda física? Regístrala desde Productos → Vender
+      </Link>
+
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {STAT_CARDS.map(({ key, label, icon, tint }) => {
           const bucket = stats[key];
@@ -47,7 +74,7 @@ export default async function AdminSalesPage() {
       </div>
 
       <div className="mt-8 overflow-x-auto admin-glass rounded-[var(--radius-lg)]">
-        <table className="w-full min-w-[560px] text-left text-sm">
+        <table className="w-full min-w-[900px] text-left text-sm">
           <thead>
             <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
               <th className="px-5 py-3">Producto</th>
@@ -55,6 +82,7 @@ export default async function AdminSalesPage() {
               <th className="px-5 py-3">Total</th>
               <th className="px-5 py-3">Ganancia</th>
               <th className="px-5 py-3">Origen</th>
+              <th className="px-5 py-3">Pago</th>
               <th className="px-5 py-3">Fecha</th>
               <th className="px-5 py-3">Comprobante</th>
               <th className="px-5 py-3" />
@@ -75,6 +103,9 @@ export default async function AdminSalesPage() {
                     {s.origin === 'WEB' ? 'Página Web' : 'Tienda Física'}
                   </span>
                 </td>
+                <td className="px-5 py-3.5">
+                  <PaymentMethodBadge method={s.paymentMethod} />
+                </td>
                 <td className="px-5 py-3.5 text-fg-muted">
                   {new Date(s.date).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })}
                 </td>
@@ -94,7 +125,7 @@ export default async function AdminSalesPage() {
             ))}
             {sales.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-fg-muted">
+                <td colSpan={8} className="px-5 py-10 text-center text-fg-muted">
                   Todavía no hay ventas registradas.
                 </td>
               </tr>
