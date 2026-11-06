@@ -17,6 +17,9 @@ import {
   MessageCircle,
   ReceiptText,
   Wallet,
+  ChevronDown,
+  ChevronUp,
+  StickyNote,
 } from "lucide-react";
 import { CategoryIcon } from "@/components/tienda/categoryIcons";
 import {
@@ -97,6 +100,7 @@ export function SellProductModal({
   const [availableStock, setAvailableStock] = useState(product.stock);
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | "">("");
+  const [showDetails, setShowDetails] = useState(false);
   const [clientName, setClientName] = useState("");
   const [note, setNote] = useState("");
   const [requestId, setRequestId] = useState(newRequestId);
@@ -181,6 +185,7 @@ export function SellProductModal({
     setError(null);
     setQuantity(1);
     setPaymentMethod("");
+    setShowDetails(false);
     setClientName("");
     setNote("");
     setRequestId(newRequestId());
@@ -392,23 +397,48 @@ export function SellProductModal({
                 )}
               </div>
 
-              {/* Datos opcionales */}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <input
-                  type="text"
-                  value={clientName}
-                  onChange={(event) => setClientName(event.target.value)}
-                  placeholder="Cliente (opcional)"
-                  className="w-full rounded-xl border border-border bg-bg-alt px-3.5 py-2.5 text-xs font-semibold text-fg outline-none placeholder:font-normal placeholder:text-fg-muted focus:border-accent"
-                />
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Nota (opcional)"
-                  className="w-full rounded-xl border border-border bg-bg-alt px-3.5 py-2.5 text-xs font-semibold text-fg outline-none placeholder:font-normal placeholder:text-fg-muted focus:border-accent"
-                />
+              {/* Descripción automática (la escribe el sistema, no el usuario) */}
+              <div className="rounded-xl border border-border bg-bg px-3 py-2">
+                <p className="text-[9px] font-black uppercase tracking-wider text-fg-muted">
+                  Descripción automática
+                </p>
+                <p className="mt-0.5 line-clamp-2 text-xs font-bold text-fg">
+                  {product.name}
+                  {quantity > 1 ? ` (x${quantity})` : ""}
+                </p>
               </div>
+
+              {/* Datos opcionales, ocultos por defecto */}
+              <button
+                type="button"
+                onClick={() => setShowDetails((value) => !value)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-bg-alt px-3 py-2 text-[11px] font-bold text-fg-muted transition-colors hover:text-fg"
+              >
+                <span className="flex items-center gap-1.5">
+                  <StickyNote size={13} />
+                  Agregar cliente o nota (opcional)
+                </span>
+                {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              {showDetails && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    value={clientName}
+                    onChange={(event) => setClientName(event.target.value)}
+                    placeholder="Cliente (opcional)"
+                    className="w-full rounded-xl border border-border bg-bg-alt px-3.5 py-2.5 text-xs font-semibold text-fg outline-none placeholder:font-normal placeholder:text-fg-muted focus:border-accent"
+                  />
+                  <input
+                    type="text"
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="Nota (opcional)"
+                    className="w-full rounded-xl border border-border bg-bg-alt px-3.5 py-2.5 text-xs font-semibold text-fg outline-none placeholder:font-normal placeholder:text-fg-muted focus:border-accent"
+                  />
+                </div>
+              )}
 
               {/* Resumen */}
               <div className="rounded-2xl border border-border bg-bg p-3.5">

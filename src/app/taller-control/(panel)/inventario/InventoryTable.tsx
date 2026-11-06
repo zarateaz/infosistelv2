@@ -88,7 +88,12 @@ function ProductGridCard({ p }: { p: AdminProduct }) {
           <span className={`text-xs font-bold ${p.stock <= 3 ? "text-red-600" : "text-fg-muted"}`}>{p.stock} u.</span>
         </div>
         <div className="mt-2">
-          <SellButton productId={p.id} productName={p.name} stock={p.stock} />
+          <SellButton
+            productId={p.id}
+            productName={p.name}
+            stock={p.stock}
+            unitPrice={p.onSale && p.salePrice ? p.salePrice : p.price}
+          />
         </div>
       </div>
     </div>
@@ -297,7 +302,12 @@ export function InventoryTable({ products }: { products: AdminProduct[] }) {
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <SellButton productId={p.id} productName={p.name} stock={p.stock} />
+                      <SellButton
+                        productId={p.id}
+                        productName={p.name}
+                        stock={p.stock}
+                        unitPrice={p.onSale && p.salePrice ? p.salePrice : p.price}
+                      />
                     </td>
                   </tr>
                 ))}

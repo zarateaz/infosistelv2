@@ -167,7 +167,10 @@ export async function registerCounterSale(
       const cashbox = await tx.cashboxTransaction.create({
         data: {
           date: cashboxDate(now),
-          description: `Venta tienda · ${product.name} (x${quantity})`,
+          // La descripción se arma sola con el nombre del producto (y la
+          // cantidad si es más de una unidad): el usuario nunca la escribe.
+          description:
+            quantity > 1 ? `${product.name} (x${quantity})` : product.name,
           type: "INCOME",
           amount: total,
           paymentMethod: input.paymentMethod,

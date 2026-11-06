@@ -11,6 +11,9 @@ import {
   Minus,
   Banknote,
   Smartphone,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { sellOneUnit } from "./actions";
 import {
@@ -34,15 +37,18 @@ export function SellButton({
   productId,
   productName,
   stock,
+  unitPrice,
 }: {
   productId: string;
   productName: string;
   stock: number;
+  unitPrice: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType | "">("");
   const [requestId, setRequestId] = useState("");
+  const [showInvoiceData, setShowInvoiceData] = useState(false);
   const [docNumber, setDocNumber] = useState("");
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -55,6 +61,7 @@ export function SellButton({
     setQuantity(1);
     setPaymentMethod("");
     setRequestId(newRequestId());
+    setShowInvoiceData(false);
     setError(null);
     setStockNotice(null);
     setIsOpen(true);
@@ -252,34 +259,71 @@ export function SellButton({
                       )}
                     </div>
 
-                    <input
-                      type="text"
-                      placeholder="Nombre / razón social (opcional)"
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
-                    />
-                    <input
-                      type="text"
-                      placeholder="DNI (8 dígitos) o RUC (11 dígitos)"
-                      value={docNumber}
-                      onChange={(e) => setDocNumber(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
-                    />
-                    <input
-                      type="email"
-                      placeholder="Correo (para enviar el comprobante)"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="Celular (para reenviar por WhatsApp)"
-                      value={telefono}
-                      onChange={(e) => setTelefono(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
-                    />
+                    {/* Descripción automática + total */}
+                    <div className="rounded-xl border border-border bg-bg/60 px-3 py-2">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-fg-muted">
+                        Descripción automática
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-xs font-bold text-fg">
+                        {productName}
+                        {quantity > 1 ? ` (x${quantity})` : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl border border-border bg-bg/60 px-3 py-2">
+                      <span className="text-[11px] font-semibold text-fg-muted">
+                        Total a cobrar
+                      </span>
+                      <span className="font-display text-lg font-black text-fg">
+                        S/. {(unitPrice * quantity).toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Comprobante: opcional, oculto por defecto */}
+                    <button
+                      type="button"
+                      onClick={() => setShowInvoiceData((value) => !value)}
+                      className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-bg-alt px-3 py-2 text-[11px] font-bold text-fg-muted transition-colors hover:text-fg"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <FileText size={13} />
+                        Datos para comprobante (opcional)
+                      </span>
+                      {showInvoiceData ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {showInvoiceData && (
+                      <div className="space-y-2 rounded-xl border border-border bg-bg/60 p-2.5">
+                        <input
+                          type="text"
+                          placeholder="Nombre / razón social"
+                          value={nombre}
+                          onChange={(e) => setNombre(e.target.value)}
+                          className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
+                        />
+                        <input
+                          type="text"
+                          placeholder="DNI (8 dígitos) o RUC (11 dígitos)"
+                          value={docNumber}
+                          onChange={(e) => setDocNumber(e.target.value)}
+                          className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
+                        />
+                        <input
+                          type="email"
+                          placeholder="Correo (para enviar el comprobante)"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Celular (para reenviar por WhatsApp)"
+                          value={telefono}
+                          onChange={(e) => setTelefono(e.target.value)}
+                          className="w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg outline-none focus:border-accent"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -287,7 +331,9 @@ export function SellButton({
                     disabled={isPending || !paymentMethod}
                     className="mt-4 w-full rounded-xl bg-accent py-2.5 text-sm font-bold text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-60"
                   >
-                    {isPending ? "Vendiendo..." : `Confirmar venta (x${quantity})`}
+                    {isPending
+                      ? "Vendiendo..."
+                      : `Confirmar venta · S/. ${(unitPrice * quantity).toFixed(2)}`}
                   </button>
                 </>
               )}
