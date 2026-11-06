@@ -13,14 +13,21 @@ interface ProductPageProps {
   params: Promise<{ itemNumber: string }>;
 }
 
+/** Acepta tanto el id interno (cuid) que usan los enlaces nuevos para no
+ *  exponer el número de producto, como el itemNumber numérico de enlaces
+ *  antiguos que ya se compartieron. */
+async function findPublicProduct(identifier: string) {
+  const value = decodeURIComponent(identifier).trim();
+  if (!value) return null;
+  if (/^\d+$/.test(value)) {
+    return prisma.product.findUnique({ where: { itemNumber: Number(value) } });
+  }
+  return prisma.product.findUnique({ where: { id: value } });
+}
+
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { itemNumber } = await params;
-  const num = parseInt(itemNumber, 10);
-  if (isNaN(num)) return { title: "Producto | Infosistel" };
-
-  const product = await prisma.product.findUnique({
-    where: { itemNumber: num },
-  });
+  const product = await findPublicProduct(itemNumber);
 
   if (!product) {
     return { title: "Producto no encontrado | Infosistel" };
@@ -31,9 +38,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     : `S/. ${product.price.toFixed(2)}`;
 
   const title = `${product.name} — ${priceText} | Infosistel`;
-  const description = `${product.category} · ${
-    product.stock > 0 ? `En stock (${product.stock} u. disponibles)` : "Consultar stock"
-  }. Infosistel Huancayo. Pedidos al WhatsApp +51 964 648 202.`;
+  const description = `${product.category} · Infosistel Huancayo. Pedidos al WhatsApp +51 964 648 202.`;
 
   const imageUrl = product.image
     ? product.image.startsWith("http")
@@ -47,7 +52,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     openGraph: {
       title,
       description,
-      url: `${SITE_URL}/p/${product.itemNumber}`,
+      url: `${SITE_URL}/p/${product.id}`,
       siteName: "Infosistel",
       images: [
         {
@@ -70,17 +75,11 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
 export default async function PublicProductPage({ params }: ProductPageProps) {
   const { itemNumber } = await params;
-  const num = parseInt(itemNumber, 10);
-  if (isNaN(num)) notFound();
-
-  const product = await prisma.product.findUnique({
-    where: { itemNumber: num },
-  });
-
+  const product = await findPublicProduct(itemNumber);
   if (!product) notFound();
 
   const currentPrice = product.onSale && product.salePrice ? product.salePrice : product.price;
-  const waMessage = `Hola Infosistel! Vi este producto en su catálogo y deseo adquirirlo: *#${product.itemNumber} - ${product.name}* (Precio: S/. ${currentPrice.toFixed(2)}). ¿Tienen disponibilidad?`;
+  const waMessage = `Hola Infosistel! Vi este producto en su catálogo y deseo adquirirlo: *${product.name}* (Precio: S/. ${currentPrice.toFixed(2)}). ¿Tienen disponibilidad?`;
   const waUrl = `https://wa.me/51964648202?text=${encodeURIComponent(waMessage)}`;
 
   return (
@@ -95,10 +94,6 @@ export default async function PublicProductPage({ params }: ProductPageProps) {
             <ArrowLeft size={14} />
             <span>Ver todo el catálogo</span>
           </Link>
-
-          <span className="font-mono text-xs font-bold text-fg-muted">
-            Ítem #{product.itemNumber}
-          </span>
         </div>
 
         {/* Ficha principal */}
@@ -124,19 +119,15 @@ export default async function PublicProductPage({ params }: ProductPageProps) {
                 </div>
               )}
 
-              {/* Badge de stock */}
+              {/* Badge de disponibilidad (sin revelar unidades) */}
               <div className="absolute left-4 top-4">
                 <span
                   className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold uppercase shadow-sm text-white ${
-                    product.stock === 0
-                      ? "bg-red-600"
-                      : product.stock <= 3
-                      ? "bg-amber-500"
-                      : "bg-emerald-600"
+                    product.stock === 0 ? "bg-red-600" : "bg-emerald-600"
                   }`}
                 >
                   <span className="h-2 w-2 rounded-full bg-white" />
-                  {product.stock === 0 ? "Agotado" : `${product.stock} disponibles`}
+                  {product.stock === 0 ? "Agotado" : "Disponible"}
                 </span>
               </div>
             </div>
@@ -195,7 +186,7 @@ export default async function PublicProductPage({ params }: ProductPageProps) {
                 </a>
 
                 <Link
-                  href={`/tienda?p=${product.itemNumber}`}
+                  href={`/tienda?q=${encodeURIComponent(product.name)}`}
                   className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border/80 bg-bg-surface px-5 py-3 text-sm font-bold text-fg transition-colors hover:bg-bg-alt shadow-sm"
                 >
                   <ShoppingBag size={16} />

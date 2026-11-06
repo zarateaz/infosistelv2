@@ -150,8 +150,16 @@ export function ProductShareModal({ product, onClose }: ProductShareModalProps) 
       : product.price
     : 0;
   const productUrl = product
-    ? `${origin || "https://infosistel.com.pe"}/p/${product.itemNumber}`
+    ? `${origin || "https://infosistel.com.pe"}/p/${product.id}`
     : "";
+  const fileBase = product
+    ? `INFOSISTEL_${product.name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 45)}`
+    : "INFOSISTEL";
 
   /* ── render flyer to PNG via html-to-image ──
      Se re-ejecuta al cambiar de producto, estilo o foto. `style` y `photo`
@@ -219,9 +227,7 @@ export function ProductShareModal({ product, onClose }: ProductShareModalProps) 
   if (!product) return null;
 
   /* ── text for WhatsApp link fallback ── */
-  const waText = `*${product.name}*\nPrecio: S/. ${price.toFixed(2)}\n${
-    product.stock > 0 ? `✓ Disponible (${product.stock} u.)` : "Consultar disponibilidad"
-  }\n\nVer producto: ${productUrl}\nInfosistel · +51 964 648 202`;
+  const waText = `*${product.name}*\nPrecio: S/. ${price.toFixed(2)}\n\nVer producto: ${productUrl}\nInfosistel · +51 964 648 202`;
 
   /* ── actions ── */
   const flash = (value: NonNullable<typeof feedback>) => {
@@ -246,9 +252,7 @@ export function ProductShareModal({ product, onClose }: ProductShareModalProps) 
     if (!previewUrl) return;
     const a = document.createElement("a");
     a.href = previewUrl;
-    a.download = `INFOSISTEL_${product.itemNumber}_${product.name
-      .replace(/[^a-zA-Z0-9]/g, "_")
-      .slice(0, 25)}.png`;
+    a.download = `${fileBase}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -266,7 +270,7 @@ export function ProductShareModal({ product, onClose }: ProductShareModalProps) 
 
   const shareNative = async () => {
     if (!blob) return;
-    const file = new File([blob], `INFOSISTEL_${product.itemNumber}.png`, {
+    const file = new File([blob], `${fileBase}.png`, {
       type: "image/png",
     });
     if (navigator.canShare?.({ files: [file] })) {
@@ -589,11 +593,6 @@ export function ProductShareModal({ product, onClose }: ProductShareModalProps) 
                       <p className="text-[10px] text-[#0b3d2e]">
                         Precio: S/. {price.toFixed(2)}
                       </p>
-                      <p className="text-[9px] text-[#0b3d2e]/80">
-                        {product.stock > 0
-                          ? `✓ Disponible (${product.stock} u.)`
-                          : "Consultar disponibilidad"}
-                      </p>
                       <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-white/70 p-1.5">
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-slate-200 text-slate-500">
                           <ImageIcon size={12} />
@@ -657,9 +656,8 @@ export function ProductShareModal({ product, onClose }: ProductShareModalProps) 
 
               <p className="flex items-start gap-1.5 px-1 text-[10px] font-medium text-fg-muted">
                 <Link2 size={12} className="mt-0.5 shrink-0" />
-                El enlace abre{" "}
-                <span className="font-mono font-bold text-fg">/p/{product.itemNumber}</span>{" "}
-                con la foto, el precio y el stock actualizados del producto.
+                El enlace abre una ficha pública del producto con su foto y
+                precio. Tus clientes no ven el número interno ni el stock.
               </p>
             </div>
           </div>
@@ -748,7 +746,7 @@ function FlyerElite({ product, photo, price }: FlyerProps) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "40px 50px 0" }}>
         <img src="/brand/infosistel-logo-v3.png" alt="Infosistel" style={{ height: 42, objectFit: "contain" }} crossOrigin="anonymous" />
         <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 24, padding: "8px 20px", fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,0.7)", letterSpacing: "0.05em", border: "1px solid rgba(255,255,255,0.1)" }}>
-          #{product.itemNumber} · COMPRA POR WHATSAPP
+          COMPRA POR WHATSAPP
         </div>
       </div>
 
@@ -777,23 +775,6 @@ function FlyerElite({ product, photo, price }: FlyerProps) {
           ) : (
             <div style={{ fontSize: 80, opacity: 0.15 }}>📦</div>
           )}
-
-          {/* stock badge */}
-          <div style={{
-            position: "absolute",
-            top: 20,
-            left: 20,
-            background: product.stock > 0 ? "#10b981" : "#ef4444",
-            color: "#fff",
-            borderRadius: 30,
-            padding: "8px 18px",
-            fontSize: 15,
-            fontWeight: 900,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}>
-            {product.stock > 0 ? `✓ ${product.stock} disponibles` : "Agotado"}
-          </div>
         </div>
 
         {/* price block on the right */}
@@ -871,7 +852,7 @@ function FlyerFresh({ product, photo, price }: FlyerProps) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "40px 50px 0" }}>
         <img src="/brand/infosistel-logo-v3.png" alt="Infosistel" style={{ height: 38, objectFit: "contain" }} crossOrigin="anonymous" />
         <div style={{ background: "#0f172a", borderRadius: 24, padding: "8px 20px", fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "0.08em" }}>
-          PRODUCTO #{product.itemNumber}
+          COMPRA POR WHATSAPP
         </div>
       </div>
 
@@ -916,23 +897,6 @@ function FlyerFresh({ product, photo, price }: FlyerProps) {
                 <span style={{ background: "#fbbf24", color: "#0f172a", borderRadius: 16, padding: "4px 14px", fontSize: 14, fontWeight: 900 }}>¡OFERTA!</span>
               </div>
             )}
-          </div>
-
-          {/* stock */}
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            background: product.stock > 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-            border: `2px solid ${product.stock > 0 ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-            borderRadius: 16,
-            padding: "10px 20px",
-            alignSelf: "flex-start",
-          }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: product.stock > 0 ? "#10b981" : "#ef4444" }} />
-            <span style={{ fontSize: 16, fontWeight: 800, color: product.stock > 0 ? "#059669" : "#dc2626" }}>
-              {product.stock > 0 ? `${product.stock} unidades disponibles` : "Temporalmente agotado"}
-            </span>
           </div>
         </div>
 
@@ -1019,7 +983,7 @@ function FlyerNeon({ product, photo, price }: FlyerProps) {
           color: "#c4b5fd",
           letterSpacing: "0.08em",
         }}>
-          #{product.itemNumber}
+          COMPRA POR WHATSAPP
         </div>
       </div>
 
@@ -1042,26 +1006,6 @@ function FlyerNeon({ product, photo, price }: FlyerProps) {
           ) : (
             <div style={{ fontSize: 72, opacity: 0.15 }}>📦</div>
           )}
-
-          {/* stock badge */}
-          <div style={{
-            position: "absolute",
-            top: 20,
-            left: 20,
-            background: product.stock > 0
-              ? "linear-gradient(135deg, #10b981, #06b6d4)"
-              : "linear-gradient(135deg, #ef4444, #f97316)",
-            color: "#fff",
-            borderRadius: 20,
-            padding: "7px 16px",
-            fontSize: 14,
-            fontWeight: 900,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            boxShadow: product.stock > 0 ? "0 4px 20px rgba(16,185,129,0.3)" : "0 4px 20px rgba(239,68,68,0.3)",
-          }}>
-            {product.stock > 0 ? `✓ ${product.stock} disponibles` : "Agotado"}
-          </div>
         </div>
 
         {/* right info */}
