@@ -57,3 +57,8 @@ next-env.d.ts
 # as dev.db never being committed.
 /public/img/products/
 fotosinfositel/
+
+# evidencias del laboratorio de hardening (scripts/lab) — capturas, salidas
+# de nmap/openssl/ZAP y reportes; nunca se versionan.
+evidencias/
+scripts/lab/**/evidencias/

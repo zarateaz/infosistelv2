@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
-import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 import { logoutAction } from "../login/actions";
+import { requireSession } from "@/lib/requireSession";
 import { AdminSidebar } from "./AdminSidebar";
 import { AdminChatBot } from "@/components/AdminChatBot";
 
@@ -31,18 +30,19 @@ const NAV_LINKS = [
 const SUPERADMIN_NAV_LINKS = [{ href: "/taller-control/usuarios", label: "Usuarios" }];
 
 export default async function AdminPanelLayout({ children }: { children: React.ReactNode }) {
-  // proxy.ts already redirects unauthenticated requests to /taller-control/login —
-  // this re-check is defense-in-depth, and is how the sidebar gets the
-  // username without a second round trip from every page.
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySessionToken(token) : null;
-  const navLinks = session?.role === "superadmin" ? [...NAV_LINKS, ...SUPERADMIN_NAV_LINKS] : NAV_LINKS;
+  // Defensa en profundidad: proxy.ts ya exige una firma válida, pero esta
+  // comprobación consulta además Admin.tokenVersion en la BD. Sin ella, un
+  // JWT copiado antes de un logout seguía sirviendo para LEER el panel hasta
+  // que expirara (las mutaciones sí lo rechazaban vía requireSession).
+  // Brecha V3.3.1/V3.3.3 — invalidación del lado del servidor.
+  const session = await requireSession();
+  const navLinks = session.role === "superadmin" ? [...NAV_LINKS, ...SUPERADMIN_NAV_LINKS] : NAV_LINKS;
 
   return (
     <div className="bg-aurora min-h-screen relative">
       <AdminSidebar
         navLinks={navLinks}
-        username={session?.username as string | undefined}
+        username={session.username}
         logoutAction={logoutAction}
       />
       <main className="px-3.5 py-6 md:ml-64 md:px-8 md:py-8 lg:px-10 2xl:px-14 min-h-screen">

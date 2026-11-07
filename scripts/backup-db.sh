@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# Configuración
-DATA_DIR="/home/zarate/infosistel-v2-data"
+# Configuración — DATA_DIR se puede sobrescribir (laboratorio); por defecto
+# mantiene la ruta de producción del VPS.
+DATA_DIR="${DATA_DIR:-$HOME/infosistel-v2-data}"
 DB_PATH="$DATA_DIR/dev.db"
 BACKUP_DIR="$DATA_DIR/backups"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
