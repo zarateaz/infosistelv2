@@ -48,6 +48,9 @@ next-env.d.ts
 # sqlite database files — never commit real data
 *.db
 *.db-journal
+
+# servicios tecnicos local data
+datos/
 *.db-wal
 *.db-shm
 

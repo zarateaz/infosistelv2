@@ -38,7 +38,7 @@ if [[ "$DATABASE_URL" != file:/* ]]; then
 fi
 
 echo "=== Preparando directorio de datos persistentes ==="
-mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones"
+mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones" "$DATA_DIR/servicios-tecnicos"
 chmod 755 "$HOME" 2>/dev/null || true
 chmod -R 755 "$DATA_DIR" 2>/dev/null || true
 DB_PATH="${DATABASE_URL#file:}"
@@ -101,6 +101,12 @@ ln -s "$DATA_DIR/uploads/servicios" .next/standalone/public/img/servicios
 echo "=== Enlazando fotos de cotizaciones persistentes ==="
 rm -rf .next/standalone/public/img/cotizaciones
 ln -s "$DATA_DIR/uploads/cotizaciones" .next/standalone/public/img/cotizaciones
+
+echo "=== Enlazando datos persistentes del módulo Servicios Técnicos ==="
+mkdir -p "$DATA_DIR/servicios-tecnicos"
+mkdir -p "$APP_DIR/datos"
+rm -rf "$APP_DIR/datos/servicios-tecnicos"
+ln -s "$DATA_DIR/servicios-tecnicos" "$APP_DIR/datos/servicios-tecnicos"
 
 echo "=== PM2 ==="
 npx pm2 delete infosistel-v2 2>/dev/null || true
