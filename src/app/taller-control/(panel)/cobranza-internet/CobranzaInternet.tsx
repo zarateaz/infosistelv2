@@ -268,7 +268,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
               <Wifi size={20} className="text-accent" /> Cobranza de internet
             </h2>
             <p className="mt-0.5 text-xs text-fg-muted">
-              Control de clientes, galerías, routers (1 al 5) y switches de 16 puertos con avisos directos por WhatsApp.
+              Control de clientes, galerías, routers (1 al 6) y switches de 16 puertos con avisos directos por WhatsApp.
             </p>
           </div>
 
@@ -280,7 +280,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
               className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/35 bg-indigo-500/10 px-3.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
             >
               <Network size={14} />
-              <span>Mapa de Routers y Puertos (80 Pts)</span>
+              <span>Mapa de Routers y Puertos (96 Pts)</span>
             </button>
 
             {alerts.length > 0 && (
@@ -377,10 +377,10 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {/* 5. Router (1 al 5) */}
+            {/* 5. Router (1 al 6) */}
             <div>
               <label className={labelClass} htmlFor="ic-router">
-                Router (1 al 5)
+                Router (1 al 6)
               </label>
               <select
                 id="ic-router"
@@ -829,7 +829,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
         />
       )}
 
-      {/* Modal de Mapa de Red de los 5 Routers y sus 16 Puertos */}
+      {/* Modal de Mapa de Red de los 6 Routers y sus 16 Puertos */}
       {mapModalOpen && (
         <RouterSwitchMapModal
           clients={clients}

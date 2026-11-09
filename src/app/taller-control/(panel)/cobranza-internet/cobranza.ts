@@ -36,6 +36,7 @@ export const ROUTERS = [
   "Router 3",
   "Router 4",
   "Router 5",
+  "Router 6",
 ] as const;
 
 export type RouterType = (typeof ROUTERS)[number];

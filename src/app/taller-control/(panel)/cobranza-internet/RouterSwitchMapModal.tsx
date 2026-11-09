@@ -45,7 +45,7 @@ export function RouterSwitchMapModal({
   }
 
   // Summary statistics
-  const totalCapacity = ROUTERS.length * TOTAL_SWITCH_PORTS; // 5 * 16 = 80
+  const totalCapacity = ROUTERS.length * TOTAL_SWITCH_PORTS; // 6 * 16 = 96
   const totalOccupied = Array.from(occupiedMap.keys()).length;
   const totalFree = totalCapacity - totalOccupied;
 
@@ -72,7 +72,7 @@ export function RouterSwitchMapModal({
                   Mapa de Routers y Puertos de Red
                 </h3>
                 <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-700 border border-blue-200/80">
-                  5 Routers · 16 Puertos c/u
+                  6 Routers · 16 Puertos c/u
                 </span>
               </div>
               <p className="text-xs font-medium text-slate-500 mt-0.5">
@@ -127,7 +127,7 @@ export function RouterSwitchMapModal({
           </div>
         </div>
 
-        {/* Selector de Routers (Pestañas de los 5 Routers) */}
+        {/* Selector de Routers (Pestañas de los 6 Routers) */}
         <div className="flex items-center gap-2 px-6 pt-4 border-b border-slate-100 overflow-x-auto pb-2">
           {ROUTERS.map((r) => {
             const occ = SWITCH_PORTS.filter((p) => occupiedMap.has(`${r}-${p}`)).length;
