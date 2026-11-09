@@ -2,6 +2,7 @@
 import { Ic, EtapaPill, PagoPill, AlertaPill, UrgPill } from './ui';
 import {
   ACTIVAS, ETAPAS, ETQ, ETCOLOR, alerta, code, fCorta, fHora, iniciales, money, parseD, pendiente, total, ymd,
+  normalizarMetodo, metodoBadge,
 } from '../../lib/servicios-tecnicos/logic';
 
 const BAR = { recibido: 'var(--accent)', diagnostico: 'var(--vio)', reparacion: 'var(--warn)', repuesto: 'var(--teal)', listo: 'var(--ok)', noreparable: 'var(--bad)' };
@@ -18,7 +19,9 @@ export default function Dashboard({ servicios, cfg, ir, abrir }) {
     && parseD(s.fEntregado).getMonth() === hoy.getMonth() && parseD(s.fEntregado).getFullYear() === hoy.getFullYear());
   const pagos = servicios.flatMap((s) => s.pagos || []);
   const cobrado = suma(pagos);
-  const efectivo = suma(pagos.filter((p) => p.metodo === 'Efectivo'));
+  const efectivo = suma(pagos.filter((p) => normalizarMetodo(p.metodo) === 'Efectivo'));
+  const yape1 = suma(pagos.filter((p) => normalizarMetodo(p.metodo) === 'Yape 1'));
+  const yape2 = suma(pagos.filter((p) => normalizarMetodo(p.metodo) === 'Yape 2'));
   const conPend = servicios.filter((s) => pendiente(s) > 0);
   const porCobrar = conPend.reduce((a, s) => a + pendiente(s), 0);
   const alertas = servicios.map((s) => ({ s, a: alerta(s, cfg) })).filter((x) => x.a)
@@ -31,7 +34,9 @@ export default function Dashboard({ servicios, cfg, ir, abrir }) {
   const caja = servicios.flatMap((s) => (s.pagos || []).filter((p) => ymd(parseD(p.fecha)) === hoyStr).map((p) => ({ p, s })))
     .sort((a, b) => String(b.p.fecha).localeCompare(String(a.p.fecha)));
   const cajaTot = suma(caja.map((x) => x.p));
-  const cajaEf = suma(caja.filter((x) => x.p.metodo === 'Efectivo').map((x) => x.p));
+  const cajaEf = suma(caja.filter((x) => normalizarMetodo(x.p.metodo) === 'Efectivo').map((x) => x.p));
+  const cajaYp1 = suma(caja.filter((x) => normalizarMetodo(x.p.metodo) === 'Yape 1').map((x) => x.p));
+  const cajaYp2 = suma(caja.filter((x) => normalizarMetodo(x.p.metodo) === 'Yape 2').map((x) => x.p));
   const tecs = [...cfg.tecnicos];
   if (servicios.some((s) => !s.tecnico && ACTIVAS.includes(s.etapa))) tecs.push('');
   const carga = tecs.map((t) => ({
@@ -54,7 +59,7 @@ export default function Dashboard({ servicios, cfg, ir, abrir }) {
         <K ic="wrench" c="c-blue" v={enTaller.length} t="En el taller" s="equipos en proceso" go={() => ir('servicios', { filtro: 'taller' })} />
         <K ic="box" c="c-ok" v={listos.length} t="Listos para entregar" s="esperando que el cliente recoja" go={() => ir('servicios', { filtro: 'listos' })} />
         <K ic="alert" c="c-warn" v={alertas.length} t="Requieren atención" s="listos sin avisar o sin recoger" go={() => ir('servicios', { filtro: 'alerta' })} />
-        <K ic="coin" c="c-teal" v={money(cobrado)} t="Total cobrado" s={'Efectivo ' + money(efectivo) + ' · Yape ' + money(cobrado - efectivo)} go={() => ir('pendientes')} />
+        <K ic="coin" c="c-teal" v={money(cobrado)} t="Total cobrado" s={'Efec: ' + money(efectivo) + ' · Y1: ' + money(yape1) + ' · Y2: ' + money(yape2)} go={() => ir('pendientes')} />
         <K ic="clock" c="c-bad" v={money(porCobrar)} t="Total pendiente" s={'por cobrar en ' + pl(conPend.length, 'servicio', 'servicios')} go={() => ir('pendientes')} />
         <K ic="check" c="c-vio" v={entregadosMes.length} t="Entregados este mes" s={'de ' + servicios.filter((s) => s.etapa === 'entregado').length + ' entregados en total'} go={() => ir('servicios', { filtro: 'entregados' })} />
       </div>
@@ -80,26 +85,30 @@ export default function Dashboard({ servicios, cfg, ir, abrir }) {
 
         <div className="card pad">
           <div className="box-h"><h3>Caja de hoy</h3><span className="muted" style={{ fontSize: 13 }}>{pl(caja.length, 'cobro', 'cobros')}</span></div>
-          <div className="sumbox" style={{ marginTop: 0 }}>
+          <div className="sumbox sumbox-4" style={{ marginTop: 0 }}>
             <div><span>Total</span><b>{money(cajaTot)}</b></div>
             <div><span>Efectivo</span><b style={{ color: 'var(--ok)' }}>{money(cajaEf)}</b></div>
-            <div><span>Yape</span><b style={{ color: 'var(--vio)' }}>{money(cajaTot - cajaEf)}</b></div>
+            <div><span>Yape 1 (Edgar)</span><b style={{ color: 'var(--vio)' }}>{money(cajaYp1)}</b></div>
+            <div><span>Yape 2 (Caja)</span><b style={{ color: 'var(--vio)' }}>{money(cajaYp2)}</b></div>
           </div>
           {caja.length ? (
             <div className="list" style={{ marginTop: 8 }}>
-              {caja.slice(0, 5).map(({ p, s }) => (
-                <button type="button" className="li" key={p.id} onClick={() => abrir(s.id)}>
-                  <span className={'avatar mt ' + (p.metodo === 'Yape' ? 'c-vio' : 'c-ok')}>{p.metodo === 'Yape' ? 'YP' : 'S/.'}</span>
-                  <span style={{ minWidth: 0 }}>
-                    <span className="nm">{s.cliente.nombre}</span>
-                    <span className="sm">{fHora(p.fecha).slice(11)} · <span className="mono">{code(cfg, s.num)}</span> · {p.nota}{p.op ? ' · #' + p.op : ''}</span>
-                  </span>
-                  <span className="rt"><span className="amt">{money(p.monto)}</span></span>
-                </button>
-              ))}
+              {caja.slice(0, 5).map(({ p, s }) => {
+                const bg = metodoBadge(p.metodo);
+                return (
+                  <button type="button" className="li" key={p.id} onClick={() => abrir(s.id)}>
+                    <span className={'avatar mt ' + bg.color}>{bg.label}</span>
+                    <span style={{ minWidth: 0 }}>
+                      <span className="nm">{s.cliente.nombre}</span>
+                      <span className="sm">{fHora(p.fecha).slice(11)} · <span className="mono">{code(cfg, s.num)}</span> · {bg.nombre} · {p.nota}{p.op ? ' · #' + p.op : ''}</span>
+                    </span>
+                    <span className="rt"><span className="amt">{money(p.monto)}</span></span>
+                  </button>
+                );
+              })}
             </div>
           ) : <div className="empty" style={{ padding: '24px 10px' }}>Aún no hay cobros hoy.</div>}
-          <p className="hint" style={{ margin: '10px 0 0' }}>Sirve para el cierre de caja: cuadra el efectivo del cajón y los Yape del celular.</p>
+          <p className="hint" style={{ margin: '10px 0 0' }}>Sirve para el cierre de caja: cuadra el efectivo del cajón y las 2 cuentas de Yape.</p>
         </div>
       </div>
 

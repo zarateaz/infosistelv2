@@ -4,6 +4,7 @@ import { Ic, EtapaPill, PagoPill, AlertaPill, UrgPill, Fotos } from './ui';
 import {
   ETAPAS, ETQ, SIG, PRUEBAS, METODOS, AVISO_TXT, alerta, avisoBase, clienteKey, code, fCorta, fDia, fHora,
   garantiaHasta, mensaje, money, nombreCorto, pagado, pendiente, total, waLink,
+  esYape, normalizarMetodo, metodoBadge,
 } from '../../lib/servicios-tecnicos/logic';
 
 const SIG_TXT = (s, sig) => ({
@@ -43,7 +44,7 @@ export default function Detalle({ s, cfg, acciones, ir, flash, openLb, recien, e
     const m = +np.monto;
     if (!(m > 0)) return setNpErr('Escribe un monto mayor a 0');
     if (t > 0 && m > pend + 0.001) return setNpErr('El monto es mayor a lo pendiente (' + money(pend) + ')');
-    if (np.metodo === 'Yape' && !/^\d{6,}$/.test(np.op)) return setNpErr('Escribe el N° de operación de Yape');
+    if (esYape(np.metodo) && !/^\d{6,}$/.test(np.op)) return setNpErr('Escribe el N° de operación de ' + np.metodo);
     setNpErr('');
     const ok = await acciones.accion(s.id, 'pago', { pago: { monto: m, metodo: np.metodo, op: np.op, nota: notaPago } }, 'Pago de ' + money(m) + ' registrado');
     if (ok) setNp({ monto: '', metodo: np.metodo, op: '' });
@@ -154,19 +155,22 @@ export default function Detalle({ s, cfg, acciones, ir, flash, openLb, recien, e
             <h3 style={{ margin: '18px 0 10px', fontSize: 14 }}>Pagos registrados</h3>
             {s.pagos.length ? (
               <div className="pagos">
-                {s.pagos.map((p) => (
-                  <div className="pago" key={p.id}>
-                    <span className={'mt ' + (p.metodo === 'Yape' ? 'c-vio' : 'c-ok')}>{p.metodo === 'Yape' ? 'YP' : 'S/.'}</span>
-                    <span style={{ minWidth: 0 }}>
-                      <b>{p.nota || 'Pago'}</b> · {p.metodo}{p.op && <span className="mono muted" style={{ marginLeft: 6 }}>#{p.op}</span>}
-                      <span className="muted small" style={{ display: 'block' }}>{fHora(p.fecha)}</span>
-                    </span>
-                    <b className="amt">{money(p.monto)}</b>
-                    {quitarP === p.id
-                      ? <button type="button" className="btn sm danger" onClick={() => { setQuitarP(null); acciones.accion(s.id, 'quitarPago', { pagoId: p.id }); }}>¿Quitar?</button>
-                      : <button type="button" className="btn sm ghost" aria-label="Quitar pago" onClick={() => { setQuitarP(p.id); setTimeout(() => setQuitarP((x) => (x === p.id ? null : x)), 3000); }}><Ic n="trash" s={15} /></button>}
-                  </div>
-                ))}
+                {s.pagos.map((p) => {
+                  const bg = metodoBadge(p.metodo);
+                  return (
+                    <div className="pago" key={p.id}>
+                      <span className={'mt ' + bg.color}>{bg.label}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <b>{p.nota || 'Pago'}</b> · {bg.nombre}{p.op && <span className="mono muted" style={{ marginLeft: 6 }}>#{p.op}</span>}
+                        <span className="muted small" style={{ display: 'block' }}>{fHora(p.fecha)}</span>
+                      </span>
+                      <b className="amt">{money(p.monto)}</b>
+                      {quitarP === p.id
+                        ? <button type="button" className="btn sm danger" onClick={() => { setQuitarP(null); acciones.accion(s.id, 'quitarPago', { pagoId: p.id }); }}>¿Quitar?</button>
+                        : <button type="button" className="btn sm ghost" aria-label="Quitar pago" onClick={() => { setQuitarP(p.id); setTimeout(() => setQuitarP((x) => (x === p.id ? null : x)), 3000); }}><Ic n="trash" s={15} /></button>}
+                    </div>
+                  );
+                })}
               </div>
             ) : <p className="muted" style={{ margin: 0 }}>Todavía no hay pagos.</p>}
             {(pend > 0 || t === 0) && (
@@ -176,9 +180,9 @@ export default function Detalle({ s, cfg, acciones, ir, flash, openLb, recien, e
                     <input type="number" min="0" step="0.5" placeholder={pend > 0 ? pend.toFixed(2) : '0.00'} value={np.monto} onChange={(e) => setNp({ ...np, monto: e.target.value })} /></label>
                   <div className="f"><span>Método</span>
                     <div className="seg">{METODOS.map((m) => <button key={m} type="button" aria-pressed={np.metodo === m} onClick={() => setNp({ ...np, metodo: m })}>{m}</button>)}</div></div>
-                  {np.metodo === 'Yape' && (
-                    <label className="f"><span className="req">N° de operación</span>
-                      <input inputMode="numeric" value={np.op} placeholder="Del comprobante" onChange={(e) => setNp({ ...np, op: e.target.value.replace(/\D/g, '').slice(0, 12) })} /></label>
+                  {esYape(np.metodo) && (
+                    <label className="f"><span className="req">N° op. {np.metodo}</span>
+                      <input inputMode="numeric" value={np.op} placeholder={'Del comprobante de ' + np.metodo} onChange={(e) => setNp({ ...np, op: e.target.value.replace(/\D/g, '').slice(0, 12) })} /></label>
                   )}
                   <div className="f" style={{ flexDirection: 'row', gap: 6 }}>
                     {pend > 0 && <button type="button" className="btn sm" onClick={() => setNp({ ...np, monto: pend.toFixed(2) })}>Todo</button>}
@@ -322,7 +326,7 @@ function EntregaModal({ s, cfg, onClose, onConfirm, openLb, flash, ocupado, subi
     if (pend > 0 && cob.si) {
       const m = +cob.monto;
       if (!(m > 0) || m > pend + 0.001) return setErr('El monto a cobrar debe ser mayor a 0 y como máximo ' + money(pend) + '.');
-      if (cob.metodo === 'Yape' && !/^\d{6,}$/.test(cob.op)) return setErr('Escribe el N° de operación de Yape.');
+      if (esYape(cob.metodo) && !/^\d{6,}$/.test(cob.op)) return setErr('Escribe el N° de operación de ' + cob.metodo + '.');
       pago = { monto: m, metodo: cob.metodo, op: cob.op, nota: m >= pend - 0.001 ? 'Pago final' : 'Pago parcial' };
     }
     onConfirm({ pago, fotos, entrega: { recoge: rec, pruebas: pr } });
@@ -375,9 +379,9 @@ function EntregaModal({ s, cfg, onClose, onConfirm, openLb, flash, ocupado, subi
                   <label className="f"><span>Monto (S/.)</span><input type="number" min="0" step="0.5" value={cob.monto} onChange={(e) => setCob({ ...cob, monto: e.target.value })} /></label>
                   <div className="f"><span>Método</span>
                     <div className="seg">{METODOS.map((m) => <button key={m} type="button" aria-pressed={cob.metodo === m} onClick={() => setCob({ ...cob, metodo: m })}>{m}</button>)}</div></div>
-                  {cob.metodo === 'Yape' && (
-                    <label className="f"><span className="req">N° de operación</span>
-                      <input inputMode="numeric" value={cob.op} placeholder="Del comprobante" onChange={(e) => setCob({ ...cob, op: e.target.value.replace(/\D/g, '').slice(0, 12) })} /></label>
+                  {esYape(cob.metodo) && (
+                    <label className="f"><span className="req">N° op. {cob.metodo}</span>
+                      <input inputMode="numeric" value={cob.op} placeholder={'Del comprobante de ' + cob.metodo} onChange={(e) => setCob({ ...cob, op: e.target.value.replace(/\D/g, '').slice(0, 12) })} /></label>
                   )}
                 </div>
               )}

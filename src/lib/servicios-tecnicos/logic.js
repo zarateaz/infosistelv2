@@ -29,7 +29,39 @@ export const ACCS = ['Cargador', 'Cable de poder', 'Batería', 'Mouse', 'Teclado
 export const CHECKS = ['Golpes', 'Rayones', 'Pantalla rota', 'Teclado dañado', 'Bisagra floja', 'Faltan tornillos', 'Signos de humedad'];
 export const PRUEBAS = ['Enciende y funciona bien', 'Se probó la falla reportada', 'Accesorios devueltos', 'El cliente revisó el equipo'];
 export const MARCAS = ['HP', 'LENOVO', 'DELL', 'ASUS', 'ACER', 'TOSHIBA', 'APPLE', 'SAMSUNG', 'MSI', 'EPSON', 'CANON', 'BROTHER', 'GENÉRICO'];
-export const METODOS = ['Efectivo', 'Yape'];
+export const METODOS = ['Efectivo', 'Yape 1', 'Yape 2'];
+
+/** Mapea el método de pago al formato canónico de Caja ("EFECTIVO", "YAPE 1", "YAPE 2") */
+export function aMetodoCaja(m) {
+  if (!m) return 'EFECTIVO';
+  const up = String(m).trim().toUpperCase();
+  if (up === 'YAPE 2' || up === 'YAPE2') return 'YAPE 2';
+  if (up === 'YAPE 1' || up === 'YAPE1' || up === 'YAPE') return 'YAPE 1';
+  return 'EFECTIVO';
+}
+
+/** Normaliza el método al estándar de Servicios Técnicos ('Efectivo', 'Yape 1', 'Yape 2') */
+export function normalizarMetodo(m) {
+  if (!m) return 'Efectivo';
+  const c = aMetodoCaja(m);
+  if (c === 'YAPE 2') return 'Yape 2';
+  if (c === 'YAPE 1') return 'Yape 1';
+  return 'Efectivo';
+}
+
+/** Determina si el método corresponde a cualquiera de las cuentas de Yape */
+export const esYape = (m) => {
+  const norm = normalizarMetodo(m);
+  return norm === 'Yape 1' || norm === 'Yape 2';
+};
+
+/** Devuelve la información visual para badges e iconos de pago */
+export function metodoBadge(m) {
+  const norm = normalizarMetodo(m);
+  if (norm === 'Yape 2') return { label: 'YP2', color: 'c-vio', nombre: 'Yape 2 (Caja)' };
+  if (norm === 'Yape 1') return { label: 'YP1', color: 'c-vio', nombre: 'Yape 1 (Edgar)' };
+  return { label: 'EF', color: 'c-ok', nombre: 'Efectivo' };
+}
 export const AVISO_TXT = {
   recibido: 'comprobante de recepción', listo: 'aviso de equipo listo', noreparable: 'aviso de no reparable',
   cobro: 'recordatorio de pago', recoger: 'recordatorio para recoger',
@@ -126,7 +158,7 @@ export function validarDatos(d, { nuevo, adelanto } = {}) {
   if (nuevo && adelanto) {
     const m = +adelanto.monto || 0, t = (+d.costo?.mo || 0) + (+d.costo?.rep || 0);
     if (m < 0) e.adel = 'El adelanto no puede ser negativo';
-    if (m > 0 && adelanto.metodo === 'Yape' && !/^\d{6,}$/.test(adelanto.op || '')) e.op = 'Escribe el N° de operación de Yape';
+    if (m > 0 && esYape(adelanto.metodo) && !/^\d{6,}$/.test(adelanto.op || '')) e.op = 'Escribe el N° de operación de ' + normalizarMetodo(adelanto.metodo);
     if (t > 0 && m > t) e.adel = 'El adelanto no puede ser mayor que el total';
   }
   return e;
@@ -158,12 +190,24 @@ export function limpiarDatos(d) {
 }
 export function limpiarPago(p) {
   const monto = redondear(p?.monto);
-  const metodo = METODOS.includes(p?.metodo) ? p.metodo : null;
+  const mNorm = normalizarMetodo(p?.metodo);
+  const metodoValido = METODOS.includes(mNorm);
   if (!(monto > 0)) return { error: 'Escribe un monto mayor a 0' };
-  if (!metodo) return { error: 'Elige Efectivo o Yape' };
-  const op = metodo === 'Yape' ? txt(p.op, 20).replace(/\D/g, '') : '';
-  if (metodo === 'Yape' && op.length < 6) return { error: 'Escribe el N° de operación de Yape' };
-  return { pago: { id: uid(), fecha: new Date().toISOString(), monto, metodo, op, nota: txt(p.nota, 40) || 'Pago' } };
+  if (!metodoValido) return { error: 'Elige Efectivo, Yape 1 o Yape 2' };
+  const yape = esYape(mNorm);
+  const op = yape ? txt(p.op, 20).replace(/\D/g, '') : '';
+  if (yape && op.length < 6) return { error: 'Escribe el N° de operación de ' + mNorm };
+  return {
+    pago: {
+      id: uid(),
+      fecha: new Date().toISOString(),
+      monto,
+      metodo: mNorm,
+      op,
+      nota: txt(p.nota, 40) || 'Pago',
+      ...(p?.cajaId ? { cajaId: p.cajaId } : {}),
+    },
+  };
 }
 
 /* ---------- Cambios sobre un servicio (los aplica el servidor) ---------- */

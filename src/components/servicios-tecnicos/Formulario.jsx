@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { Ic, Fotos } from './ui';
 import {
-  TIPOS, ACCS, CHECKS, MARCAS, METODOS, clienteKey, code, money, pagado, parseD, toLocal, validarDatos,
+  TIPOS, ACCS, CHECKS, MARCAS, METODOS, esYape, clienteKey, code, money, pagado, parseD, toLocal, validarDatos,
 } from '../../lib/servicios-tecnicos/logic';
 
 function vacio(cfg) {
@@ -207,9 +207,9 @@ export default function Formulario({ cfg, servicios, editId, acciones, ir, abrir
                   {METODOS.map((m) => <button key={m} type="button" aria-pressed={adelanto.metodo === m} onClick={() => setAdelanto({ ...adelanto, metodo: m })}>{m}</button>)}
                 </div>
               </div>
-              {adelanto.metodo === 'Yape' && (
-                <Campo label="N° de operación Yape" error={err.op} req={adel > 0}>
-                  <input value={adelanto.op} inputMode="numeric" placeholder="Del comprobante de Yape" onChange={(e) => setAdelanto({ ...adelanto, op: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
+              {esYape(adelanto.metodo) && (
+                <Campo label={'N° de operación ' + adelanto.metodo} error={err.op} req={adel > 0}>
+                  <input value={adelanto.op} inputMode="numeric" placeholder={'Del comprobante de ' + adelanto.metodo} onChange={(e) => setAdelanto({ ...adelanto, op: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
                 </Campo>
               )}
             </div>

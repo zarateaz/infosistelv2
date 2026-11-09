@@ -268,8 +268,13 @@ export function TransactionRow({ transaction }: { transaction: AdminTransaction 
           notes={transaction.notes}
           minLength={1}
         >
-          <span className="cursor-help hover:text-accent transition-colors">{transaction.description}</span>
+          <span className="cursor-help hover:text-accent transition-colors block">{transaction.description}</span>
         </CajaHoverTooltip>
+        {transaction.notes && (
+          <span className="block text-[11px] font-normal text-fg-muted truncate max-w-xs sm:max-w-md mt-0.5">
+            {transaction.notes}
+          </span>
+        )}
       </td>
       <td className="px-5 py-2.5">
         <PaymentMethodBadge method={transaction.paymentMethod} />

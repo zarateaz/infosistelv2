@@ -5,6 +5,11 @@ import {
   validarDatos, limpiarDatos, limpiarPago, cambiarEtapa, pendiente, total, uid, redondear,
   ETAPAS_VALIDAS, PRUEBAS, AVISO_TXT,
 } from '../../../../lib/servicios-tecnicos/logic';
+import {
+  sincronizarIngresoCaja,
+  eliminarIngresoCaja,
+  eliminarIngresosDeServicio,
+} from '../../../../lib/servicios-tecnicos/cajaSync';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,7 +18,7 @@ class ErrorUsuario extends Error {}
 const fallo = (msg) => { throw new ErrorUsuario(msg); };
 const soloFotos = (v) => (Array.isArray(v) ? v.filter((u) => typeof u === 'string' && u.startsWith('/api/servicios-tecnicos/fotos/')) : []);
 
-function aplicar(s, b) {
+async function aplicar(s, b, cfg) {
   switch (b.accion) {
     case 'editar': {
       const e = validarDatos(b.datos || {});
@@ -46,10 +51,16 @@ function aplicar(s, b) {
       const r = limpiarPago(b.pago);
       if (r.error) fallo(r.error);
       if (total(s) > 0 && r.pago.monto > pendiente(s) + 0.001) fallo('El monto es mayor a lo pendiente');
+      const cajaId = await sincronizarIngresoCaja({ servicio: s, pago: r.pago, cfg });
+      if (cajaId) r.pago.cajaId = cajaId;
       s.pagos.push(r.pago);
       return 'Pago registrado';
     }
     case 'quitarPago': {
+      const pagoEliminar = (s.pagos || []).find((p) => p.id === b.pagoId);
+      if (pagoEliminar?.cajaId) {
+        await eliminarIngresoCaja(pagoEliminar.cajaId);
+      }
       s.pagos = s.pagos.filter((p) => p.id !== b.pagoId);
       return 'Pago eliminado';
     }
@@ -75,6 +86,8 @@ function aplicar(s, b) {
         const r = limpiarPago(b.pago);
         if (r.error) fallo(r.error);
         if (r.pago.monto > pendiente(s) + 0.001) fallo('El monto es mayor a lo pendiente');
+        const cajaId = await sincronizarIngresoCaja({ servicio: s, pago: r.pago, cfg });
+        if (cajaId) r.pago.cajaId = cajaId;
         s.pagos.push(r.pago);
       }
       s.fotos = { ...s.fotos, entrega: [...(s.fotos?.entrega || []), ...soloFotos(b.fotos)].slice(0, 30) };
@@ -96,10 +109,10 @@ export async function PATCH(req, { params }) {
   const body = await req.json().catch(() => null);
   if (!body) return Response.json({ error: 'Solicitud vacía' }, { status: 400 });
   try {
-    const res = await modificar((d) => {
+    const res = await modificar(async (d) => {
       const s = d.servicios.find((x) => x.id === id);
       if (!s) fallo('El servicio ya no existe');
-      const mensaje = aplicar(s, body);
+      const mensaje = await aplicar(s, body, d.cfg);
       s.actualizado = new Date().toISOString();
       return { servicio: s, mensaje };
     });
@@ -120,5 +133,6 @@ export async function DELETE(req, { params }) {
   });
   if (!borrado) return Response.json({ error: 'El servicio ya no existe' }, { status: 404 });
   await borrarFotos([...(borrado.fotos?.ingreso || []), ...(borrado.fotos?.entrega || [])]);
+  await eliminarIngresosDeServicio(borrado);
   return Response.json({ ok: true, mensaje: 'Servicio eliminado' });
 }
