@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Banknote,
   Copy,
@@ -13,12 +14,18 @@ import {
   TrendingUp,
   ListFilter,
   RotateCcw,
+  RefreshCw,
+  Sparkles,
+  Zap,
+  ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import { YapeIcon } from "@/components/icons/YapeIcon";
 import { PAYMENT_METHOD_INFO, PAYMENT_METHODS, type PaymentMethodType } from "./constants";
 import type { AdminTransaction } from "./actions";
 import { CajaChart, type ChartFilterMode } from "./CajaChart";
 import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
+import { AnimatedMoney, useCountUp } from "@/components/ui/AnimatedMoney";
 
 interface CashboxMethodCardsProps {
   totals: Record<PaymentMethodType, number>;
@@ -49,10 +56,36 @@ export function CashboxMethodCards({
   selectedAccount: controlledAccount,
   onSelectAccount,
 }: CashboxMethodCardsProps) {
+  const router = useRouter();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [internalAccount, setInternalAccount] = useState<PaymentMethodType | null>(null);
   const [previewModalAccount, setPreviewModalAccount] = useState<PaymentMethodType | null>(null);
   const [chartMode, setChartMode] = useState<ChartFilterMode>("ALL");
+  const [replayKey, setReplayKey] = useState<number>(1);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [barsReady, setBarsReady] = useState<boolean>(false);
+
+  // Trigger bar growth animation from 0% on mount and whenever replayKey or monthKey changes
+  useEffect(() => {
+    setBarsReady(false);
+    const t = setTimeout(() => setBarsReady(true), 60);
+    return () => clearTimeout(t);
+  }, [replayKey, monthKey, transactions.length]);
+
+  // Auto-poll live data every 20 seconds so changes from Servicios Técnicos / Deudas / Internet reflect automatically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [router]);
+
+  const handleReplayAndSync = () => {
+    setIsSyncing(true);
+    setReplayKey((k) => k + 1);
+    router.refresh();
+    setTimeout(() => setIsSyncing(false), 750);
+  };
 
   const selectedAccount = controlledAccount !== undefined ? controlledAccount : internalAccount;
   const updateSelectedAccount = (next: PaymentMethodType | null) => {
@@ -101,6 +134,49 @@ export function CashboxMethodCards({
     [statsByMethod]
   );
 
+  const totalIncomeGeneral = useMemo(
+    () =>
+      (statsByMethod["EFECTIVO"]?.income ?? 0) +
+      (statsByMethod["YAPE 1"]?.income ?? 0) +
+      (statsByMethod["YAPE 2"]?.income ?? 0),
+    [statsByMethod]
+  );
+
+  const totalExpenseGeneral = useMemo(
+    () =>
+      (statsByMethod["EFECTIVO"]?.expense ?? 0) +
+      (statsByMethod["YAPE 1"]?.expense ?? 0) +
+      (statsByMethod["YAPE 2"]?.expense ?? 0),
+    [statsByMethod]
+  );
+
+  // Positive weight percentages for visual distribution bar
+  const shareByMethod = useMemo(() => {
+    const posCash = Math.max(0, statsByMethod["EFECTIVO"].net);
+    const posY1 = Math.max(0, statsByMethod["YAPE 1"].net);
+    const posY2 = Math.max(0, statsByMethod["YAPE 2"].net);
+    const sumPos = posCash + posY1 + posY2;
+    if (sumPos <= 0) {
+      return { EFECTIVO: 33.3, "YAPE 1": 33.3, "YAPE 2": 33.4 };
+    }
+    return {
+      EFECTIVO: (posCash / sumPos) * 100,
+      "YAPE 1": (posY1 / sumPos) * 100,
+      "YAPE 2": (posY2 / sumPos) * 100,
+    };
+  }, [statsByMethod]);
+
+  const animatedMovsTotal = Math.round(useCountUp(transactions.length, 1000, `${monthKey}-${replayKey}`));
+  const animatedCashCount = Math.round(
+    useCountUp(statsByMethod["EFECTIVO"].count, 1000, `${monthKey}-${replayKey}`)
+  );
+  const animatedY1Count = Math.round(
+    useCountUp(statsByMethod["YAPE 1"].count, 1000, `${monthKey}-${replayKey}`)
+  );
+  const animatedY2Count = Math.round(
+    useCountUp(statsByMethod["YAPE 2"].count, 1000, `${monthKey}-${replayKey}`)
+  );
+
   // Select card to filter chart & show inline account preview
   const handleSelectCard = (method: PaymentMethodType) => {
     if (selectedAccount === method) {
@@ -144,54 +220,204 @@ export function CashboxMethodCards({
 
   const yape1 = PAYMENT_METHOD_INFO["YAPE 1"];
   const yape2 = PAYMENT_METHOD_INFO["YAPE 2"];
+  const animTrigger = `${monthKey}-${replayKey}`;
 
   return (
     <div>
-      {/* Barra superior del Previsualizador de Cuentas */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-extrabold uppercase tracking-wider text-fg-muted">
-            Saldos independientes por cuenta
-          </span>
-          <span className="hidden sm:inline-block text-xs text-fg-muted">
-            · Haz clic en una tarjeta para filtrar su evolución o ver su estado de cuenta
-          </span>
-        </div>
+      {/* HERO INTERACTIVO EN TIEMPO REAL — CARGA DESDE S/. 0.00 */}
+      <div className="relative mb-6 overflow-hidden rounded-3xl border border-slate-800/80 bg-gradient-to-br from-[#070d1f] via-[#0d1836] to-[#171238] p-6 text-white shadow-2xl">
+        {/* Luces ambientales decorativas */}
+        <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-1/3 h-72 w-72 rounded-full bg-purple-600/25 blur-3xl" />
+        <div className="pointer-events-none absolute -top-20 -right-20 h-72 w-72 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
-        <div className="flex items-center gap-2">
-          {selectedAccount && (
+        <div className="relative z-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
+          {/* Columna Izquierda: Saldo Consolidado desde 0.00 */}
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-emerald-300 shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                En Vivo · 3 Cuentas Sincronizadas
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-bold text-slate-200">
+                <Sparkles size={12} className="text-amber-300" />
+                Inicia desde S/. 0.00
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-bold text-cyan-200">
+                <Zap size={12} className="text-cyan-300" />
+                {animatedMovsTotal} operaciones en {periodLabel}
+              </span>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-baseline gap-4">
+              <div>
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-300">
+                  Liquidez Total Consolidada ({periodLabel})
+                </p>
+                <div className="mt-1 font-display text-4xl font-black tracking-tight text-white sm:text-5xl">
+                  <AnimatedMoney
+                    value={totalGeneral}
+                    durationMs={1350}
+                    replayKey={animTrigger}
+                  />
+                </div>
+              </div>
+
+              {/* Tarjetas de Ingresos y Egresos Globales desde 0.00 */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 backdrop-blur-xs">
+                  <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                    <ArrowUpRight size={13} /> Ingresos Totales
+                  </span>
+                  <p className="mt-0.5 font-mono text-base font-black text-emerald-200">
+                    <AnimatedMoney
+                      value={totalIncomeGeneral}
+                      prefix="+ S/. "
+                      durationMs={1250}
+                      replayKey={animTrigger}
+                    />
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-2 backdrop-blur-xs">
+                  <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-rose-300">
+                    <ArrowDownRight size={13} /> Egresos Totales
+                  </span>
+                  <p className="mt-0.5 font-mono text-base font-black text-rose-200">
+                    <AnimatedMoney
+                      value={totalExpenseGeneral}
+                      prefix="- S/. "
+                      durationMs={1250}
+                      replayKey={animTrigger}
+                    />
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Columna Derecha: Controles Interactivos de Animación y Comparativa */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleReplayAndSync}
+              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/20 px-4 py-2.5 text-xs font-extrabold text-emerald-200 shadow-lg shadow-emerald-950/50 transition-all hover:bg-emerald-500 hover:text-slate-950 active:scale-95"
+              title="Vuelve a cargar los saldos desde S/. 0.00 y sincroniza en tiempo real"
+            >
+              <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+              <span>Cargar desde S/. 0.00</span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
                 updateSelectedAccount(null);
-                setChartMode("ALL");
+                setChartMode(chartMode === "COMPARE" ? "ALL" : "COMPARE");
               }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs font-bold text-accent transition-all hover:bg-accent hover:text-accent-fg"
+              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-extrabold transition-all active:scale-95 ${
+                chartMode === "COMPARE"
+                  ? "bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white shadow-lg shadow-fuchsia-600/30"
+                  : "border border-white/20 bg-white/10 text-white hover:bg-white/20"
+              }`}
             >
-              <RotateCcw size={12} />
-              <span>Ver todas las cuentas (S/. {totalGeneral.toFixed(2)})</span>
+              <TrendingUp size={14} />
+              <span>
+                {chartMode === "COMPARE" ? "Viendo las 3 curvas" : "Comparar las 3 en gráfico"}
+              </span>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              updateSelectedAccount(null);
-              setChartMode(chartMode === "COMPARE" ? "ALL" : "COMPARE");
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-all ${
-              chartMode === "COMPARE"
-                ? "bg-accent text-accent-fg shadow-sm"
-                : "border border-border bg-bg-alt text-fg-muted hover:border-accent hover:text-fg"
-            }`}
-          >
-            <TrendingUp size={13} />
-            <span>{chartMode === "COMPARE" ? "Viendo comparativa 3 cuentas" : "Comparar las 3 en gráfico"}</span>
-          </button>
+
+            {selectedAccount && (
+              <button
+                type="button"
+                onClick={() => {
+                  updateSelectedAccount(null);
+                  setChartMode("ALL");
+                }}
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-400/40 bg-amber-400/20 px-3.5 py-2.5 text-xs font-extrabold text-amber-200 transition-all hover:bg-amber-400 hover:text-slate-950"
+              >
+                <RotateCcw size={13} />
+                <span>Ver todas</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Barra de Distribución de Liquidez en Tiempo Real (Efectivo | Yape 1 | Yape 2) */}
+        <div className="relative z-10 mt-6 border-t border-white/10 pt-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-1.5 font-extrabold uppercase tracking-wider text-slate-300">
+              <Wallet size={13} className="text-emerald-400" />
+              Distribución de Liquidez en Tiempo Real (Clic para filtrar cuenta)
+            </span>
+            <div className="flex flex-wrap items-center gap-4 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => handleSelectCard("EFECTIVO")}
+                className="inline-flex items-center gap-1.5 text-emerald-300 hover:underline"
+              >
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                Efectivo: {shareByMethod.EFECTIVO.toFixed(1)}%
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectCard("YAPE 1")}
+                className="inline-flex items-center gap-1.5 text-purple-300 hover:underline"
+              >
+                <span className="h-2.5 w-2.5 rounded-full bg-[#a855f7]" />
+                Yape 1 (Edgar): {shareByMethod["YAPE 1"].toFixed(1)}%
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectCard("YAPE 2")}
+                className="inline-flex items-center gap-1.5 text-fuchsia-300 hover:underline"
+              >
+                <span className="h-2.5 w-2.5 rounded-full bg-fuchsia-400" />
+                Yape 2 (Caja): {shareByMethod["YAPE 2"].toFixed(1)}%
+              </button>
+            </div>
+          </div>
+
+          <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-slate-900/90 p-0.5 ring-1 ring-white/15">
+            <div
+              onClick={() => handleSelectCard("EFECTIVO")}
+              style={{ width: barsReady ? `${shareByMethod.EFECTIVO}%` : "0%" }}
+              className="h-full cursor-pointer rounded-l-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-1000 ease-out hover:brightness-110"
+              title={`Efectivo: S/. ${statsByMethod["EFECTIVO"].net.toFixed(2)} (${shareByMethod.EFECTIVO.toFixed(1)}%)`}
+            />
+            <div
+              onClick={() => handleSelectCard("YAPE 1")}
+              style={{ width: barsReady ? `${shareByMethod["YAPE 1"]}%` : "0%" }}
+              className="h-full cursor-pointer bg-gradient-to-r from-[#742284] to-purple-500 transition-all duration-1000 ease-out hover:brightness-110"
+              title={`Yape 1 (Edgar): S/. ${statsByMethod["YAPE 1"].net.toFixed(2)} (${shareByMethod["YAPE 1"].toFixed(1)}%)`}
+            />
+            <div
+              onClick={() => handleSelectCard("YAPE 2")}
+              style={{ width: barsReady ? `${shareByMethod["YAPE 2"]}%` : "0%" }}
+              className="h-full cursor-pointer rounded-r-full bg-gradient-to-r from-fuchsia-500 to-pink-500 transition-all duration-1000 ease-out hover:brightness-110"
+              title={`Yape 2 (Caja): S/. ${statsByMethod["YAPE 2"].net.toFixed(2)} (${shareByMethod["YAPE 2"].toFixed(1)}%)`}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Las 3 Tarjetas de Cuenta */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Subtítulo de sección de tarjetas */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={15} className="text-emerald-600 dark:text-emerald-400" />
+          <span className="text-xs font-extrabold uppercase tracking-wider text-fg">
+            Saldos Independientes por Método de Pago
+          </span>
+          <span className="hidden sm:inline-block text-xs text-fg-muted">
+            · Haz clic en cualquier tarjeta para filtrar su curva o inspeccionar su extracto
+          </span>
+        </div>
+        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+          ● Conteo dinámico desde S/. 0.00 activo
+        </span>
+      </div>
+
+      {/* Las 3 Tarjetas de Cuenta Interactivas */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         {/* 1. Tarjeta EFECTIVO */}
         <div
           onClick={() => handleSelectCard("EFECTIVO")}
@@ -200,68 +426,106 @@ export function CashboxMethodCards({
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") handleSelectCard("EFECTIVO");
           }}
-          className={`group admin-glass relative cursor-pointer overflow-hidden rounded-[var(--radius-lg)] p-5 transition-all duration-300 hover:-translate-y-1 ${
+          className={`group admin-glass relative cursor-pointer overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5 ${
             selectedAccount === "EFECTIVO"
-              ? "ring-2 ring-emerald-500 border-emerald-500 shadow-xl shadow-emerald-500/15 bg-emerald-500/[0.03]"
-              : "border-emerald-500/20 hover:border-emerald-500/50 hover:shadow-xl hover:shadow-emerald-500/10"
+              ? "ring-2 ring-emerald-500 border-emerald-500 shadow-2xl shadow-emerald-500/20 bg-emerald-500/[0.04]"
+              : "border-emerald-500/25 hover:border-emerald-500/60 hover:shadow-2xl hover:shadow-emerald-500/15"
           }`}
         >
-          <div className="flex items-start justify-between gap-3">
+          {/* Barra superior luminosa */}
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
+          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-500/10 blur-2xl transition-all group-hover:bg-emerald-500/20" />
+
+          <div className="flex items-start justify-between gap-3 pt-1">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-[0_0_24px_-4px_rgba(16,185,129,0.4)] transition-all group-hover:scale-105 group-hover:bg-emerald-500 group-hover:text-white">
-                <Banknote size={24} strokeWidth={2.2} />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/35 transition-transform duration-300 group-hover:scale-110">
+                <Banknote size={24} strokeWidth={2.3} />
               </div>
               <div>
-                <p className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                  Efectivo
-                </p>
-                <p className="text-[11px] font-semibold text-fg-muted">Caja física del taller</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                    Efectivo
+                  </p>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse" />
+                </div>
+                <p className="text-xs font-bold text-fg">Caja física del taller</p>
               </div>
             </div>
-            <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-              {statsByMethod["EFECTIVO"].count} movs.
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300 tabular-nums">
+                {animatedCashCount} movs.
+              </span>
+              <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                {shareByMethod.EFECTIVO.toFixed(1)}% del total
+              </span>
+            </div>
           </div>
 
           <div className="mt-5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-fg-muted">
                 Saldo disponible
               </span>
-              {selectedAccount === "EFECTIVO" && (
-                <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
+              {selectedAccount === "EFECTIVO" ? (
+                <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-black text-white shadow-xs">
                   ● Filtro activo
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  Inicia en S/. 0.00
                 </span>
               )}
             </div>
-            <p className="mt-0.5 font-display text-3xl font-black tracking-tight text-fg">
-              S/. {statsByMethod["EFECTIVO"].net.toFixed(2)}
+            <p className="mt-1 font-display text-3xl font-black tracking-tight text-fg sm:text-4xl">
+              <AnimatedMoney
+                value={statsByMethod["EFECTIVO"].net}
+                durationMs={1250}
+                replayKey={animTrigger}
+              />
             </p>
           </div>
 
-          {/* Desglose Ingresos / Egresos de Efectivo */}
-          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-2.5 text-xs">
+          {/* Barra de participación animada desde 0% */}
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-emerald-500/15">
+            <div
+              style={{ width: barsReady ? `${shareByMethod.EFECTIVO}%` : "0%" }}
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-1000 ease-out"
+            />
+          </div>
+
+          {/* Desglose Ingresos / Egresos de Efectivo (animado desde 0.00) */}
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.05] p-3 text-xs">
             <div>
-              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
                 <ArrowUpRight size={12} /> Ingresos
               </span>
-              <p className="mt-0.5 font-extrabold text-fg">
-                + S/. {statsByMethod["EFECTIVO"].income.toFixed(2)}
+              <p className="mt-0.5 font-mono font-black text-fg">
+                <AnimatedMoney
+                  value={statsByMethod["EFECTIVO"].income}
+                  prefix="+ S/. "
+                  durationMs={1200}
+                  replayKey={animTrigger}
+                />
               </p>
             </div>
             <div className="border-l border-emerald-500/20 pl-2.5">
-              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-red-600 dark:text-red-400">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase text-red-600 dark:text-red-400">
                 <ArrowDownRight size={12} /> Egresos
               </span>
-              <p className="mt-0.5 font-extrabold text-fg">
-                - S/. {statsByMethod["EFECTIVO"].expense.toFixed(2)}
+              <p className="mt-0.5 font-mono font-black text-fg">
+                <AnimatedMoney
+                  value={statsByMethod["EFECTIVO"].expense}
+                  prefix="- S/. "
+                  durationMs={1200}
+                  replayKey={animTrigger}
+                />
               </p>
             </div>
           </div>
 
           {/* Acciones rápidas de la tarjeta */}
-          <div className="mt-3 flex items-center justify-between gap-2 pt-1">
-            <span className="text-[11px] text-fg-muted truncate">
+          <div className="mt-3.5 flex items-center justify-between gap-2 pt-1">
+            <span className="text-[11px] font-medium text-fg-muted truncate">
               Billetes y monedas ({periodLabel})
             </span>
             <button
@@ -270,7 +534,7 @@ export function CashboxMethodCards({
                 e.stopPropagation();
                 setPreviewModalAccount("EFECTIVO");
               }}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-600 hover:text-white"
+              className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-extrabold text-emerald-700 dark:text-emerald-300 transition-all hover:bg-emerald-600 hover:text-white shadow-2xs"
             >
               <Eye size={12} />
               <span>Previsualizar</span>
@@ -286,16 +550,20 @@ export function CashboxMethodCards({
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") handleSelectCard("YAPE 1");
           }}
-          className={`group admin-glass relative cursor-pointer overflow-hidden rounded-[var(--radius-lg)] p-5 transition-all duration-300 hover:-translate-y-1 ${
+          className={`group admin-glass relative cursor-pointer overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5 ${
             selectedAccount === "YAPE 1"
-              ? "ring-2 ring-[#742284] border-[#742284] shadow-xl shadow-[#742284]/20 bg-[#742284]/[0.04]"
-              : "border-[#742284]/25 dark:border-[#742284]/50 hover:border-[#742284] hover:shadow-xl hover:shadow-[#742284]/15"
+              ? "ring-2 ring-[#742284] border-[#742284] shadow-2xl shadow-[#742284]/25 bg-[#742284]/[0.05]"
+              : "border-[#742284]/30 dark:border-[#742284]/50 hover:border-[#742284] hover:shadow-2xl hover:shadow-[#742284]/20"
           }`}
         >
-          <div className="flex items-start justify-between gap-3">
+          {/* Barra superior luminosa */}
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#742284] via-purple-500 to-[#00D4B8]" />
+          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[#742284]/15 blur-2xl transition-all group-hover:bg-[#742284]/25" />
+
+          <div className="flex items-start justify-between gap-2 pt-1">
             <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-2xl p-0.5 transition-transform duration-300 group-hover:scale-105">
-                <YapeIcon size={46} className="shadow-md" />
+              <div className="shrink-0 rounded-2xl p-0.5 transition-transform duration-300 group-hover:scale-110">
+                <YapeIcon size={46} className="shadow-lg shadow-[#742284]/30" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
@@ -303,8 +571,8 @@ export function CashboxMethodCards({
                     Yape 1
                   </span>
                   <span className="h-2 w-2 rounded-full bg-[#00D4B8] shadow-[0_0_8px_#00D4B8] animate-pulse" />
-                  <span className="rounded-full bg-[#742284]/10 px-1.5 py-0.2 text-[10px] font-bold text-[#742284] dark:text-[#e9d5ff]">
-                    {statsByMethod["YAPE 1"].count} movs.
+                  <span className="rounded-full bg-[#742284]/15 px-2 py-0.2 text-[10px] font-black text-[#742284] dark:text-[#e9d5ff] tabular-nums">
+                    {animatedY1Count} movs.
                   </span>
                 </div>
                 <p className="text-sm font-extrabold text-fg leading-tight mt-0.5">{yape1.titular}</p>
@@ -337,40 +605,64 @@ export function CashboxMethodCards({
 
           <div className="mt-5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-fg-muted">
                 Saldo Yape 1
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-[#742284]/30 border border-purple-200 dark:border-[#742284]/50 px-2 py-0.5 text-[10px] font-extrabold text-purple-900 dark:text-purple-200">
-                {selectedAccount === "YAPE 1" ? "● Filtro activo" : `Titular: ${yape1.titular}`}
+              <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-[#742284]/30 border border-purple-200 dark:border-[#742284]/50 px-2.5 py-0.5 text-[10px] font-extrabold text-purple-900 dark:text-purple-200">
+                {selectedAccount === "YAPE 1"
+                  ? "● Filtro activo"
+                  : `${shareByMethod["YAPE 1"].toFixed(1)}% · ${yape1.titular}`}
               </span>
             </div>
-            <p className="mt-0.5 font-display text-3xl font-black tracking-tight text-fg">
-              S/. {statsByMethod["YAPE 1"].net.toFixed(2)}
+            <p className="mt-1 font-display text-3xl font-black tracking-tight text-fg sm:text-4xl">
+              <AnimatedMoney
+                value={statsByMethod["YAPE 1"].net}
+                durationMs={1300}
+                replayKey={animTrigger}
+              />
             </p>
           </div>
 
-          {/* Desglose Ingresos / Egresos de Yape 1 */}
-          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-[#742284]/20 bg-[#742284]/[0.04] p-2.5 text-xs">
+          {/* Barra de participación animada desde 0% */}
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#742284]/15">
+            <div
+              style={{ width: barsReady ? `${shareByMethod["YAPE 1"]}%` : "0%" }}
+              className="h-full rounded-full bg-gradient-to-r from-[#742284] via-purple-500 to-[#00D4B8] transition-all duration-1000 ease-out"
+            />
+          </div>
+
+          {/* Desglose Ingresos / Egresos de Yape 1 (animado desde 0.00) */}
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-[#742284]/20 bg-[#742284]/[0.05] p-3 text-xs">
             <div>
-              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
                 <ArrowUpRight size={12} /> Ingresos
               </span>
-              <p className="mt-0.5 font-extrabold text-fg">
-                + S/. {statsByMethod["YAPE 1"].income.toFixed(2)}
+              <p className="mt-0.5 font-mono font-black text-fg">
+                <AnimatedMoney
+                  value={statsByMethod["YAPE 1"].income}
+                  prefix="+ S/. "
+                  durationMs={1200}
+                  replayKey={animTrigger}
+                />
               </p>
             </div>
             <div className="border-l border-[#742284]/20 pl-2.5">
-              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-red-600 dark:text-red-400">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase text-red-600 dark:text-red-400">
                 <ArrowDownRight size={12} /> Egresos
               </span>
-              <p className="mt-0.5 font-extrabold text-fg">
-                - S/. {statsByMethod["YAPE 1"].expense.toFixed(2)}
+              <p className="mt-0.5 font-mono font-black text-fg">
+                <AnimatedMoney
+                  value={statsByMethod["YAPE 1"].expense}
+                  prefix="- S/. "
+                  durationMs={1200}
+                  replayKey={animTrigger}
+                />
               </p>
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-2 pt-1">
-            <span className="text-[11px] text-fg-muted truncate">
+          <div className="mt-3.5 flex items-center justify-between gap-2 pt-1">
+            <span className="text-[11px] font-medium text-fg-muted truncate">
               {yape1.titular} · Tel. {yape1.formattedPhone}
             </span>
             <button
@@ -379,7 +671,7 @@ export function CashboxMethodCards({
                 e.stopPropagation();
                 setPreviewModalAccount("YAPE 1");
               }}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#742284]/30 bg-[#742284]/10 px-2.5 py-1 text-[11px] font-bold text-[#742284] dark:text-[#e9d5ff] transition-colors hover:bg-[#742284] hover:text-white"
+              className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-[#742284]/30 bg-[#742284]/10 px-3 py-1.5 text-[11px] font-extrabold text-[#742284] dark:text-[#e9d5ff] transition-all hover:bg-[#742284] hover:text-white shadow-2xs"
             >
               <Eye size={12} />
               <span>Previsualizar</span>
@@ -395,25 +687,29 @@ export function CashboxMethodCards({
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") handleSelectCard("YAPE 2");
           }}
-          className={`group admin-glass relative cursor-pointer overflow-hidden rounded-[var(--radius-lg)] p-5 transition-all duration-300 hover:-translate-y-1 ${
+          className={`group admin-glass relative cursor-pointer overflow-hidden rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1.5 ${
             selectedAccount === "YAPE 2"
-              ? "ring-2 ring-fuchsia-600 border-fuchsia-600 shadow-xl shadow-fuchsia-600/20 bg-fuchsia-600/[0.04]"
-              : "border-[#742284]/25 dark:border-[#742284]/50 hover:border-[#742284] hover:shadow-xl hover:shadow-[#742284]/15"
+              ? "ring-2 ring-fuchsia-600 border-fuchsia-600 shadow-2xl shadow-fuchsia-600/25 bg-fuchsia-600/[0.05]"
+              : "border-fuchsia-500/30 dark:border-fuchsia-500/50 hover:border-fuchsia-500 hover:shadow-2xl hover:shadow-fuchsia-500/20"
           }`}
         >
-          <div className="flex items-start justify-between gap-3">
+          {/* Barra superior luminosa */}
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-fuchsia-600 via-pink-500 to-[#00D4B8]" />
+          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-fuchsia-500/15 blur-2xl transition-all group-hover:bg-fuchsia-500/25" />
+
+          <div className="flex items-start justify-between gap-2 pt-1">
             <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-2xl p-0.5 transition-transform duration-300 group-hover:scale-105">
-                <YapeIcon size={46} className="shadow-md" />
+              <div className="shrink-0 rounded-2xl p-0.5 transition-transform duration-300 group-hover:scale-110">
+                <YapeIcon size={46} className="shadow-lg shadow-fuchsia-600/30" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-black uppercase tracking-wider text-[#742284] dark:text-[#c084fc]">
+                  <span className="text-xs font-black uppercase tracking-wider text-fuchsia-700 dark:text-fuchsia-300">
                     Yape 2
                   </span>
                   <span className="h-2 w-2 rounded-full bg-[#00D4B8] shadow-[0_0_8px_#00D4B8] animate-pulse" />
-                  <span className="rounded-full bg-[#742284]/10 px-1.5 py-0.2 text-[10px] font-bold text-[#742284] dark:text-[#e9d5ff]">
-                    {statsByMethod["YAPE 2"].count} movs.
+                  <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.2 text-[10px] font-black text-fuchsia-700 dark:text-fuchsia-200 tabular-nums">
+                    {animatedY2Count} movs.
                   </span>
                 </div>
                 <p className="text-sm font-extrabold text-fg leading-tight mt-0.5">{yape2.titular}</p>
@@ -428,7 +724,7 @@ export function CashboxMethodCards({
                 copyNumber("yape2", yape2.phone || "");
               }}
               title="Clic para copiar número"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[#742284]/30 bg-[#742284]/10 dark:bg-[#742284]/25 px-2.5 py-1.5 text-xs font-mono font-black text-[#742284] dark:text-[#e9d5ff] transition-all hover:bg-[#742284] hover:text-white active:scale-95 shadow-xs"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 dark:bg-fuchsia-500/25 px-2.5 py-1.5 text-xs font-mono font-black text-fuchsia-700 dark:text-fuchsia-200 transition-all hover:bg-fuchsia-600 hover:text-white active:scale-95 shadow-xs"
             >
               {copiedId === "yape2" ? (
                 <>
@@ -446,40 +742,64 @@ export function CashboxMethodCards({
 
           <div className="mt-5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-fg-muted">
                 Saldo Yape 2
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-[#742284]/30 border border-purple-200 dark:border-[#742284]/50 px-2 py-0.5 text-[10px] font-extrabold text-purple-900 dark:text-purple-200">
-                {selectedAccount === "YAPE 2" ? "● Filtro activo" : `Titular: ${yape2.titular}`}
+              <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-100 dark:bg-fuchsia-500/25 border border-fuchsia-200 dark:border-fuchsia-500/40 px-2.5 py-0.5 text-[10px] font-extrabold text-fuchsia-900 dark:text-fuchsia-200">
+                {selectedAccount === "YAPE 2"
+                  ? "● Filtro activo"
+                  : `${shareByMethod["YAPE 2"].toFixed(1)}% · ${yape2.titular}`}
               </span>
             </div>
-            <p className="mt-0.5 font-display text-3xl font-black tracking-tight text-fg">
-              S/. {statsByMethod["YAPE 2"].net.toFixed(2)}
+            <p className="mt-1 font-display text-3xl font-black tracking-tight text-fg sm:text-4xl">
+              <AnimatedMoney
+                value={statsByMethod["YAPE 2"].net}
+                durationMs={1350}
+                replayKey={animTrigger}
+              />
             </p>
           </div>
 
-          {/* Desglose Ingresos / Egresos de Yape 2 */}
-          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-[#742284]/20 bg-[#742284]/[0.04] p-2.5 text-xs">
+          {/* Barra de participación animada desde 0% */}
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-fuchsia-500/15">
+            <div
+              style={{ width: barsReady ? `${shareByMethod["YAPE 2"]}%` : "0%" }}
+              className="h-full rounded-full bg-gradient-to-r from-fuchsia-600 via-pink-500 to-[#00D4B8] transition-all duration-1000 ease-out"
+            />
+          </div>
+
+          {/* Desglose Ingresos / Egresos de Yape 2 (animado desde 0.00) */}
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/[0.05] p-3 text-xs">
             <div>
-              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
                 <ArrowUpRight size={12} /> Ingresos
               </span>
-              <p className="mt-0.5 font-extrabold text-fg">
-                + S/. {statsByMethod["YAPE 2"].income.toFixed(2)}
+              <p className="mt-0.5 font-mono font-black text-fg">
+                <AnimatedMoney
+                  value={statsByMethod["YAPE 2"].income}
+                  prefix="+ S/. "
+                  durationMs={1200}
+                  replayKey={animTrigger}
+                />
               </p>
             </div>
-            <div className="border-l border-[#742284]/20 pl-2.5">
-              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-red-600 dark:text-red-400">
+            <div className="border-l border-fuchsia-500/20 pl-2.5">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase text-red-600 dark:text-red-400">
                 <ArrowDownRight size={12} /> Egresos
               </span>
-              <p className="mt-0.5 font-extrabold text-fg">
-                - S/. {statsByMethod["YAPE 2"].expense.toFixed(2)}
+              <p className="mt-0.5 font-mono font-black text-fg">
+                <AnimatedMoney
+                  value={statsByMethod["YAPE 2"].expense}
+                  prefix="- S/. "
+                  durationMs={1200}
+                  replayKey={animTrigger}
+                />
               </p>
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-2 pt-1">
-            <span className="text-[11px] text-fg-muted truncate">
+          <div className="mt-3.5 flex items-center justify-between gap-2 pt-1">
+            <span className="text-[11px] font-medium text-fg-muted truncate">
               {yape2.titular} · Tel. {yape2.formattedPhone}
             </span>
             <button
@@ -488,7 +808,7 @@ export function CashboxMethodCards({
                 e.stopPropagation();
                 setPreviewModalAccount("YAPE 2");
               }}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#742284]/30 bg-[#742284]/10 px-2.5 py-1 text-[11px] font-bold text-[#742284] dark:text-[#e9d5ff] transition-colors hover:bg-[#742284] hover:text-white"
+              className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-extrabold text-fuchsia-700 dark:text-fuchsia-200 transition-all hover:bg-fuchsia-600 hover:text-white shadow-2xs"
             >
               <Eye size={12} />
               <span>Previsualizar</span>
@@ -499,7 +819,7 @@ export function CashboxMethodCards({
 
       {/* Panel Desplegable en Vivo cuando se selecciona una tarjeta */}
       {selectedAccount && (
-        <div className="mt-5 admin-glass rounded-[var(--radius-lg)] border-2 border-accent/30 p-5 animate-in fade-in duration-200">
+        <div className="mt-5 admin-glass rounded-3xl border-2 border-accent/30 p-5 animate-in fade-in duration-200">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
             <div className="flex items-center gap-2.5">
               <ListFilter size={18} className="text-accent" />
@@ -584,23 +904,34 @@ export function CashboxMethodCards({
         </div>
       )}
 
-      {/* Gráfico de Evolución del Saldo (Sincronizado con las tarjetas) */}
-      <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h2 className="font-display text-lg font-bold text-fg">
-            Evolución del saldo — {periodLabel}
-          </h2>
-          <span className="text-xs text-fg-muted font-medium">
-            {chartMode === "COMPARE"
-              ? "Comparando Efectivo vs Yape 1 vs Yape 2"
-              : chartMode === "ALL"
-              ? `Inicia desde S/. 0.00 en ${periodLabel}`
-              : `Mostrando curva exclusiva de ${PAYMENT_METHOD_INFO[chartMode].name}`}
+      {/* Gráfico de Evolución del Saldo (Sincronizado con las tarjetas y desde S/. 0.00) */}
+      <div className="mt-7 admin-glass rounded-3xl border border-border p-6 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
+              <TrendingUp size={18} />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-black text-fg">
+                Curva de Evolución en Tiempo Real — {periodLabel}
+              </h2>
+              <p className="text-xs text-fg-muted">
+                {chartMode === "COMPARE"
+                  ? "Comparando Efectivo vs Yape 1 vs Yape 2 partiendo desde S/. 0.00"
+                  : chartMode === "ALL"
+                  ? `Curva consolidada que inicia en S/. 0.00 y evoluciona movimiento por movimiento`
+                  : `Curva exclusiva de ${PAYMENT_METHOD_INFO[chartMode].name} desde S/. 0.00`}
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+            ● Punto 0: S/. 0.00
           </span>
         </div>
         <CajaChart
           transactions={transactions}
           activeFilter={chartMode}
+          replayKey={animTrigger}
           onFilterChange={(m) => {
             setChartMode(m);
             if (m === "EFECTIVO" || m === "YAPE 1" || m === "YAPE 2") {

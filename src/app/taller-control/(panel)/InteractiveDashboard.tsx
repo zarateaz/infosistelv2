@@ -28,6 +28,7 @@ import type { DashboardLiveSnapshot } from "@/lib/dashboardLive";
 import type { AdminTransaction } from "./caja/actions";
 import { CajaChart, type ChartFilterMode } from "./caja/CajaChart";
 import { CriticalStockAlert } from "./CriticalStockAlert";
+import { AnimatedMoney } from "@/components/ui/AnimatedMoney";
 
 function money(n: number): string {
   return `S/. ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -107,6 +108,7 @@ export function InteractiveDashboard({
   const [feedType, setFeedType] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [changedKeys, setChangedKeys] = useState<Record<string, boolean>>({});
+  const [replayKey, setReplayKey] = useState<number>(1);
 
   const prevBalancesRef = useRef<{
     total: number;
@@ -315,12 +317,15 @@ export function InteractiveDashboard({
 
           <button
             type="button"
-            onClick={() => void fetchLive(true)}
+            onClick={() => {
+              setReplayKey((k) => k + 1);
+              void fetchLive(true);
+            }}
             disabled={isRefreshing}
             className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-bg-surface px-3.5 py-2 text-xs font-bold text-fg shadow-xs transition-all hover:border-accent/50 hover:text-accent disabled:opacity-60"
           >
             <RefreshCw size={14} className={isRefreshing ? "animate-spin text-accent" : ""} />
-            <span>Actualizar</span>
+            <span>Cargar desde S/. 0.00</span>
           </button>
 
           <Link
@@ -362,7 +367,11 @@ export function InteractiveDashboard({
                   heroBalance >= 0 ? "text-fg" : "text-red-600 dark:text-red-400"
                 }`}
               >
-                {money(heroBalance)}
+                <AnimatedMoney
+                  value={heroBalance}
+                  durationMs={1350}
+                  replayKey={`${scope}-${replayKey}`}
+                />
               </p>
               {changedKeys.total && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 animate-bounce">
@@ -378,7 +387,12 @@ export function InteractiveDashboard({
                 <ArrowUpRight size={13} /> Ingresos
               </p>
               <p className="mt-0.5 font-display text-lg font-extrabold text-emerald-700 dark:text-emerald-300">
-                + {money(heroIncome)}
+                <AnimatedMoney
+                  value={heroIncome}
+                  prefix="+ S/. "
+                  durationMs={1250}
+                  replayKey={`${scope}-${replayKey}`}
+                />
               </p>
             </div>
             <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-2.5">
@@ -386,7 +400,12 @@ export function InteractiveDashboard({
                 <ArrowDownRight size={13} /> Egresos
               </p>
               <p className="mt-0.5 font-display text-lg font-extrabold text-red-700 dark:text-red-300">
-                - {money(heroExpense)}
+                <AnimatedMoney
+                  value={heroExpense}
+                  prefix="- S/. "
+                  durationMs={1250}
+                  replayKey={`${scope}-${replayKey}`}
+                />
               </p>
             </div>
           </div>
@@ -541,7 +560,11 @@ export function InteractiveDashboard({
                           shownBalance < 0 ? "text-red-600 dark:text-red-400" : "text-fg"
                         }`}
                       >
-                        {money(shownBalance)}
+                        <AnimatedMoney
+                          value={shownBalance}
+                          durationMs={1250}
+                          replayKey={`${scope}-${replayKey}`}
+                        />
                       </p>
                     </div>
 
@@ -569,7 +592,12 @@ export function InteractiveDashboard({
                         <ArrowUpRight size={12} /> Ingresos
                       </span>
                       <span className="mt-0.5 block font-bold text-fg">
-                        + {money(shownIncome)}
+                        <AnimatedMoney
+                          value={shownIncome}
+                          prefix="+ S/. "
+                          durationMs={1200}
+                          replayKey={`${scope}-${replayKey}`}
+                        />
                       </span>
                     </div>
                     <div className="border-l border-border/60 pl-2.5">
@@ -577,7 +605,12 @@ export function InteractiveDashboard({
                         <ArrowDownRight size={12} /> Egresos
                       </span>
                       <span className="mt-0.5 block font-bold text-fg">
-                        - {money(shownExpense)}
+                        <AnimatedMoney
+                          value={shownExpense}
+                          prefix="- S/. "
+                          durationMs={1200}
+                          replayKey={`${scope}-${replayKey}`}
+                        />
                       </span>
                     </div>
                   </div>

@@ -13,6 +13,7 @@ import { MonthSelector } from "./MonthSelector";
 import { MonthlyReportsArchive } from "./MonthlyReportsArchive";
 import { CashboxMethodCards } from "./CashboxMethodCards";
 import { CashboxMovementsSection } from "./CashboxMovementsSection";
+import { AnimatedMoney } from "@/components/ui/AnimatedMoney";
 
 function adjacentMonth(month: string, delta: number): string {
   const [year, monthNum] = month.split("-").map(Number);
@@ -66,10 +67,28 @@ export function CashboxInteractiveWorkspace({
                 </span>
               )}
             </div>
-            <p className="mt-1 text-sm text-fg-muted">
-              {showAll
-                ? `Saldo histórico acumulado: S/. ${balance.toFixed(2)} (${displayedTransactions.length} movimientos)`
-                : `Saldo neto de ${monthLabel}: S/. ${balance.toFixed(2)} (${monthTransactions.length} mov.)`}
+            <p className="mt-1 text-sm font-medium text-fg-muted">
+              {showAll ? (
+                <>
+                  Saldo histórico acumulado:{" "}
+                  <AnimatedMoney
+                    value={balance}
+                    replayKey={`hdr-all-${displayedTransactions.length}`}
+                    className="font-extrabold text-fg"
+                  />{" "}
+                  ({displayedTransactions.length} movimientos)
+                </>
+              ) : (
+                <>
+                  Saldo neto de {monthLabel}:{" "}
+                  <AnimatedMoney
+                    value={balance}
+                    replayKey={`hdr-${month}-${monthTransactions.length}`}
+                    className="font-extrabold text-fg"
+                  />{" "}
+                  ({monthTransactions.length} mov.)
+                </>
+              )}
             </p>
           </div>
 
