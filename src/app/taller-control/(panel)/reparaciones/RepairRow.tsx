@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 import { updateRepairProgress, deleteRepair } from "./actions";
 import type { AdminRepair } from "./actions";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -10,10 +10,16 @@ export function RepairRow({ repair }: { repair: AdminRepair }) {
   const [progress, setProgress] = useState(repair.progress);
   const [statusText, setStatusText] = useState(repair.statusText);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingEdit, setConfirmingEdit] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  const dirty = progress !== repair.progress || statusText !== repair.statusText;
+
   const save = () => {
-    startTransition(() => updateRepairProgress(repair.id, progress, statusText));
+    startTransition(async () => {
+      await updateRepairProgress(repair.id, progress, statusText);
+      setConfirmingEdit(false);
+    });
   };
 
   const remove = () => {
@@ -57,7 +63,6 @@ export function RepairRow({ repair }: { repair: AdminRepair }) {
           type="text"
           value={statusText}
           onChange={(e) => setStatusText(e.target.value)}
-          onBlur={save}
           className="w-40 rounded-lg border border-border bg-bg px-3 py-1.5 text-sm font-semibold text-fg outline-none focus:border-accent"
         />
         <input
@@ -66,13 +71,37 @@ export function RepairRow({ repair }: { repair: AdminRepair }) {
           max={100}
           value={progress}
           onChange={(e) => setProgress(Number(e.target.value))}
-          onMouseUp={save}
-          onTouchEnd={save}
           className="h-2 flex-1 accent-accent"
         />
         <span className="w-12 text-right text-sm font-bold text-fg">{progress}%</span>
-        {isPending && <span className="text-xs text-fg-muted">Guardando...</span>}
+        {dirty && (
+          <button
+            type="button"
+            onClick={() => setConfirmingEdit(true)}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-accent-fg shadow-xs hover:opacity-90 disabled:opacity-50"
+          >
+            <Check size={13} />
+            <span>Guardar cambios</span>
+          </button>
+        )}
       </div>
+
+      {confirmingEdit && (
+        <ConfirmDialog
+          title="Confirmar modificación de reparación"
+          message={`¿Confirmas actualizar el estado de la reparación ${repair.code}?`}
+          fields={[
+            { label: "Estado", value: statusText },
+            { label: "Progreso", value: `${progress}%` },
+          ]}
+          confirmLabel="Sí, actualizar"
+          pendingLabel="Guardando..."
+          pending={isPending}
+          onConfirm={save}
+          onCancel={() => setConfirmingEdit(false)}
+        />
+      )}
     </div>
   );
 }

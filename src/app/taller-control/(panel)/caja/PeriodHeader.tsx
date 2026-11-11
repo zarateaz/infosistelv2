@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Check, Pencil } from "lucide-react";
 import { setCashboxPeriodResponsible, type AdminCashboxPeriod } from "./actions";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const MONTH_NAMES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -22,19 +23,26 @@ function openingDateLabel(month: string): string {
 export function PeriodHeader({ month, period }: { month: string; period: AdminCashboxPeriod | null }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(period?.responsible ?? "");
+  const [confirmSave, setConfirmSave] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function save() {
+  function executeSave() {
     setError(null);
     startTransition(async () => {
       const result = await setCashboxPeriodResponsible(month, value);
+      setConfirmSave(false);
       if (result.error) {
         setError(result.error);
         return;
       }
       setEditing(false);
     });
+  }
+
+  function requestSave() {
+    if (!value.trim()) return;
+    setConfirmSave(true);
   }
 
   return (
@@ -51,14 +59,14 @@ export function PeriodHeader({ month, period }: { month: string; period: AdminCa
             <input
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && save()}
+              onKeyDown={(e) => e.key === "Enter" && requestSave()}
               autoFocus
               placeholder="Nombre del responsable"
               className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-fg outline-none focus:border-accent"
             />
             <button
               type="button"
-              onClick={save}
+              onClick={requestSave}
               disabled={pending || value.trim().length === 0}
               aria-label="Guardar responsable"
               className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity disabled:opacity-50"
@@ -78,6 +86,18 @@ export function PeriodHeader({ month, period }: { month: string; period: AdminCa
         )}
         {error && <p className="mt-1 text-xs font-medium text-red-600">{error}</p>}
       </div>
+
+      {confirmSave && (
+        <ConfirmDialog
+          title="Confirmar cambio de responsable"
+          message={`¿Confirmas asignar a "${value.trim()}" como responsable de Caja en ${month}?`}
+          confirmLabel="Sí, guardar"
+          pendingLabel="Guardando..."
+          pending={pending}
+          onConfirm={executeSave}
+          onCancel={() => setConfirmSave(false)}
+        />
+      )}
     </div>
   );
 }

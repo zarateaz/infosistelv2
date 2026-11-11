@@ -10,6 +10,7 @@ import { ImageUploadField } from "./ImageUploadField";
 import { ImageGalleryField } from "./ImageGalleryField";
 import { ExistingProductActionCard } from "./ExistingProductActionCard";
 import type { DuplicateDetectionResult, ProductSummary } from "@/lib/duplicateDetection";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const initialState: ProductFormState = {};
 
@@ -45,6 +46,9 @@ export function ProductForm({
   const [scannedGalleryImages, setScannedGalleryImages] = useState<string[] | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateDetectionResult | null>(null);
   const [ignoredExistingIds, setIgnoredExistingIds] = useState<Set<string>>(new Set());
+  const [confirmModify, setConfirmModify] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const allowSubmitRef = useRef(false);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLInputElement>(null);
@@ -147,7 +151,19 @@ export function ProductForm({
     <div className="max-w-2xl">
       {showScanner && <ScannerPanel onFill={handleScanFill} />}
 
-      <form action={formAction} className="space-y-6">
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={(e) => {
+          if (product && !allowSubmitRef.current) {
+            e.preventDefault();
+            setConfirmModify(true);
+            return;
+          }
+          allowSubmitRef.current = false;
+        }}
+        className="space-y-6"
+      >
         <input type="hidden" name="existingProductId" value={matchedProduct?.id ?? ""} />
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -386,6 +402,27 @@ export function ProductForm({
           </button>
         </div>
       </form>
+
+      {confirmModify && product && (
+        <ConfirmDialog
+          title="Confirmar modificación del producto"
+          message={`¡Atención! ¿Confirmas guardar las modificaciones al producto "${product.name}"? Esto actualizará su precio, stock o datos en el catálogo e inventario.`}
+          fields={[
+            { label: "Nombre", value: nameRef.current?.value || product.name },
+            { label: "Precio venta", value: `S/. ${priceRef.current?.value || product.price}` },
+            { label: "Stock", value: stockRef.current?.value || String(product.stock) },
+          ]}
+          confirmLabel="Sí, guardar cambios"
+          pendingLabel="Guardando..."
+          pending={isPending}
+          onConfirm={() => {
+            setConfirmModify(false);
+            allowSubmitRef.current = true;
+            formRef.current?.requestSubmit();
+          }}
+          onCancel={() => setConfirmModify(false)}
+        />
+      )}
     </div>
   );
 }

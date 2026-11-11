@@ -27,6 +27,7 @@ import {
   payAdvanceInternetMonths,
   updateInternetMonthDetails,
 } from "./internetActions";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 interface ClientYearlyMonthsViewProps {
   client: InternetClientRow;
@@ -49,6 +50,8 @@ export function ClientYearlyMonthsView({
   const [editMethod, setEditMethod] = useState<string>("YAPE");
   const [editNote, setEditNote] = useState<string>("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [confirmUnmark, setConfirmUnmark] = useState<MonthUIInfo | null>(null);
+  const [confirmEditMonth, setConfirmEditMonth] = useState<{ key: string; isPaid: boolean } | null>(null);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -75,7 +78,7 @@ export function ClientYearlyMonthsView({
 
   const visibleMonths = yearInfo.months.filter((m) => !m.isBeforeStart);
 
-  const handleToggleMonth = (m: MonthUIInfo) => {
+  const executeToggleMonth = (m: MonthUIInfo) => {
     startTransition(async () => {
       const res = await toggleInternetClientMonth(client.id, m.key, {
         paid: !m.isPaid,
@@ -83,6 +86,7 @@ export function ClientYearlyMonthsView({
         method: "YAPE",
         note: !m.isPaid ? "Marcado desde panel anual" : undefined,
       });
+      setConfirmUnmark(null);
       if (res.ok) {
         showToast(
           !m.isPaid
@@ -91,6 +95,14 @@ export function ClientYearlyMonthsView({
         );
       }
     });
+  };
+
+  const handleToggleMonth = (m: MonthUIInfo) => {
+    if (m.isPaid) {
+      setConfirmUnmark(m);
+      return;
+    }
+    executeToggleMonth(m);
   };
 
   const handleAdvancePay = (monthsCount: number) => {
@@ -106,7 +118,7 @@ export function ClientYearlyMonthsView({
     });
   };
 
-  const handleSaveMonthDetails = (key: string, isCurrentlyPaid: boolean) => {
+  const executeSaveMonthDetails = (key: string, isCurrentlyPaid: boolean) => {
     startTransition(async () => {
       const res = await updateInternetMonthDetails(client.id, key, {
         status: isCurrentlyPaid ? "paid" : "unpaid",
@@ -114,11 +126,16 @@ export function ClientYearlyMonthsView({
         method: editMethod,
         note: editNote.trim() || undefined,
       });
+      setConfirmEditMonth(null);
       if (res.ok) {
         setEditingMonthKey(null);
         showToast("✓ Detalles del mes actualizados correctamente.");
       }
     });
+  };
+
+  const handleSaveMonthDetails = (key: string, isCurrentlyPaid: boolean) => {
+    setConfirmEditMonth({ key, isPaid: isCurrentlyPaid });
   };
 
   const openMonthEditor = (m: MonthUIInfo) => {
@@ -463,6 +480,36 @@ export function ClientYearlyMonthsView({
           );
         })}
       </div>
+      )}
+
+      {confirmUnmark && (
+        <ConfirmDialog
+          title="Desmarcar mes pagado"
+          message={`¡Atención! ¿Seguro que deseas revertir el pago de ${confirmUnmark.monthName} (${selectedYear}) para "${client.clientName}"? Volverá a figurar como pendiente/deuda.`}
+          danger
+          confirmLabel="Sí, desmarcar"
+          pendingLabel="Revirtiendo..."
+          pending={isPending}
+          onConfirm={() => executeToggleMonth(confirmUnmark)}
+          onCancel={() => setConfirmUnmark(null)}
+        />
+      )}
+
+      {confirmEditMonth && (
+        <ConfirmDialog
+          title="Confirmar modificación del mes"
+          message={`¿Confirmas actualizar los detalles del mes ${confirmEditMonth.key} para "${client.clientName}"?`}
+          fields={[
+            { label: "Monto", value: `S/. ${editAmount.toFixed(2)}` },
+            { label: "Método", value: editMethod },
+            ...(editNote.trim() ? [{ label: "Nota", value: editNote.trim() }] : []),
+          ]}
+          confirmLabel="Sí, guardar cambios"
+          pendingLabel="Guardando..."
+          pending={isPending}
+          onConfirm={() => executeSaveMonthDetails(confirmEditMonth.key, confirmEditMonth.isPaid)}
+          onCancel={() => setConfirmEditMonth(null)}
+        />
       )}
     </div>
   );

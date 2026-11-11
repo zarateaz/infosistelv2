@@ -13,6 +13,7 @@ import {
   History,
   Search,
 } from "lucide-react";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const IGV_RATE = 0.18;
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -97,6 +98,8 @@ export function PriceCalculator() {
   const [history, setHistory] = useState<SavedCalculation[]>([]);
   const [historyFilter, setHistoryFilter] = useState("");
   const [copiedHistoryId, setCopiedHistoryId] = useState<string | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<SavedCalculation | null>(null);
 
   // Cargar historial persistido de localStorage al montar
   useEffect(() => {
@@ -247,6 +250,7 @@ export function PriceCalculator() {
   const deleteHistoryItem = (id: string) => {
     const updated = history.filter((h) => h.id !== id);
     setHistory(updated);
+    setConfirmDeleteItem(null);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
@@ -255,8 +259,8 @@ export function PriceCalculator() {
   };
 
   const clearHistory = () => {
-    if (!window.confirm("¿Seguro que deseas vaciar todo el historial de cálculos?")) return;
     setHistory([]);
+    setConfirmClearAll(false);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (err) {
@@ -645,7 +649,7 @@ export function PriceCalculator() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <button
                 type="button"
-                onClick={clearHistory}
+                onClick={() => setConfirmClearAll(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-500/10 transition-colors"
               >
                 <Trash2 size={13} />
@@ -775,7 +779,7 @@ export function PriceCalculator() {
 
                     <button
                       type="button"
-                      onClick={() => deleteHistoryItem(item.id)}
+                      onClick={() => setConfirmDeleteItem(item)}
                       className="inline-flex items-center rounded-lg p-1.5 text-fg-muted hover:text-red-600 hover:bg-red-500/10 transition-colors"
                       title="Eliminar de historial"
                     >
@@ -788,6 +792,28 @@ export function PriceCalculator() {
           </div>
         )}
       </div>
+
+      {confirmClearAll && (
+        <ConfirmDialog
+          title="Vaciar historial de cálculos"
+          message={`¡Atención! ¿Seguro que deseas eliminar los ${history.length} cálculos guardados? Esta acción no se puede deshacer.`}
+          danger
+          confirmLabel="Sí, vaciar todo"
+          onConfirm={clearHistory}
+          onCancel={() => setConfirmClearAll(false)}
+        />
+      )}
+
+      {confirmDeleteItem && (
+        <ConfirmDialog
+          title="Eliminar cálculo guardado"
+          message={`¿Eliminar el cálculo de "${confirmDeleteItem.product || "Producto sin nombre"}" del historial?`}
+          danger
+          confirmLabel="Sí, eliminar"
+          onConfirm={() => deleteHistoryItem(confirmDeleteItem.id)}
+          onCancel={() => setConfirmDeleteItem(null)}
+        />
+      )}
     </div>
   );
 }

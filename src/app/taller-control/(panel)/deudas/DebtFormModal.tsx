@@ -16,6 +16,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { createDebt, updateDebt } from "./actions";
+import { ConfirmDialog } from "../ConfirmDialog";
 import {
   CATEGORY_INFO,
   DEBT_CATEGORIES,
@@ -48,6 +49,7 @@ export function DebtFormModal({
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmModify, setConfirmModify] = useState(false);
 
   const [name, setName] = useState(debt?.name ?? "");
   const [category, setCategory] = useState<DebtCategory>(debt?.category ?? "SERVICIOS");
@@ -67,8 +69,7 @@ export function DebtFormModal({
   const day = Number(dueDay);
   const preview = day >= 1 && day <= 31 ? dueDateFor(startMonth || defaultMonth, day) : null;
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSubmit = () => {
     setError(null);
     const input = {
       name,
@@ -87,9 +88,19 @@ export function DebtFormModal({
     };
     startTransition(async () => {
       const res = debt ? await updateDebt(debt.id, input) : await createDebt(input);
+      setConfirmModify(false);
       if (res.ok) onClose();
       else setError(res.error);
     });
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (debt) {
+      setConfirmModify(true);
+      return;
+    }
+    executeSubmit();
   };
 
   return (
@@ -357,6 +368,23 @@ export function DebtFormModal({
           </button>
         </div>
       </form>
+      {confirmModify && debt && (
+        <ConfirmDialog
+          title="Confirmar modificación"
+          message={`¿Confirmas guardar los cambios realizados a la obligación "${debt.name}"?`}
+          fields={[
+            { label: "Nombre", value: name.trim() || debt.name },
+            { label: "Categoría", value: CATEGORY_INFO[category].label },
+            { label: "Monto mensual", value: `S/. ${(Number(amount) || 0).toFixed(2)}` },
+            { label: "Día de pago", value: `Día ${dueDay} de cada mes` },
+          ]}
+          confirmLabel="Sí, modificar"
+          pendingLabel="Guardando..."
+          pending={isPending}
+          onConfirm={executeSubmit}
+          onCancel={() => setConfirmModify(false)}
+        />
+      )}
     </ModalShell>
   );
 }

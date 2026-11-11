@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { deleteDebt, toggleDebtActive } from "./actions";
+import { ConfirmDialog } from "../ConfirmDialog";
 import {
   CATEGORY_INFO,
   DEBT_CATEGORIES,
@@ -70,13 +71,15 @@ export function DeudasClient({
   view: View;
   today: string;
 }) {
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("todos");
   const [category, setCategory] = useState<DebtCategory | "ALL">("ALL");
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<DebtRow | "new" | null>(null);
   const [paying, setPaying] = useState<{ debtId: string; period: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DebtRow | null>(null);
+  const [confirmToggle, setConfirmToggle] = useState<DebtRow | null>(null);
   const [toastOpen, setToastOpen] = useState(true);
 
   const currentPeriod = today.slice(0, 7);
@@ -485,16 +488,8 @@ export function DeudasClient({
                 arrears={arrears}
                 onPay={(p) => setPaying({ debtId: d.id, period: p })}
                 onEdit={() => setEditing(d)}
-                onToggle={() => startTransition(async () => void (await toggleDebtActive(d.id)))}
-                onDelete={() => {
-                  const n = d.payments.length;
-                  if (
-                    confirm(
-                      `¿Eliminar "${d.name}"?${n ? `\n\nSe borrará también su historial de ${n} pago(s). Si solo dejó de pagarse, mejor usa "Archivar".` : ""}`
-                    )
-                  )
-                    startTransition(async () => void (await deleteDebt(d.id)));
-                }}
+                onToggle={() => setConfirmToggle(d)}
+                onDelete={() => setConfirmDelete(d)}
               />
             ))}
             {rows.length === 0 && (
@@ -527,6 +522,47 @@ export function DeudasClient({
           period={paying.period}
           today={today}
           onClose={() => setPaying(null)}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Eliminar obligación"
+          message={
+            confirmDelete.payments.length > 0
+              ? `¡Atención! ¿Seguro que deseas eliminar "${confirmDelete.name}"? Se borrará permanentemente junto con su historial de ${confirmDelete.payments.length} pago(s). Si solo dejó de pagarse, mejor usa "Archivar".`
+              : `¿Seguro que deseas eliminar "${confirmDelete.name}"? Esta acción no se puede deshacer.`
+          }
+          danger
+          confirmLabel="Sí, eliminar"
+          pendingLabel="Eliminando..."
+          pending={isPending}
+          onConfirm={() =>
+            startTransition(async () => {
+              await deleteDebt(confirmDelete.id);
+              setConfirmDelete(null);
+            })
+          }
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {confirmToggle && (
+        <ConfirmDialog
+          title={confirmToggle.active ? "Archivar obligación" : "Reactivar obligación"}
+          message={
+            confirmToggle.active
+              ? `¿Deseas archivar "${confirmToggle.name}"? Dejará de aparecer en los pendientes activos.`
+              : `¿Deseas reactivar "${confirmToggle.name}" para que vuelva a aparecer en los cobros mensuales?`
+          }
+          confirmLabel={confirmToggle.active ? "Sí, archivar" : "Sí, reactivar"}
+          pendingLabel="Procesando..."
+          pending={isPending}
+          onConfirm={() =>
+            startTransition(async () => {
+              await toggleDebtActive(confirmToggle.id);
+              setConfirmToggle(null);
+            })
+          }
+          onCancel={() => setConfirmToggle(null)}
         />
       )}
     </div>

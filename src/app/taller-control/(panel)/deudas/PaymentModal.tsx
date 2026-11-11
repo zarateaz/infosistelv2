@@ -28,6 +28,7 @@ import {
   type DebtRow,
 } from "./deudas";
 import { ModalShell, modalInput, modalLabel } from "./ModalShell";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 export function PaymentModal({
   debt,
@@ -44,6 +45,7 @@ export function PaymentModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
 
   // Historial reciente para sugerir montos en servicios variables (luz, IGV…)
   const history = Array.from({ length: 6 }, (_, i) => shiftPeriod(period, -(6 - i))).map((p) => ({
@@ -78,15 +80,19 @@ export function PaymentModal({
     });
   };
 
-  const undo = () => {
+  const executeUndo = () => {
     if (!st.payment) return;
-    const extra = st.payment.inCashbox ? "\n\nEl egreso registrado en Caja se enviará a la Papelera." : "";
-    if (!confirm(`¿Deshacer el pago de ${debt.name} (${periodLabel(period)})?${extra}`)) return;
     startTransition(async () => {
       const res = await undoDebtPayment(st.payment!.id);
+      setConfirmUndo(false);
       if (res.ok) onClose();
       else setError(res.error);
     });
+  };
+
+  const undo = () => {
+    if (!st.payment) return;
+    setConfirmUndo(true);
   };
 
   const copyRef = async () => {
@@ -351,6 +357,19 @@ export function PaymentModal({
           </form>
         )}
       </div>
+
+      {confirmUndo && st.payment && (
+        <ConfirmDialog
+          title="Deshacer pago registrado"
+          message={`¡Atención! ¿Seguro que deseas deshacer el pago de "${debt.name}" (${periodLabel(period)})?${st.payment.inCashbox ? " El egreso registrado en Caja se enviará a la Papelera." : ""}`}
+          danger
+          confirmLabel="Sí, deshacer pago"
+          pendingLabel="Revirtiendo..."
+          pending={isPending}
+          onConfirm={executeUndo}
+          onCancel={() => setConfirmUndo(false)}
+        />
+      )}
     </ModalShell>
   );
 }

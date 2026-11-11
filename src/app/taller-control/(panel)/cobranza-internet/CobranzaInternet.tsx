@@ -42,6 +42,7 @@ import {
 import { EditInternetClientModal } from "./EditInternetClientModal";
 import { ClientYearlyMonthsView } from "./ClientYearlyMonthsView";
 import { RouterSwitchMapModal } from "./RouterSwitchMapModal";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
 const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
@@ -61,11 +62,12 @@ function dayText(days: number) {
 
 export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) {
   const [state, formAction, isPending] = useActionState(createInternetClient, initialState);
-  const [, startTransition] = useTransition();
+  const [isMutating, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const [dismissed, setDismissed] = useState<boolean>(false);
   const [tab, setTab] = useState<"all" | "deudores">("all");
   const [editingClient, setEditingClient] = useState<InternetClientRow | null>(null);
+  const [confirmDeleteClient, setConfirmDeleteClient] = useState<InternetClientRow | null>(null);
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [mapModalOpen, setMapModalOpen] = useState(false);
 
@@ -783,11 +785,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                           <button
                             type="button"
                             title="Eliminar cliente"
-                            onClick={() => {
-                              if (confirm(`¿Eliminar a ${c.clientName}?`)) {
-                                startTransition(() => deleteInternetClient(c.id));
-                              }
-                            }}
+                            onClick={() => setConfirmDeleteClient(c)}
                             className="rounded-full p-2 text-red-600 hover:bg-red-500/10"
                           >
                             <Trash2 size={16} />
@@ -853,6 +851,25 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
             setMapModalOpen(false);
             document.getElementById("ic-name")?.focus();
           }}
+        />
+      )}
+
+      {/* Confirmación de eliminación de cliente */}
+      {confirmDeleteClient && (
+        <ConfirmDialog
+          title="Eliminar cliente de internet"
+          message={`¡Atención! ¿Seguro que deseas eliminar a "${confirmDeleteClient.clientName}"? Se borrará su historial de pagos y su asignación de red. Esta acción no se puede deshacer.`}
+          danger
+          confirmLabel="Sí, eliminar"
+          pendingLabel="Eliminando..."
+          pending={isMutating}
+          onConfirm={() =>
+            startTransition(async () => {
+              await deleteInternetClient(confirmDeleteClient.id);
+              setConfirmDeleteClient(null);
+            })
+          }
+          onCancel={() => setConfirmDeleteClient(null)}
         />
       )}
     </section>

@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { updateInternetClientDirect } from "./internetActions";
+import { ConfirmDialog } from "../ConfirmDialog";
 import {
   cobranzaState,
   daysUntil,
@@ -47,6 +48,7 @@ export function EditInternetClientModal({
   const [mounted, setMounted] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmSave, setConfirmSave] = useState(false);
 
   const [clientCode, setClientCode] = useState(client.clientCode ?? "");
   const [clientName, setClientName] = useState(client.clientName);
@@ -85,10 +87,8 @@ export function EditInternetClientModal({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSave = () => {
     setError(null);
-
     startTransition(async () => {
       const res = await updateInternetClientDirect(client.id, {
         clientCode: clientCode.trim() || null,
@@ -103,12 +103,18 @@ export function EditInternetClientModal({
         concept: concept.trim(),
       });
 
+      setConfirmSave(false);
       if (!res.ok) {
         setError(res.error || "Ocurrió un error al guardar los cambios.");
       } else {
         onClose();
       }
     });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setConfirmSave(true);
   };
 
   const advanceOneMonth = () => {
@@ -427,6 +433,23 @@ export function EditInternetClientModal({
           </div>
         </form>
       </div>
+      {confirmSave && (
+        <ConfirmDialog
+          title="Confirmar modificación del cliente"
+          message={`¿Confirmas guardar los cambios realizados a "${client.clientName}"?`}
+          fields={[
+            { label: "Cliente", value: clientName.trim() || client.clientName },
+            { label: "Red", value: `${router || "Sin router"}${portNumber ? ` · Puerto ${portNumber}` : ""}` },
+            { label: "Monto mensual", value: `S/. ${(Number(amount) || 0).toFixed(2)}` },
+            { label: "Próximo pago", value: nextPaymentDate },
+          ]}
+          confirmLabel="Sí, guardar cambios"
+          pendingLabel="Guardando..."
+          pending={isPending}
+          onConfirm={executeSave}
+          onCancel={() => setConfirmSave(false)}
+        />
+      )}
     </div>,
     document.body
   );
