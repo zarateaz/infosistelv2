@@ -63,12 +63,17 @@ export function ClientYearlyMonthsView({
     client.amount
   );
 
+  const startYear = Number(client.startDate.slice(0, 4)) || currentRealYear;
+
   const yearInfo = getYearMonthsInfo(
     selectedYear,
     paidMonthsMap,
     today,
-    client.amount
+    client.amount,
+    client.startDate
   );
+
+  const visibleMonths = yearInfo.months.filter((m) => !m.isBeforeStart);
 
   const handleToggleMonth = (m: MonthUIInfo) => {
     startTransition(async () => {
@@ -161,9 +166,10 @@ export function ClientYearlyMonthsView({
           <div className="flex items-center rounded-xl border border-border/80 bg-bg-alt p-1 shadow-sm">
             <button
               type="button"
-              onClick={() => setSelectedYear((y) => y - 1)}
-              className="rounded-lg p-1.5 text-fg-muted hover:bg-bg-surface hover:text-fg transition-colors"
-              title="Año anterior"
+              disabled={selectedYear <= startYear}
+              onClick={() => setSelectedYear((y) => Math.max(startYear, y - 1))}
+              className="rounded-lg p-1.5 text-fg-muted hover:bg-bg-surface hover:text-fg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title={selectedYear <= startYear ? "El cliente inició en este año" : "Año anterior"}
             >
               <ChevronLeft size={16} />
             </button>
@@ -247,9 +253,15 @@ export function ClientYearlyMonthsView({
         </div>
       </div>
 
-      {/* Grid de los 12 Meses: Enero a Diciembre */}
+      {/* Grid de Meses desde la fecha de inicio del cliente */}
+      {visibleMonths.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-border/70 bg-bg-alt/50 p-6 text-center text-xs text-fg-muted">
+          Este cliente inicia su servicio el{" "}
+          <strong className="text-fg">{client.startDate.split("-").reverse().join("/")}</strong>. No hay meses en {selectedYear}.
+        </div>
+      ) : (
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
-        {yearInfo.months.map((m) => {
+        {visibleMonths.map((m) => {
           const isEditing = editingMonthKey === m.key;
 
           // Clases dinámicas según el estado del mes
@@ -451,6 +463,7 @@ export function ClientYearlyMonthsView({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

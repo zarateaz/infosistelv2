@@ -210,6 +210,7 @@ export interface MonthUIInfo {
   monthName: string;
   monthShort: string;
   key: string; // "YYYY-MM"
+  isBeforeStart: boolean;
   isPaid: boolean;
   paidAt?: string;
   amount?: number;
@@ -220,17 +221,20 @@ export interface MonthUIInfo {
   isAdvance: boolean;
   isFuture: boolean;
   badgeText: string;
-  badgeStyle: "paid" | "advance" | "overdue" | "due" | "future";
+  badgeStyle: "paid" | "advance" | "overdue" | "due" | "future" | "before_start";
 }
 
 /**
- * Obtiene la información para pintar los 12 meses (Enero a Diciembre) de un año dado.
+ * Obtiene la información para pintar los meses de un año dado, respetando
+ * la fecha de inicio del cliente (`startDate`) para no mostrar meses
+ * anteriores a su primer mes de servicio.
  */
 export function getYearMonthsInfo(
   year: number,
   paidMonths: PaidMonthsMap,
   today: Date = new Date(),
-  clientAmount: number = 0
+  clientAmount: number = 0,
+  startDate?: string
 ): {
   months: MonthUIInfo[];
   paidCount: number;
@@ -239,6 +243,7 @@ export function getYearMonthsInfo(
   totalCollected: number;
 } {
   const currentKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const startMonthKey = startDate && startDate.length >= 7 ? startDate.slice(0, 7) : null;
   let paidCount = 0;
   let advanceCount = 0;
   let overdueCount = 0;
@@ -247,13 +252,14 @@ export function getYearMonthsInfo(
   const months: MonthUIInfo[] = MONTH_NAMES.map((name, idx) => {
     const monthNum = idx + 1;
     const key = `${year}-${String(monthNum).padStart(2, "0")}`;
-    const rec = paidMonths[key];
-    const isPaid = rec?.status === "paid";
+    const isBeforeStart = Boolean(startMonthKey && key < startMonthKey);
+    const rec = isBeforeStart ? undefined : paidMonths[key];
+    const isPaid = !isBeforeStart && rec?.status === "paid";
 
     const isAdvance = isPaid && key > currentKey;
-    const isOverdue = !isPaid && key < currentKey;
-    const isDueThisMonth = !isPaid && key === currentKey;
-    const isFuture = !isPaid && key > currentKey;
+    const isOverdue = !isBeforeStart && !isPaid && key < currentKey;
+    const isDueThisMonth = !isBeforeStart && !isPaid && key === currentKey;
+    const isFuture = !isBeforeStart && !isPaid && key > currentKey;
 
     if (isPaid) {
       paidCount++;
@@ -266,7 +272,10 @@ export function getYearMonthsInfo(
     let badgeText = "Pendiente";
     let badgeStyle: MonthUIInfo["badgeStyle"] = "future";
 
-    if (isAdvance) {
+    if (isBeforeStart) {
+      badgeText = "Sin servicio";
+      badgeStyle = "before_start";
+    } else if (isAdvance) {
       badgeText = "Adelantado";
       badgeStyle = "advance";
     } else if (isPaid) {
@@ -286,6 +295,7 @@ export function getYearMonthsInfo(
       monthName: name,
       monthShort: MONTH_SHORT_NAMES[idx],
       key,
+      isBeforeStart,
       isPaid,
       paidAt: rec?.paidAt,
       amount: rec?.amount ?? clientAmount,

@@ -170,6 +170,23 @@ export async function deleteInternetClient(id: string): Promise<void> {
   revalidatePath(PATH);
 }
 
+/** Elimina del historial los meses anteriores a la fecha de inicio real del cliente. */
+function prunePaidMonthsBeforeStart(raw: string | null | undefined, startDate: string): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const startKey = startDate.slice(0, 7);
+    const cleaned: PaidMonthsMap = {};
+    for (const [k, v] of Object.entries(parsed as PaidMonthsMap)) {
+      if (k >= startKey) cleaned[k] = v;
+    }
+    return JSON.stringify(cleaned);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function updateInternetClient(
   _prev: InternetFormState,
   formData: FormData
@@ -196,12 +213,16 @@ export async function updateInternetClient(
   const nextPay = parseDateInput(nextPaymentDate);
   if (!start || !nextPay) return { error: "Fechas inválidas." };
 
+  const existing = await prisma.internetClient.findUnique({ where: { id }, select: { paidMonths: true } });
+  const prunedPaidMonths = prunePaidMonthsBeforeStart(existing?.paidMonths, startDate);
+
   await prisma.internetClient.update({
     where: { id },
     data: {
       ...rest,
       startDate: start,
       nextPaymentDate: nextPay,
+      ...(prunedPaidMonths !== undefined ? { paidMonths: prunedPaidMonths } : {}),
     },
   });
   revalidatePath(PATH);
@@ -235,12 +256,16 @@ export async function updateInternetClientDirect(
     return { ok: false, error: "Fechas inválidas." };
   }
 
+  const existing = await prisma.internetClient.findUnique({ where: { id }, select: { paidMonths: true } });
+  const prunedPaidMonths = prunePaidMonthsBeforeStart(existing?.paidMonths, startDate);
+
   await prisma.internetClient.update({
     where: { id },
     data: {
       ...rest,
       startDate: start,
       nextPaymentDate: nextPay,
+      ...(prunedPaidMonths !== undefined ? { paidMonths: prunedPaidMonths } : {}),
     },
   });
   revalidatePath(PATH);

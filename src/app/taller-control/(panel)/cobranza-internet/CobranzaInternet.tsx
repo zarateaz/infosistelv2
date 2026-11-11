@@ -577,13 +577,14 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
               {filteredRows.map(({ c, days, st }) => {
                 const isExpanded = expandedClientId === c.id;
 
-                // Mini-tracker para la fila de este cliente
+                // Mini-tracker para la fila de este cliente (solo desde su mes de inicio)
                 const clientMap = today
                   ? parsePaidMonths(c.paidMonths, c.startDate, c.nextPaymentDate, c.amount)
                   : {};
                 const yearSummary = today
-                  ? getYearMonthsInfo(today.getFullYear(), clientMap, today, c.amount)
+                  ? getYearMonthsInfo(today.getFullYear(), clientMap, today, c.amount, c.startDate)
                   : { months: [], advanceCount: 0 };
+                const visibleMonths = yearSummary.months.filter((m) => !m.isBeforeStart);
 
                 return (
                   <Fragment key={c.id}>
@@ -608,7 +609,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                             className={`mt-0.5 rounded-lg p-1 transition-transform ${
                               isExpanded ? "bg-accent text-accent-fg rotate-180" : "text-fg-muted hover:bg-bg-surface hover:text-fg"
                             }`}
-                            title={isExpanded ? "Cerrar meses" : "Ver meses de enero a diciembre"}
+                            title={isExpanded ? "Cerrar meses" : "Ver meses de cobranza"}
                           >
                             <ChevronDown size={14} />
                           </button>
@@ -652,28 +653,34 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                               </p>
                             )}
 
-                            {/* Mini-Tracker interactivo de los 12 Meses */}
+                            {/* Mini-Tracker interactivo desde el mes de inicio del cliente */}
                             {today && (
                               <div className="mt-2 flex items-center gap-1 flex-wrap">
-                                {yearSummary.months.map((m) => (
-                                  <span
-                                    key={m.key}
-                                    title={`${m.monthName} ${today.getFullYear()}: ${m.badgeText}`}
-                                    className={`inline-flex items-center justify-center h-4.5 w-5 rounded text-[9px] font-black transition-transform hover:scale-110 shadow-xs ${
-                                      m.isAdvance
-                                        ? "bg-blue-600 text-white ring-1 ring-blue-400"
-                                        : m.isPaid
-                                          ? "bg-emerald-600 text-white"
-                                          : m.isOverdue
-                                            ? "bg-red-600 text-white animate-pulse"
-                                            : m.isDueThisMonth
-                                              ? "bg-amber-500 text-white"
-                                              : "bg-border/60 text-fg-muted dark:bg-border/30"
-                                    }`}
-                                  >
-                                    {m.monthShort.charAt(0)}
+                                {visibleMonths.length > 0 ? (
+                                  visibleMonths.map((m) => (
+                                    <span
+                                      key={m.key}
+                                      title={`${m.monthName} ${today.getFullYear()}: ${m.badgeText}`}
+                                      className={`inline-flex items-center justify-center h-4.5 w-5 rounded text-[9px] font-black transition-transform hover:scale-110 shadow-xs ${
+                                        m.isAdvance
+                                          ? "bg-blue-600 text-white ring-1 ring-blue-400"
+                                          : m.isPaid
+                                            ? "bg-emerald-600 text-white"
+                                            : m.isOverdue
+                                              ? "bg-red-600 text-white animate-pulse"
+                                              : m.isDueThisMonth
+                                                ? "bg-amber-500 text-white"
+                                                : "bg-border/60 text-fg-muted dark:bg-border/30"
+                                      }`}
+                                    >
+                                      {m.monthShort.charAt(0)}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="rounded bg-border/40 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted">
+                                    Inicia {fmt(c.startDate)}
                                   </span>
-                                ))}
+                                )}
                                 <span className="text-[10px] font-bold text-accent ml-1.5 hover:underline">
                                   {isExpanded ? "Ocultar ▲" : "Meses ▼"}
                                 </span>
