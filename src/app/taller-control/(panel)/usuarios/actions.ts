@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { requireSuperAdmin } from "@/lib/requireSuperAdmin";
+import { logAudit } from "@/lib/audit";
 
 export interface AdminUser {
   id: string;
@@ -84,4 +85,87 @@ export async function deleteAdminUser(id: string): Promise<void> {
 
   await prisma.admin.delete({ where: { id } });
   revalidatePath("/taller-control/usuarios");
+}
+
+const resetPasswordSchema = z.object({
+  id: z.string().trim().min(1, "Usuario inválido."),
+  newPassword: z
+    .string()
+    .min(12, "La nueva contraseña debe tener al menos 12 caracteres")
+    .max(256),
+});
+
+export async function resetAdminPassword(
+  id: string,
+  newPassword: string
+): Promise<{ error?: string }> {
+  const session = await requireSuperAdmin();
+  const parsed = resetPasswordSchema.safeParse({ id, newPassword });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const target = await prisma.admin.findUnique({
+    where: { id: parsed.data.id },
+    select: { id: true, username: true },
+  });
+  if (!target) {
+    return { error: "El usuario no existe." };
+  }
+
+  const passwordHash = await hashPassword(parsed.data.newPassword);
+  await prisma.admin.update({
+    where: { id: target.id },
+    data: {
+      passwordHash,
+      // Invalidate any active sessions for this user immediately
+      tokenVersion: { increment: 1 },
+    },
+  });
+
+  await logAudit({
+    action: "PASSWORD_RESET_BY_SUPERADMIN",
+    adminId: target.id,
+    username: target.username,
+    details: `Contraseña restablecida por superadmin (${session.username})`,
+  });
+
+  revalidatePath("/taller-control/usuarios");
+  return {};
+}
+
+export interface PasswordResetRequestItem {
+  id: string;
+  username: string;
+  details: string | null;
+  ipAddress: string;
+  createdAt: Date;
+}
+
+export async function getRecentPasswordResetRequests(): Promise<PasswordResetRequestItem[]> {
+  await requireSuperAdmin();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const rows = await prisma.auditLog.findMany({
+    where: {
+      action: "PASSWORD_RESET_REQUEST",
+      createdAt: { gte: sevenDaysAgo },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      username: true,
+      details: true,
+      ipAddress: true,
+      createdAt: true,
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    username: r.username ?? "Desconocido",
+    details: r.details,
+    ipAddress: r.ipAddress,
+    createdAt: r.createdAt,
+  }));
 }

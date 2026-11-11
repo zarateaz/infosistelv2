@@ -3,16 +3,37 @@
 import { useActionState, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Eye, EyeOff, Lock, ShieldCheck, CheckCircle2, User } from "lucide-react";
-import { loginAction, verifyMfaAction, type LoginState } from "./actions";
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Lock,
+  ShieldCheck,
+  CheckCircle2,
+  User,
+  KeyRound,
+  MessageCircle,
+} from "lucide-react";
+import {
+  loginAction,
+  verifyMfaAction,
+  requestPasswordResetAction,
+  type LoginState,
+  type ForgotPasswordState,
+} from "./actions";
 import { CuriousEyes } from "./CuriousEyes";
 
 const initialState: LoginState = {};
+const initialForgotState: ForgotPasswordState = {};
 
 export default function AdminLoginPage() {
   const [loginState, loginFormAction, isLoginPending] = useActionState(loginAction, initialState);
   const [mfaState, mfaFormAction, isMfaPending] = useActionState(verifyMfaAction, initialState);
-  const [step, setStep] = useState<"password" | "mfa">("password");
+  const [forgotState, forgotFormAction, isForgotPending] = useActionState(
+    requestPasswordResetAction,
+    initialForgotState
+  );
+  const [step, setStep] = useState<"password" | "mfa" | "forgot">("password");
   const [showPassword, setShowPassword] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
 
@@ -131,16 +152,149 @@ export default function AdminLoginPage() {
 
             <div className="text-center md:text-left">
               <h1 className="font-display text-2xl font-bold tracking-tight text-[#0b1230] sm:text-3xl">
-                {step === "mfa" ? "Verificación en dos pasos" : "Panel Administrativo"}
+                {step === "mfa"
+                  ? "Verificación en dos pasos"
+                  : step === "forgot"
+                  ? "Recuperar contraseña"
+                  : "Panel Administrativo"}
               </h1>
               <p className="mt-1.5 text-sm text-fg-muted">
                 {step === "mfa"
                   ? "Ingresa el código de 6 dígitos de tu aplicación de autenticación."
+                  : step === "forgot"
+                  ? "Solicita un restablecimiento seguro al Superadministrador."
                   : "Ingresa tus credenciales autorizadas para continuar."}
               </p>
             </div>
 
-            {step === "mfa" ? (
+            {step === "forgot" ? (
+              forgotState.sent ? (
+                <div className="mt-7 space-y-4">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-5 text-sm text-emerald-950">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-emerald-600" />
+                      <div>
+                        <p className="font-bold">Solicitud registrada en el sistema</p>
+                        <p className="mt-1 text-xs leading-relaxed text-emerald-800">
+                          Tu petición para el usuario{" "}
+                          <span className="font-mono font-bold">{forgotState.requestedUsername}</span>{" "}
+                          quedó registrada en la auditoría. Envíala ahora por WhatsApp al Supervisor
+                          para que te asigne una nueva contraseña temporal desde{" "}
+                          <strong>Usuarios</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {forgotState.whatsappUrl && (
+                    <a
+                      href={forgotState.whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-md shadow-emerald-600/25 transition-colors hover:bg-emerald-700"
+                    >
+                      <MessageCircle size={18} />
+                      <span>Solicitar clave por WhatsApp</span>
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setStep("password")}
+                    className="w-full pt-1 text-center text-xs font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-[#0a5fdb]"
+                  >
+                    ← Volver al inicio de sesión
+                  </button>
+                </div>
+              ) : (
+                <form action={forgotFormAction} className="mt-7 space-y-4">
+                  <div className="rounded-xl border border-blue-200/80 bg-blue-50/70 p-3.5 text-xs leading-relaxed text-slate-700">
+                    Por seguridad corporativa, las cuentas del taller no se restablecen sin
+                    autorización. Registra tu solicitud y comunícate con el{" "}
+                    <strong>Superadministrador</strong> para recibir una clave temporal.
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="forgot-username"
+                      className="block text-xs font-bold uppercase tracking-wider text-[#0b1230]"
+                    >
+                      Tu nombre de usuario
+                    </label>
+                    <div className="relative mt-2">
+                      <User
+                        size={17}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        id="forgot-username"
+                        name="username"
+                        type="text"
+                        required
+                        minLength={2}
+                        maxLength={64}
+                        autoFocus
+                        placeholder="Ej. vendedor1"
+                        className="w-full rounded-xl border-2 border-slate-300 bg-[#f8fafc] px-4 py-3 pl-10 text-sm font-medium text-[#0b1230] placeholder-slate-400 outline-none transition-all duration-200 focus:border-[#0a5fdb] focus:bg-white focus:ring-4 focus:ring-[#0a5fdb]/15"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="forgot-note"
+                      className="block text-xs font-bold uppercase tracking-wider text-[#0b1230]"
+                    >
+                      Teléfono o nota (opcional)
+                    </label>
+                    <input
+                      id="forgot-note"
+                      name="note"
+                      type="text"
+                      maxLength={150}
+                      placeholder="Ej. Cel. 999 888 777 — turno mañana"
+                      className="mt-2 w-full rounded-xl border-2 border-slate-300 bg-[#f8fafc] px-4 py-2.5 text-sm font-medium text-[#0b1230] placeholder-slate-400 outline-none transition-all duration-200 focus:border-[#0a5fdb] focus:bg-white focus:ring-4 focus:ring-[#0a5fdb]/15"
+                    />
+                  </div>
+
+                  {forgotState.error && (
+                    <div
+                      role="alert"
+                      className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700"
+                    >
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
+                      <p>{forgotState.error}</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isForgotPending}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0a5fdb] py-3.5 text-sm font-bold text-white shadow-[0_10px_24px_-6px_rgba(10,95,219,0.45)] transition-all duration-200 hover:bg-[#084bb5] active:scale-[0.99] disabled:opacity-60"
+                  >
+                    {isForgotPending ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        <span>Registrando solicitud...</span>
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound size={16} />
+                        <span>Solicitar restablecimiento</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStep("password")}
+                    className="w-full pt-1 text-center text-xs font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-[#0a5fdb]"
+                  >
+                    ← Volver al inicio de sesión
+                  </button>
+                </form>
+              )
+            ) : step === "mfa" ? (
               <form action={formAction} className="mt-7 space-y-4">
                 <div>
                   <label htmlFor="code" className="block text-xs font-bold uppercase tracking-wider text-[#0b1230]">
@@ -222,9 +376,18 @@ export default function AdminLoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-xs font-bold uppercase tracking-wider text-[#0b1230]">
-                    Contraseña
-                  </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor="password" className="block text-xs font-bold uppercase tracking-wider text-[#0b1230]">
+                      Contraseña
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setStep("forgot")}
+                      className="text-xs font-bold text-[#0a5fdb] transition-colors hover:underline"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </div>
                   <div className="relative mt-2">
                     <Lock
                       size={17}

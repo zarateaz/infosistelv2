@@ -173,3 +173,73 @@ export async function logoutAction() {
   cookieStore.delete(MFA_PENDING_COOKIE);
   redirect("/taller-control/login");
 }
+
+export interface ForgotPasswordState {
+  error?: string;
+  sent?: boolean;
+  whatsappUrl?: string;
+  requestedUsername?: string;
+}
+
+const forgotSchema = z.object({
+  username: z.string().trim().min(2, "Ingresa tu nombre de usuario.").max(64),
+  note: z.string().trim().max(150).optional().default(""),
+});
+
+export async function requestPasswordResetAction(
+  _prevState: ForgotPasswordState,
+  formData: FormData
+): Promise<ForgotPasswordState> {
+  const parsed = forgotSchema.safeParse({
+    username: formData.get("username"),
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ingresa un usuario válido." };
+  }
+
+  const ip = getClientIP(await headers());
+  const rl = checkRateLimit(rateLimitKey("admin-forgot-pw", ip), 5, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    const minutes = Math.max(1, Math.ceil((rl.retryAfterSeconds ?? 0) / 60));
+    return { error: `Demasiadas solicitudes. Intenta de nuevo en ${minutes} min.` };
+  }
+
+  const { username, note } = parsed.data;
+  const admin = await prisma.admin.findUnique({
+    where: { username },
+    select: { id: true, username: true },
+  });
+
+  // Always log & return the same response shape regardless of whether `admin` exists (prevents username enumeration).
+  await logAudit({
+    action: "PASSWORD_RESET_REQUEST",
+    adminId: admin?.id,
+    username,
+    ipAddress: ip,
+    details: note
+      ? `Solicitud de recuperación de contraseña — Nota: ${note}`
+      : "Solicitud de recuperación de contraseña desde Login",
+  });
+
+  const nowStr = new Date().toLocaleString("es-PE", {
+    timeZone: "America/Lima",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+  const waMessage = [
+    `Hola Supervisor de *INFOSISTEL*, olvidé mi contraseña del panel administrativo.`,
+    `• Usuario: *${username}*`,
+    `• Fecha/Hora: ${nowStr}`,
+    note ? `• Detalle: ${note}` : null,
+    `¿Me puedes generar una nueva clave temporal desde el módulo *Usuarios*?`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    sent: true,
+    requestedUsername: username,
+    whatsappUrl: `https://wa.me/51964648202?text=${encodeURIComponent(waMessage)}`,
+  };
+}

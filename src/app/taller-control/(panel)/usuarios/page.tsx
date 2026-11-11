@@ -1,12 +1,16 @@
-import { User } from "lucide-react";
+import { KeyRound, User } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/requireSuperAdmin";
-import { getAdminUsers, deleteAdminUser } from "./actions";
+import { getAdminUsers, deleteAdminUser, getRecentPasswordResetRequests } from "./actions";
 import { AddAdminForm } from "./AddAdminForm";
 import { DeleteAdminButton } from "./DeleteAdminButton";
+import { ResetPasswordButton } from "./ResetPasswordButton";
 
 export default async function AdminUsersPage() {
   await requireSuperAdmin();
-  const admins = await getAdminUsers();
+  const [admins, resetRequests] = await Promise.all([
+    getAdminUsers(),
+    getRecentPasswordResetRequests(),
+  ]);
 
   return (
     <div>
@@ -41,18 +45,56 @@ export default async function AdminUsersPage() {
                     </p>
                   </div>
                 </div>
-                <DeleteAdminButton
-                  username={admin.username}
-                  action={async () => {
-                    "use server";
-                    await deleteAdminUser(admin.id);
-                  }}
-                />
+                <div className="flex items-center gap-2">
+                  <ResetPasswordButton adminId={admin.id} username={admin.username} />
+                  <DeleteAdminButton
+                    username={admin.username}
+                    action={async () => {
+                      "use server";
+                      await deleteAdminUser(admin.id);
+                    }}
+                  />
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {resetRequests.length > 0 && (
+        <div className="mt-8 admin-glass rounded-[var(--radius-lg)] p-6">
+          <div className="flex items-center gap-2">
+            <KeyRound size={17} className="text-amber-600 dark:text-amber-400" />
+            <h2 className="font-display text-lg font-bold text-fg">
+              Solicitudes recientes de recuperación de contraseña (últimos 7 días)
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-fg-muted">
+            Cuando un colaborador usa &quot;¿Olvidaste tu contraseña?&quot; en el login, su solicitud queda registrada aquí para que valides su identidad y le asignes una nueva clave.
+          </p>
+          <div className="mt-4 divide-y divide-border/60">
+            {resetRequests.map((req) => (
+              <div
+                key={req.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3 text-xs"
+              >
+                <div>
+                  <span className="font-bold text-fg">{req.username}</span>
+                  {req.details && <span className="ml-2 text-fg-muted">· {req.details}</span>}
+                </div>
+                <div className="font-mono text-fg-muted">
+                  {new Date(req.createdAt).toLocaleString("es-PE", {
+                    timeZone: "America/Lima",
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}{" "}
+                  · IP {req.ipAddress}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
