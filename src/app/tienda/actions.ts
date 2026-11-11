@@ -9,6 +9,7 @@ import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { encryptPII, blindIndex } from "@/lib/crypto";
 import { emitInvoice } from "@/lib/invoicing";
 import type { Product, Category } from "@/types";
+import { fromCents, mulMoney, subMoney, toCents } from "@/lib/money";
 
 export async function getProducts(): Promise<Product[]> {
   const products = await prisma.product.findMany({
@@ -94,7 +95,7 @@ export async function createOrder(input: unknown) {
 
   // SECURITY: the total is NEVER taken from the client — every line's price
   // is looked up fresh from the database right here, at order time.
-  let serverTotal = 0;
+  let serverTotalCents = 0;
   const orderItems: { productId: string; name: string; category: string; quantity: number; unitPrice: number }[] = [];
   const salesToCreate: {
     productId: string;
@@ -126,11 +127,11 @@ export async function createOrder(input: unknown) {
 
     const unitPrice = product.onSale && product.salePrice ? product.salePrice : product.price;
     const itemCostPrice = product.costPrice ?? 0;
-    const linePrice = unitPrice * quantity;
-    const lineCost = itemCostPrice * quantity;
-    const lineProfit = linePrice - lineCost;
+    const linePrice = mulMoney(unitPrice, quantity);
+    const lineCost = mulMoney(itemCostPrice, quantity);
+    const lineProfit = subMoney(linePrice, lineCost);
 
-    serverTotal += linePrice;
+    serverTotalCents += toCents(linePrice);
     orderItems.push({ productId: product.id, name: product.name, category: product.category, quantity, unitPrice });
     salesToCreate.push({
       productId: product.id,
@@ -147,6 +148,8 @@ export async function createOrder(input: unknown) {
       lowStockAlerts.push({ id: product.id, name: product.name, remainingStock: remaining });
     }
   }
+
+  const serverTotal = fromCents(serverTotalCents);
 
   // Atomically decrement stock, create the order, and record sales in a transaction
   const order = await prisma.$transaction(async (tx) => {

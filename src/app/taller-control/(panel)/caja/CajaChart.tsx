@@ -17,6 +17,7 @@ import { Activity, Sparkles, TrendingUp, ArrowUpRight, ArrowDownRight } from "lu
 import type { AdminTransaction } from "./actions";
 import type { PaymentMethodType } from "./constants";
 import { AnimatedMoney } from "@/components/ui/AnimatedMoney";
+import { fromCents, toCents } from "@/lib/money";
 
 export type ChartFilterMode = "ALL" | "COMPARE" | PaymentMethodType;
 
@@ -64,10 +65,10 @@ export function CajaChart({
   };
 
   const points = useMemo<ChartPoint[]>(() => {
-    let totalBal = 0;
-    let cashBal = 0;
-    let yape1Bal = 0;
-    let yape2Bal = 0;
+    let totalBalCents = 0;
+    let cashBalCents = 0;
+    let yape1BalCents = 0;
+    let yape2BalCents = 0;
 
     const originPoint: ChartPoint = {
       index: 0,
@@ -85,13 +86,15 @@ export function CajaChart({
     };
 
     const txPoints = transactions.map((t, idx) => {
-      const delta = t.type === "INCOME" ? t.amount : -t.amount;
-      totalBal += delta;
-      if (t.paymentMethod === "EFECTIVO") cashBal += delta;
-      else if (t.paymentMethod === "YAPE 1") yape1Bal += delta;
-      else if (t.paymentMethod === "YAPE 2") yape2Bal += delta;
+      const amtCents = toCents(t.amount);
+      const deltaCents = t.type === "INCOME" ? amtCents : -amtCents;
+      totalBalCents += deltaCents;
+      if (t.paymentMethod === "EFECTIVO") cashBalCents += deltaCents;
+      else if (t.paymentMethod === "YAPE 1") yape1BalCents += deltaCents;
+      else if (t.paymentMethod === "YAPE 2") yape2BalCents += deltaCents;
 
       const d = new Date(t.date);
+      const totalBal = fromCents(totalBalCents);
       return {
         index: idx + 1,
         date: d.toLocaleDateString("es-PE", {
@@ -108,11 +111,11 @@ export function CajaChart({
         method: t.paymentMethod,
         type: t.type,
         amount: t.amount,
-        balance: Number(totalBal.toFixed(2)),
-        EFECTIVO: Number(cashBal.toFixed(2)),
-        "YAPE 1": Number(yape1Bal.toFixed(2)),
-        "YAPE 2": Number(yape2Bal.toFixed(2)),
-        value: Number(totalBal.toFixed(2)),
+        balance: totalBal,
+        EFECTIVO: fromCents(cashBalCents),
+        "YAPE 1": fromCents(yape1BalCents),
+        "YAPE 2": fromCents(yape2BalCents),
+        value: totalBal,
         desc: t.description,
       };
     });
@@ -122,7 +125,7 @@ export function CajaChart({
 
   const singleMethodPoints = useMemo<ChartPoint[]>(() => {
     if (mode !== "EFECTIVO" && mode !== "YAPE 1" && mode !== "YAPE 2") return points;
-    let running = 0;
+    let runningCents = 0;
 
     const originPoint: ChartPoint = {
       index: 0,
@@ -142,8 +145,9 @@ export function CajaChart({
     const filtered = transactions
       .filter((t) => t.paymentMethod === mode)
       .map((t, idx) => {
-        running += t.type === "INCOME" ? t.amount : -t.amount;
-        const val = Number(running.toFixed(2));
+        const amtCents = toCents(t.amount);
+        runningCents += t.type === "INCOME" ? amtCents : -amtCents;
+        const val = fromCents(runningCents);
         const d = new Date(t.date);
         return {
           index: idx + 1,

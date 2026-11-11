@@ -23,6 +23,7 @@ import type { AdminTransaction } from "./actions";
 import { CajaChart, type ChartFilterMode } from "./CajaChart";
 import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
 import { AnimatedMoney } from "@/components/ui/AnimatedMoney";
+import { fromCents, sharePercentages, sumMoney, toCents } from "@/lib/money";
 
 interface CashboxMethodCardsProps {
   totals: Record<PaymentMethodType, number>;
@@ -74,24 +75,40 @@ export function CashboxMethodCards({
     }
   };
 
-  // Compute detailed stats (income, expense, net, count) per payment method
+  // Compute detailed stats in exact integer céntimos per payment method
   const statsByMethod = useMemo(() => {
+    const centsMap: Record<
+      PaymentMethodType,
+      { incomeCents: number; expenseCents: number; count: number }
+    > = {
+      EFECTIVO: { incomeCents: 0, expenseCents: 0, count: 0 },
+      "YAPE 1": { incomeCents: 0, expenseCents: 0, count: 0 },
+      "YAPE 2": { incomeCents: 0, expenseCents: 0, count: 0 },
+    };
+
+    for (const t of transactions) {
+      const m = t.paymentMethod as PaymentMethodType;
+      if (!centsMap[m]) continue;
+      centsMap[m].count += 1;
+      const amtCents = toCents(t.amount);
+      if (t.type === "INCOME") centsMap[m].incomeCents += amtCents;
+      else centsMap[m].expenseCents += amtCents;
+    }
+
     const map: Record<PaymentMethodType, MethodStats> = {
       EFECTIVO: { income: 0, expense: 0, net: totals["EFECTIVO"] ?? 0, count: 0 },
       "YAPE 1": { income: 0, expense: 0, net: totals["YAPE 1"] ?? 0, count: 0 },
       "YAPE 2": { income: 0, expense: 0, net: totals["YAPE 2"] ?? 0, count: 0 },
     };
 
-    for (const t of transactions) {
-      const m = t.paymentMethod as PaymentMethodType;
-      if (!map[m]) continue;
-      map[m].count += 1;
-      if (t.type === "INCOME") map[m].income += t.amount;
-      else map[m].expense += t.amount;
-    }
-
     for (const m of PAYMENT_METHODS) {
-      map[m].net = map[m].income - map[m].expense;
+      const c = centsMap[m];
+      map[m] = {
+        income: fromCents(c.incomeCents),
+        expense: fromCents(c.expenseCents),
+        net: fromCents(c.incomeCents - c.expenseCents),
+        count: c.count,
+      };
     }
 
     return map;
@@ -99,41 +116,45 @@ export function CashboxMethodCards({
 
   const totalGeneral = useMemo(
     () =>
-      (statsByMethod["EFECTIVO"]?.net ?? 0) +
-      (statsByMethod["YAPE 1"]?.net ?? 0) +
-      (statsByMethod["YAPE 2"]?.net ?? 0),
+      sumMoney([
+        statsByMethod["EFECTIVO"]?.net ?? 0,
+        statsByMethod["YAPE 1"]?.net ?? 0,
+        statsByMethod["YAPE 2"]?.net ?? 0,
+      ]),
     [statsByMethod]
   );
 
   const totalIncomeGeneral = useMemo(
     () =>
-      (statsByMethod["EFECTIVO"]?.income ?? 0) +
-      (statsByMethod["YAPE 1"]?.income ?? 0) +
-      (statsByMethod["YAPE 2"]?.income ?? 0),
+      sumMoney([
+        statsByMethod["EFECTIVO"]?.income ?? 0,
+        statsByMethod["YAPE 1"]?.income ?? 0,
+        statsByMethod["YAPE 2"]?.income ?? 0,
+      ]),
     [statsByMethod]
   );
 
   const totalExpenseGeneral = useMemo(
     () =>
-      (statsByMethod["EFECTIVO"]?.expense ?? 0) +
-      (statsByMethod["YAPE 1"]?.expense ?? 0) +
-      (statsByMethod["YAPE 2"]?.expense ?? 0),
+      sumMoney([
+        statsByMethod["EFECTIVO"]?.expense ?? 0,
+        statsByMethod["YAPE 1"]?.expense ?? 0,
+        statsByMethod["YAPE 2"]?.expense ?? 0,
+      ]),
     [statsByMethod]
   );
 
-  // Positive weight percentages for visual distribution bar
+  // Positive weight percentages (exact 100.0% sum across active positive accounts)
   const shareByMethod = useMemo(() => {
-    const posCash = Math.max(0, statsByMethod["EFECTIVO"].net);
-    const posY1 = Math.max(0, statsByMethod["YAPE 1"].net);
-    const posY2 = Math.max(0, statsByMethod["YAPE 2"].net);
-    const sumPos = posCash + posY1 + posY2;
-    if (sumPos <= 0) {
-      return { EFECTIVO: 33.3, "YAPE 1": 33.3, "YAPE 2": 33.4 };
-    }
+    const [pctCash, pctY1, pctY2] = sharePercentages([
+      statsByMethod["EFECTIVO"].net,
+      statsByMethod["YAPE 1"].net,
+      statsByMethod["YAPE 2"].net,
+    ]);
     return {
-      EFECTIVO: (posCash / sumPos) * 100,
-      "YAPE 1": (posY1 / sumPos) * 100,
-      "YAPE 2": (posY2 / sumPos) * 100,
+      EFECTIVO: pctCash,
+      "YAPE 1": pctY1,
+      "YAPE 2": pctY2,
     };
   }, [statsByMethod]);
 
@@ -148,20 +169,21 @@ export function CashboxMethodCards({
     }
   };
 
-  // Transactions with independent running balance for the modal or active preview
+  // Transactions with independent running balance in exact céntimos
   const activeAccountForPreview = previewModalAccount ?? selectedAccount;
   const accountLedger = useMemo(() => {
     if (!activeAccountForPreview) return [];
-    let running = 0;
+    let runningCents = 0;
     const rows = transactions
       .filter((t) => t.paymentMethod === activeAccountForPreview)
       .map((t) => {
         const isInc = t.type === "INCOME";
-        running += isInc ? t.amount : -t.amount;
+        const deltaCents = toCents(t.amount);
+        runningCents += isInc ? deltaCents : -deltaCents;
         return {
           ...t,
           isInc,
-          runningAfter: running,
+          runningAfter: fromCents(runningCents),
         };
       });
     return rows.reverse();

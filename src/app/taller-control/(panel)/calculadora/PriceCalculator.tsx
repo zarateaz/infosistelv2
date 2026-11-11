@@ -14,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { mulMoney, round2, subMoney } from "@/lib/money";
 
 const IGV_RATE = 0.18;
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -124,34 +125,41 @@ export function PriceCalculator() {
     // - Si deduce crédito fiscal comercial: descuenta el 18% a la compra.
     // - Si compra normal directo (lo que salió del bolsillo): el costo es el monto pagado.
     const netBuy = costHasCredit ? buyPen / (1 + IGV_RATE) : buyPen;
-    const cost = netBuy + num(extra);
+    const cost = round2(netBuy + num(extra));
     const pct = num(percent);
     const q = Math.max(1, Math.floor(num(qty)) || 1);
 
-    let priceSinIgv = 0;
+    let priceSinIgvRaw = 0;
     let invalid = "";
     if (method === "margen") {
       if (pct >= 100) invalid = "El margen sobre venta debe ser menor a 100%.";
-      else priceSinIgv = cost / (1 - pct / 100);
+      else if (pct < 0) invalid = "El margen no puede ser negativo.";
+      else priceSinIgvRaw = cost / (1 - pct / 100);
     } else {
-      priceSinIgv = cost * (1 + pct / 100);
+      if (pct < 0) invalid = "El recargo no puede ser negativo.";
+      else priceSinIgvRaw = cost * (1 + pct / 100);
     }
 
-    if (roundUp && priceSinIgv > 0) {
-      priceSinIgv = Math.ceil(priceSinIgv);
+    let priceSinIgv = round2(priceSinIgvRaw);
+    let priceConIgv = round2(priceSinIgvRaw * (1 + IGV_RATE));
+
+    if (roundUp && priceSinIgvRaw > 0) {
+      if (saleMode === "con_igv") {
+        // Redondear el total facturado al sol superior y derivar base imponible SUNAT exacta
+        priceConIgv = Math.ceil(round2(priceSinIgvRaw * (1 + IGV_RATE)));
+        priceSinIgv = round2(priceConIgv / (1 + IGV_RATE));
+      } else {
+        // Redondear el precio base sin IGV al sol superior y calcular su IGV al 18%
+        priceSinIgv = Math.ceil(round2(priceSinIgvRaw));
+        priceConIgv = round2(priceSinIgv * (1 + IGV_RATE));
+      }
     }
 
-    // Precio con IGV: SIEMPRE incluye el 18% adicional de la factura
-    let priceConIgv = priceSinIgv * (1 + IGV_RATE);
-    if (roundUp && priceConIgv > 0) {
-      priceConIgv = Math.ceil(priceConIgv);
-    }
-
-    const igvAmount = priceConIgv - priceSinIgv;
-    const profit = priceSinIgv - cost;
+    const igvAmount = subMoney(priceConIgv, priceSinIgv);
+    const profit = subMoney(priceSinIgv, cost);
 
     const activeFinalPrice = saleMode === "con_igv" ? priceConIgv : priceSinIgv;
-    const activeTotalPrice = activeFinalPrice * q;
+    const activeTotalPrice = mulMoney(activeFinalPrice, q);
 
     return {
       cost,
@@ -161,9 +169,9 @@ export function PriceCalculator() {
       activeTotalPrice,
       igvAmount,
       profit,
-      totalProfit: profit * q,
-      realMargin: priceSinIgv > 0 ? (profit / priceSinIgv) * 100 : 0,
-      realMarkup: cost > 0 ? (profit / cost) * 100 : 0,
+      totalProfit: mulMoney(profit, q),
+      realMargin: priceSinIgv > 0 ? round2((profit / priceSinIgv) * 100) : 0,
+      realMarkup: cost > 0 ? round2((profit / cost) * 100) : 0,
       pct,
       q,
       invalid,

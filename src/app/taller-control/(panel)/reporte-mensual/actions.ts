@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { fromCents, round2, toCents } from "@/lib/money";
 
 export interface MonthlyProductRow {
   productId: string | null;
@@ -96,9 +97,9 @@ export async function getMonthlySalesReport(
   });
 
   let totalUnits = 0;
-  let totalRevenue = 0;
-  let totalCost = 0;
-  let totalProfit = 0;
+  let totalRevenueCents = 0;
+  let totalCostCents = 0;
+  let totalProfitCents = 0;
 
   // Group by product name / id
   const productMap = new Map<
@@ -108,27 +109,31 @@ export async function getMonthlySalesReport(
       pName: string;
       category: string;
       totalQuantity: number;
-      totalRevenue: number;
-      totalCost: number;
-      totalProfit: number;
+      totalRevenueCents: number;
+      totalCostCents: number;
+      totalProfitCents: number;
       salesCount: number;
     }
   >();
 
   for (const s of sales) {
+    const priceCents = toCents(s.price);
+    const costCents = toCents(s.costPrice);
+    const profitCents = toCents(s.profit);
+
     totalUnits += s.quantity;
-    totalRevenue += s.price;
-    totalCost += s.costPrice;
-    totalProfit += s.profit;
+    totalRevenueCents += priceCents;
+    totalCostCents += costCents;
+    totalProfitCents += profitCents;
 
     const key = (s.productId ?? s.pName).toLowerCase().trim();
     const existing = productMap.get(key);
 
     if (existing) {
       existing.totalQuantity += s.quantity;
-      existing.totalRevenue += s.price;
-      existing.totalCost += s.costPrice;
-      existing.totalProfit += s.profit;
+      existing.totalRevenueCents += priceCents;
+      existing.totalCostCents += costCents;
+      existing.totalProfitCents += profitCents;
       existing.salesCount += 1;
     } else {
       productMap.set(key, {
@@ -136,22 +141,34 @@ export async function getMonthlySalesReport(
         pName: s.pName,
         category: s.category || "General",
         totalQuantity: s.quantity,
-        totalRevenue: s.price,
-        totalCost: s.costPrice,
-        totalProfit: s.profit,
+        totalRevenueCents: priceCents,
+        totalCostCents: costCents,
+        totalProfitCents: profitCents,
         salesCount: 1,
       });
     }
   }
 
+  const totalRevenue = fromCents(totalRevenueCents);
+  const totalCost = fromCents(totalCostCents);
+  const totalProfit = fromCents(totalProfitCents);
+
   // Calculate percentages and averages
-  const products: MonthlyProductRow[] = Array.from(productMap.values()).map(
-    (p) => ({
-      ...p,
-      averageUnitPrice: p.totalQuantity > 0 ? p.totalRevenue / p.totalQuantity : 0,
-      percentageOfTotal: totalRevenue > 0 ? (p.totalRevenue / totalRevenue) * 100 : 0,
-    })
-  );
+  const products: MonthlyProductRow[] = Array.from(productMap.values()).map((p) => {
+    const rev = fromCents(p.totalRevenueCents);
+    return {
+      productId: p.productId,
+      pName: p.pName,
+      category: p.category,
+      totalQuantity: p.totalQuantity,
+      totalRevenue: rev,
+      totalCost: fromCents(p.totalCostCents),
+      totalProfit: fromCents(p.totalProfitCents),
+      salesCount: p.salesCount,
+      averageUnitPrice: p.totalQuantity > 0 ? round2(rev / p.totalQuantity) : 0,
+      percentageOfTotal: totalRevenueCents > 0 ? round2((p.totalRevenueCents / totalRevenueCents) * 100) : 0,
+    };
+  });
 
   // Sort products by total quantity sold descending
   products.sort((a, b) => b.totalQuantity - a.totalQuantity);

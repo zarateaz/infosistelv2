@@ -8,6 +8,7 @@ import {
 import { monthKey } from "./month";
 import { PAYMENT_METHODS, type PaymentMethodType } from "./constants";
 import { CashboxInteractiveWorkspace } from "./CashboxInteractiveWorkspace";
+import { fromCents, toCents } from "@/lib/money";
 
 export default async function AdminCashboxPage({
   searchParams,
@@ -31,19 +32,25 @@ export default async function AdminCashboxPage({
   const availableMonths = monthsSummary.map((m) => m.month);
   const displayedTransactions = showAll ? transactions : monthTransactions;
 
-  // Monthly balance starts from 0 for each month! When viewing a specific month,
-  // it computes strictly the transactions of that month, not carrying over past months.
-  const balance = displayedTransactions.reduce(
-    (sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount),
-    0
+  // Monthly balance starts from 0 for each month! Computed in exact integer céntimos.
+  const balance = fromCents(
+    displayedTransactions.reduce(
+      (sumCents, t) => sumCents + (t.type === "INCOME" ? toCents(t.amount) : -toCents(t.amount)),
+      0
+    )
   );
 
   const totalsByMethod = Object.fromEntries(
     PAYMENT_METHODS.map((method) => [
       method,
-      displayedTransactions
-        .filter((t) => t.paymentMethod === method)
-        .reduce((sum, t) => sum + (t.type === "INCOME" ? t.amount : -t.amount), 0),
+      fromCents(
+        displayedTransactions
+          .filter((t) => t.paymentMethod === method)
+          .reduce(
+            (sumCents, t) => sumCents + (t.type === "INCOME" ? toCents(t.amount) : -toCents(t.amount)),
+            0
+          )
+      ),
     ])
   ) as Record<PaymentMethodType, number>;
 

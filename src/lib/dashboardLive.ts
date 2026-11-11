@@ -10,6 +10,7 @@ import {
 } from "@/app/taller-control/(panel)/deudas/deudas";
 import { cobranzaState, daysUntil } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
 import { dateToInputValue } from "@/app/taller-control/(panel)/caja/month";
+import { fromCents, sharePercentages, toCents } from "@/lib/money";
 
 const MONTH_NAMES_ES = [
   "Enero",
@@ -208,76 +209,98 @@ export async function getDashboardLiveSnapshot(): Promise<DashboardLiveSnapshot>
     },
   };
 
-  let totalIncome = 0;
-  let totalExpense = 0;
-  let todayIncome = 0;
-  let todayExpense = 0;
+  const accountCents: Record<
+    PaymentMethodType,
+    { income: number; expense: number; count: number; todayIncome: number; todayExpense: number; todayCount: number }
+  > = {
+    EFECTIVO: { income: 0, expense: 0, count: 0, todayIncome: 0, todayExpense: 0, todayCount: 0 },
+    "YAPE 1": { income: 0, expense: 0, count: 0, todayIncome: 0, todayExpense: 0, todayCount: 0 },
+    "YAPE 2": { income: 0, expense: 0, count: 0, todayIncome: 0, todayExpense: 0, todayCount: 0 },
+  };
+
+  let totalIncomeCents = 0;
+  let totalExpenseCents = 0;
+  let todayIncomeCents = 0;
+  let todayExpenseCents = 0;
   let todayCount = 0;
 
   for (const t of monthTxRows) {
     const isInc = t.type === "INCOME";
     const isToday = dateToInputValue(t.date) === todayStr;
+    const amtCents = toCents(t.amount);
 
-    if (isInc) totalIncome += t.amount;
-    else totalExpense += t.amount;
+    if (isInc) totalIncomeCents += amtCents;
+    else totalExpenseCents += amtCents;
 
     if (isToday) {
       todayCount++;
-      if (isInc) todayIncome += t.amount;
-      else todayExpense += t.amount;
+      if (isInc) todayIncomeCents += amtCents;
+      else todayExpenseCents += amtCents;
     }
 
     const m = t.paymentMethod as PaymentMethodType;
-    if (accounts[m]) {
-      accounts[m].count++;
-      if (isInc) accounts[m].income += t.amount;
-      else accounts[m].expense += t.amount;
-      accounts[m].balance = accounts[m].income - accounts[m].expense;
+    if (accountCents[m]) {
+      accountCents[m].count++;
+      if (isInc) accountCents[m].income += amtCents;
+      else accountCents[m].expense += amtCents;
 
       if (isToday) {
-        accounts[m].todayCount++;
-        if (isInc) accounts[m].todayIncome += t.amount;
-        else accounts[m].todayExpense += t.amount;
-        accounts[m].todayNet = accounts[m].todayIncome - accounts[m].todayExpense;
+        accountCents[m].todayCount++;
+        if (isInc) accountCents[m].todayIncome += amtCents;
+        else accountCents[m].todayExpense += amtCents;
       }
     }
   }
 
-  const totalBalance = totalIncome - totalExpense;
-  const todayNet = todayIncome - todayExpense;
-
-  const positiveSum = PAYMENT_METHODS.reduce(
-    (sum, m) => sum + Math.max(0, accounts[m].balance),
-    0
-  );
   for (const m of PAYMENT_METHODS) {
-    accounts[m].sharePct =
-      positiveSum > 0 ? Math.round((Math.max(0, accounts[m].balance) / positiveSum) * 1000) / 10 : 0;
+    const c = accountCents[m];
+    accounts[m].count = c.count;
+    accounts[m].income = fromCents(c.income);
+    accounts[m].expense = fromCents(c.expense);
+    accounts[m].balance = fromCents(c.income - c.expense);
+    accounts[m].todayCount = c.todayCount;
+    accounts[m].todayIncome = fromCents(c.todayIncome);
+    accounts[m].todayExpense = fromCents(c.todayExpense);
+    accounts[m].todayNet = fromCents(c.todayIncome - c.todayExpense);
   }
+
+  const totalIncome = fromCents(totalIncomeCents);
+  const totalExpense = fromCents(totalExpenseCents);
+  const totalBalance = fromCents(totalIncomeCents - totalExpenseCents);
+  const todayIncome = fromCents(todayIncomeCents);
+  const todayExpense = fromCents(todayExpenseCents);
+  const todayNet = fromCents(todayIncomeCents - todayExpenseCents);
+
+  const shares = sharePercentages(PAYMENT_METHODS.map((m) => accounts[m].balance));
+  PAYMENT_METHODS.forEach((m, idx) => {
+    accounts[m].sharePct = shares[idx];
+  });
 
   // ── 2. Servicios Técnicos ──
   const serviciosList = Array.isArray(serviciosData?.servicios) ? serviciosData.servicios : [];
   let stActivos = 0;
   let stListos = 0;
-  let stPorCobrar = 0;
-  let stCobradoHoy = 0;
+  let stPorCobrarCents = 0;
+  let stCobradoHoyCents = 0;
 
   for (const s of serviciosList) {
     if (ACTIVAS.includes(s.etapa)) stActivos++;
     if (s.etapa === "listo" || s.etapa === "noreparable") stListos++;
-    stPorCobrar += pendiente(s);
+    stPorCobrarCents += toCents(pendiente(s));
     for (const p of s.pagos || []) {
       if (p.fecha && ymd(parseD(p.fecha)) === todayStr) {
-        stCobradoHoy += Number(p.monto) || 0;
+        stCobradoHoyCents += toCents(Number(p.monto) || 0);
       }
     }
   }
+  const stPorCobrar = fromCents(stPorCobrarCents);
+  const stCobradoHoy = fromCents(stCobradoHoyCents);
 
   // ── 3. Deudas y Obligaciones del Mes ──
   let deudasPendientes = 0;
   let deudasVencidas = 0;
   let deudasPagadas = 0;
-  let deudasMontoPendiente = 0;
+  let deudasMontoPendienteCents = 0;
 
   for (const r of debtRows) {
     const row: DebtRow = {
@@ -312,10 +335,11 @@ export async function getDashboardLiveSnapshot(): Promise<DashboardLiveSnapshot>
       deudasPagadas++;
     } else {
       deudasPendientes++;
-      deudasMontoPendiente += row.amount;
+      deudasMontoPendienteCents += toCents(row.amount);
       if (st.status === "VENCIDO") deudasVencidas++;
     }
   }
+  const deudasMontoPendiente = fromCents(deudasMontoPendienteCents);
 
   // ── 4. Cobranza Internet ──
   const [nowY, nowM, nowD] = todayStr.split("-").map(Number);

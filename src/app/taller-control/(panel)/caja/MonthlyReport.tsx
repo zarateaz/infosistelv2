@@ -7,6 +7,7 @@ import { getCashboxTransactionsForMonth, type AdminTransaction, type AdminCashbo
 import { MonthlyReportRow } from "./MonthlyReportRow";
 import { generateCashboxReportPDF } from "@/lib/pdfReportGenerator";
 import { monthKeyUTC } from "./month";
+import { fromCents, toCents } from "@/lib/money";
 
 const MONTH_NAMES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -28,14 +29,15 @@ function money(n: number): string {
 }
 
 function computeRows(transactions: AdminTransaction[]) {
-  let running = 0;
+  let runningCents = 0;
   return transactions.map((t) => {
     const isIncome = t.type === "INCOME";
-    running += isIncome ? t.amount : -t.amount;
+    const amtCents = toCents(t.amount);
+    runningCents += isIncome ? amtCents : -amtCents;
     return {
       t,
       isIncome,
-      running,
+      running: fromCents(runningCents),
       incomeYape1: isIncome && t.paymentMethod === "YAPE 1" ? t.amount : 0,
       incomeYape2: isIncome && t.paymentMethod === "YAPE 2" ? t.amount : 0,
       incomeCash: isIncome && t.paymentMethod === "EFECTIVO" ? t.amount : 0,
@@ -76,16 +78,16 @@ export function MonthlyReport({
   const rows = useMemo(() => computeRows(effectiveTransactions), [effectiveTransactions]);
 
   const totals = useMemo(() => {
-    return rows.reduce(
+    const cents = rows.reduce(
       (acc, r) => ({
-        income: acc.income + (r.isIncome ? r.t.amount : 0),
-        incomeYape1: acc.incomeYape1 + r.incomeYape1,
-        incomeYape2: acc.incomeYape2 + r.incomeYape2,
-        incomeCash: acc.incomeCash + r.incomeCash,
-        expense: acc.expense + (!r.isIncome ? r.t.amount : 0),
-        expenseYape1: acc.expenseYape1 + r.expenseYape1,
-        expenseYape2: acc.expenseYape2 + r.expenseYape2,
-        expenseCash: acc.expenseCash + r.expenseCash,
+        income: acc.income + (r.isIncome ? toCents(r.t.amount) : 0),
+        incomeYape1: acc.incomeYape1 + toCents(r.incomeYape1),
+        incomeYape2: acc.incomeYape2 + toCents(r.incomeYape2),
+        incomeCash: acc.incomeCash + toCents(r.incomeCash),
+        expense: acc.expense + (!r.isIncome ? toCents(r.t.amount) : 0),
+        expenseYape1: acc.expenseYape1 + toCents(r.expenseYape1),
+        expenseYape2: acc.expenseYape2 + toCents(r.expenseYape2),
+        expenseCash: acc.expenseCash + toCents(r.expenseCash),
       }),
       {
         income: 0,
@@ -98,12 +100,22 @@ export function MonthlyReport({
         expenseCash: 0,
       }
     );
+    return {
+      income: fromCents(cents.income),
+      incomeYape1: fromCents(cents.incomeYape1),
+      incomeYape2: fromCents(cents.incomeYape2),
+      incomeCash: fromCents(cents.incomeCash),
+      expense: fromCents(cents.expense),
+      expenseYape1: fromCents(cents.expenseYape1),
+      expenseYape2: fromCents(cents.expenseYape2),
+      expenseCash: fromCents(cents.expenseCash),
+    };
   }, [rows]);
 
   const finalBalance = rows.length > 0 ? rows[rows.length - 1].running : 0;
-  const netYape1 = totals.incomeYape1 - totals.expenseYape1;
-  const netYape2 = totals.incomeYape2 - totals.expenseYape2;
-  const netCash = totals.incomeCash - totals.expenseCash;
+  const netYape1 = fromCents(toCents(totals.incomeYape1) - toCents(totals.expenseYape1));
+  const netYape2 = fromCents(toCents(totals.incomeYape2) - toCents(totals.expenseYape2));
+  const netCash = fromCents(toCents(totals.incomeCash) - toCents(totals.expenseCash));
   const displayRows = useMemo(() => [...rows].reverse(), [rows]);
 
   const handleDownloadPDF = () => {

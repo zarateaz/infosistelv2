@@ -33,6 +33,7 @@ import {
   Upload,
   ShoppingBag,
 } from "lucide-react";
+import { addMoney, mulMoney, round2, subMoney, sumMoney } from "@/lib/money";
 import {
   createQuotation,
   updateQuotation,
@@ -762,12 +763,12 @@ export function CotizacionFormModal({
     setAiImagePreview(null);
   };
 
-  // Computations
-  const subtotal = items.reduce((sum, it) => sum + (it.total || 0), 0);
-  const taxableBase = Math.max(0, subtotal - (discount || 0));
-  const activeIgvRate = includeIgv ? (igvPercent || 18) / 100 : 0;
-  const igv = Number((taxableBase * activeIgvRate).toFixed(2));
-  const total = Number((taxableBase + igv).toFixed(2));
+  // Computations in exact céntimos
+  const subtotal = sumMoney(items.map((it) => it.total || 0));
+  const taxableBase = Math.max(0, subMoney(subtotal, round2(discount || 0)));
+  const activeIgvRate = includeIgv ? (igvPercent ?? 18) / 100 : 0;
+  const igv = round2(taxableBase * activeIgvRate);
+  const total = addMoney(taxableBase, igv);
 
   const currSymbol = currency === "USD" ? "$" : "S/.";
 
@@ -1988,13 +1989,12 @@ export function CotizacionFormModal({
             <div className="mt-4 flex flex-col items-end gap-3 border-t border-border pt-4">
               {/* Panel de Rentabilidad Global Interna */}
               {(() => {
-                const totalCost = items.reduce(
-                  (sum, it) => sum + (Number(it.costPrice) || 0) * (Number(it.quantity) || 1),
-                  0
+                const totalCost = sumMoney(
+                  items.map((it) => mulMoney(Number(it.costPrice) || 0, Number(it.quantity) || 1))
                 );
-                const totalProfit = taxableBase - totalCost;
+                const totalProfit = subMoney(taxableBase, totalCost);
                 const globalMarginPercent =
-                  totalCost > 0 ? Number(((totalProfit / totalCost) * 100).toFixed(2)) : 0;
+                  totalCost > 0 ? round2((totalProfit / totalCost) * 100) : 0;
 
                 return totalCost > 0 ? (
                   <div className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-purple-500/5 p-3.5 shadow-xs">

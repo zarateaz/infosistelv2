@@ -6,6 +6,8 @@
  *  de vencimiento. Todas las fechas viajan como strings "YYYY-MM-DD" para que
  *  el servidor (UTC) y el navegador (Lima) calculen exactamente lo mismo. */
 
+import { fromCents, toCents } from "@/lib/money";
+
 export const DEBT_CATEGORIES = [
   "IMPUESTOS",
   "ALQUILER",
@@ -277,51 +279,69 @@ export interface MonthSummary {
 }
 
 export function summarizeMonth(debts: DebtRow[], period: string, today: string): MonthSummary {
-  const s: MonthSummary = {
-    total: 0,
-    paid: 0,
-    pending: 0,
-    overdue: 0,
-    overdueCount: 0,
-    dueSoonCount: 0,
-    paidCount: 0,
-    applicableCount: 0,
-    arrears: 0,
-    arrearsCount: 0,
-    byCategory: [],
-  };
-  const cat = new Map<DebtCategory, { total: number; paid: number }>();
+  let totalCents = 0;
+  let paidCents = 0;
+  let pendingCents = 0;
+  let overdueCents = 0;
+  let arrearsCents = 0;
+  let overdueCount = 0;
+  let dueSoonCount = 0;
+  let paidCount = 0;
+  let applicableCount = 0;
+  let arrearsCount = 0;
+
+  const catCents = new Map<DebtCategory, { totalCents: number; paidCents: number }>();
 
   for (const d of debts) {
     const st = periodState(d, period, today);
     if (st.status === "NO_APLICA") continue;
-    const paidAmount = st.payment?.amount ?? 0;
-    const lineTotal = st.payment ? paidAmount : d.amount;
-    s.applicableCount++;
-    s.total += lineTotal;
-    const c = cat.get(d.category) ?? { total: 0, paid: 0 };
-    c.total += lineTotal;
+    const paidAmountCents = toCents(st.payment?.amount ?? 0);
+    const amountCents = toCents(d.amount);
+    const lineTotalCents = st.payment ? paidAmountCents : amountCents;
+    applicableCount++;
+    totalCents += lineTotalCents;
+
+    const c = catCents.get(d.category) ?? { totalCents: 0, paidCents: 0 };
+    c.totalCents += lineTotalCents;
     if (st.status === "PAGADO") {
-      s.paid += paidAmount;
-      s.paidCount++;
-      c.paid += paidAmount;
+      paidCents += paidAmountCents;
+      paidCount++;
+      c.paidCents += paidAmountCents;
     } else {
-      s.pending += d.amount;
+      pendingCents += amountCents;
       if (st.status === "VENCIDO") {
-        s.overdue += d.amount;
-        s.overdueCount++;
-      } else if (st.status === "POR_VENCER") s.dueSoonCount++;
+        overdueCents += amountCents;
+        overdueCount++;
+      } else if (st.status === "POR_VENCER") dueSoonCount++;
     }
-    cat.set(d.category, c);
+    catCents.set(d.category, c);
 
     for (const a of arrearsBefore(d, period, today)) {
-      s.arrears += a.expected;
-      s.arrearsCount++;
+      arrearsCents += toCents(a.expected);
+      arrearsCount++;
     }
   }
 
-  s.byCategory = DEBT_CATEGORIES.filter((k) => cat.has(k)).map((k) => ({ category: k, ...cat.get(k)! }));
-  return s;
+  return {
+    total: fromCents(totalCents),
+    paid: fromCents(paidCents),
+    pending: fromCents(pendingCents),
+    overdue: fromCents(overdueCents),
+    overdueCount,
+    dueSoonCount,
+    paidCount,
+    applicableCount,
+    arrears: fromCents(arrearsCents),
+    arrearsCount,
+    byCategory: DEBT_CATEGORIES.filter((k) => catCents.has(k)).map((k) => {
+      const c = catCents.get(k)!;
+      return {
+        category: k,
+        total: fromCents(c.totalCents),
+        paid: fromCents(c.paidCents),
+      };
+    }),
+  };
 }
 
 /** Link de WhatsApp para enviar la constancia del pago al beneficiario. */

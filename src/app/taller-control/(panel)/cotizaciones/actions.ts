@@ -8,6 +8,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { parseDateInputToUtcNoon, formatQuotationDate } from "@/lib/quotationDates";
+import { addMoney, fromCents, mulMoney, round2, subMoney, toCents } from "@/lib/money";
 
 export interface QuotationItemData {
   id?: string;
@@ -226,11 +227,11 @@ export async function createQuotation(
 
     const val = parsed.data;
 
-    // Calculate items totals
-    let rawSubtotal = 0;
+    // Calculate items totals in exact céntimos
+    let subtotalCents = 0;
     const computedItems = val.items.map((it) => {
-      const lineTotal = Number((it.quantity * it.unitPrice).toFixed(2));
-      rawSubtotal += lineTotal;
+      const lineTotal = mulMoney(it.unitPrice, it.quantity);
+      subtotalCents += toCents(lineTotal);
       return {
         productId: it.productId || null,
         description: it.description,
@@ -246,8 +247,9 @@ export async function createQuotation(
       };
     });
 
-    const discount = Number((val.discount || 0).toFixed(2));
-    const taxableBase = Math.max(0, rawSubtotal - discount);
+    const rawSubtotal = fromCents(subtotalCents);
+    const discount = round2(val.discount || 0);
+    const taxableBase = Math.max(0, subMoney(rawSubtotal, discount));
 
     let igv = 0;
     let finalTotal = taxableBase;
@@ -256,8 +258,8 @@ export async function createQuotation(
     const igvRate = igvPercentVal / 100;
 
     if (val.includeIgv) {
-      igv = Number((taxableBase * igvRate).toFixed(2));
-      finalTotal = Number((taxableBase + igv).toFixed(2));
+      igv = round2(taxableBase * igvRate);
+      finalTotal = addMoney(taxableBase, igv);
     }
 
     const code = await generateNextQuotationCode();
@@ -277,7 +279,7 @@ export async function createQuotation(
         validDays: val.validDays,
         currency: val.currency,
         includeIgv: val.includeIgv,
-        subtotal: Number(rawSubtotal.toFixed(2)),
+        subtotal: rawSubtotal,
         discount,
         igv,
         total: finalTotal,
@@ -318,10 +320,10 @@ export async function updateQuotation(
 
     const val = parsed.data;
 
-    let rawSubtotal = 0;
+    let subtotalCents = 0;
     const computedItems = val.items.map((it) => {
-      const lineTotal = Number((it.quantity * it.unitPrice).toFixed(2));
-      rawSubtotal += lineTotal;
+      const lineTotal = mulMoney(it.unitPrice, it.quantity);
+      subtotalCents += toCents(lineTotal);
       return {
         productId: it.productId || null,
         description: it.description,
@@ -337,8 +339,9 @@ export async function updateQuotation(
       };
     });
 
-    const discount = Number((val.discount || 0).toFixed(2));
-    const taxableBase = Math.max(0, rawSubtotal - discount);
+    const rawSubtotal = fromCents(subtotalCents);
+    const discount = round2(val.discount || 0);
+    const taxableBase = Math.max(0, subMoney(rawSubtotal, discount));
 
     let igv = 0;
     let finalTotal = taxableBase;
@@ -347,8 +350,8 @@ export async function updateQuotation(
     const igvRate = igvPercentVal / 100;
 
     if (val.includeIgv) {
-      igv = Number((taxableBase * igvRate).toFixed(2));
-      finalTotal = Number((taxableBase + igv).toFixed(2));
+      igv = round2(taxableBase * igvRate);
+      finalTotal = addMoney(taxableBase, igv);
     }
 
     const issueDate = val.issueDate ? parseDateInputToUtcNoon(val.issueDate) : undefined;
@@ -371,7 +374,7 @@ export async function updateQuotation(
           validDays: val.validDays,
           currency: val.currency,
           includeIgv: val.includeIgv,
-          subtotal: Number(rawSubtotal.toFixed(2)),
+          subtotal: rawSubtotal,
           discount,
           igv,
           total: finalTotal,

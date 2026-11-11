@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { PAYMENT_METHODS } from "./constants";
 import { monthKey, monthKeyUTC, parseDateInput } from "./month";
+import { fromCents, toCents } from "@/lib/money";
 
 export interface AdminTransaction {
   id: string;
@@ -132,11 +133,11 @@ export async function getCashboxMonthsSummary(): Promise<CashboxMonthSummary[]> 
     const label = `${MONTH_NAMES_ES[monthNum - 1] || m} de ${year}`;
     const txs = transactions.filter((t) => monthKeyUTC(t.date) === m);
 
-    let totalIncome = 0;
-    let totalExpense = 0;
+    let totalIncomeCents = 0;
+    let totalExpenseCents = 0;
     for (const t of txs) {
-      if (t.type === "INCOME") totalIncome += t.amount;
-      else totalExpense += t.amount;
+      if (t.type === "INCOME") totalIncomeCents += toCents(t.amount);
+      else totalExpenseCents += toCents(t.amount);
     }
 
     return {
@@ -144,9 +145,9 @@ export async function getCashboxMonthsSummary(): Promise<CashboxMonthSummary[]> 
       label,
       isCurrent: m === current,
       count: txs.length,
-      totalIncome,
-      totalExpense,
-      balance: totalIncome - totalExpense,
+      totalIncome: fromCents(totalIncomeCents),
+      totalExpense: fromCents(totalExpenseCents),
+      balance: fromCents(totalIncomeCents - totalExpenseCents),
       responsible: periodMap.get(m) ?? null,
     };
   });

@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable, { applyPlugin } from "jspdf-autotable";
+import { fromCents, toCents } from "@/lib/money";
 
 try {
   applyPlugin(jsPDF);
@@ -341,16 +342,16 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
   doc.setFontSize(8.5);
   doc.text(`Período: ${data.month}`, pageWidth - 14, 20, { align: "right" });
 
-  // Calculate totals
-  let running = 0;
-  let totalIncome = 0;
-  let totalExpense = 0;
-  let cashIncome = 0;
-  let cashExpense = 0;
-  let yape1Income = 0;
-  let yape1Expense = 0;
-  let yape2Income = 0;
-  let yape2Expense = 0;
+  // Calculate totals in exact céntimos
+  let runningCents = 0;
+  let totalIncomeCents = 0;
+  let totalExpenseCents = 0;
+  let cashIncomeCents = 0;
+  let cashExpenseCents = 0;
+  let yape1IncomeCents = 0;
+  let yape1ExpenseCents = 0;
+  let yape2IncomeCents = 0;
+  let yape2ExpenseCents = 0;
 
   function formatTxDate(dateVal: Date | string): string {
     if (typeof dateVal === "string") {
@@ -364,18 +365,19 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
 
   const rows = data.transactions.map((t, idx) => {
     const isInc = t.type === "INCOME";
+    const amtCents = toCents(t.amount);
     if (isInc) {
-      totalIncome += t.amount;
-      if (t.paymentMethod === "EFECTIVO") cashIncome += t.amount;
-      else if (t.paymentMethod === "YAPE 1") yape1Income += t.amount;
-      else if (t.paymentMethod === "YAPE 2") yape2Income += t.amount;
-      running += t.amount;
+      totalIncomeCents += amtCents;
+      if (t.paymentMethod === "EFECTIVO") cashIncomeCents += amtCents;
+      else if (t.paymentMethod === "YAPE 1") yape1IncomeCents += amtCents;
+      else if (t.paymentMethod === "YAPE 2") yape2IncomeCents += amtCents;
+      runningCents += amtCents;
     } else {
-      totalExpense += t.amount;
-      if (t.paymentMethod === "EFECTIVO") cashExpense += t.amount;
-      else if (t.paymentMethod === "YAPE 1") yape1Expense += t.amount;
-      else if (t.paymentMethod === "YAPE 2") yape2Expense += t.amount;
-      running -= t.amount;
+      totalExpenseCents += amtCents;
+      if (t.paymentMethod === "EFECTIVO") cashExpenseCents += amtCents;
+      else if (t.paymentMethod === "YAPE 1") yape1ExpenseCents += amtCents;
+      else if (t.paymentMethod === "YAPE 2") yape2ExpenseCents += amtCents;
+      runningCents -= amtCents;
     }
 
     return [
@@ -386,15 +388,23 @@ export function generateCashboxReportPDF(data: CashboxReportExportData) {
       t.paymentMethod,
       isInc ? `S/. ${t.amount.toFixed(2)}` : "-",
       !isInc ? `S/. ${t.amount.toFixed(2)}` : "-",
-      `S/. ${running.toFixed(2)}`,
+      `S/. ${fromCents(runningCents).toFixed(2)}`,
       t.notes || "",
     ];
   });
 
-  const finalBalance = running;
-  const cashNet = cashIncome - cashExpense;
-  const yape1Net = yape1Income - yape1Expense;
-  const yape2Net = yape2Income - yape2Expense;
+  const finalBalance = fromCents(runningCents);
+  const totalIncome = fromCents(totalIncomeCents);
+  const totalExpense = fromCents(totalExpenseCents);
+  const cashIncome = fromCents(cashIncomeCents);
+  const cashExpense = fromCents(cashExpenseCents);
+  const yape1Income = fromCents(yape1IncomeCents);
+  const yape1Expense = fromCents(yape1ExpenseCents);
+  const yape2Income = fromCents(yape2IncomeCents);
+  const yape2Expense = fromCents(yape2ExpenseCents);
+  const cashNet = fromCents(cashIncomeCents - cashExpenseCents);
+  const yape1Net = fromCents(yape1IncomeCents - yape1ExpenseCents);
+  const yape2Net = fromCents(yape2IncomeCents - yape2ExpenseCents);
 
   // Summary Metrics Section (4 cards)
   const cardY = 32;

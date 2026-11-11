@@ -94,10 +94,15 @@ const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct
 export const fCorta = (s) => { if (!s) return ''; const d = parseD(s); return d.getDate() + ' ' + MES[d.getMonth()] + ' ' + d.getFullYear(); };
 export const money = (n) => 'S/. ' + (Number(n) || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const code = (cfg, n) => (cfg.pref || 'OS') + '-' + String(n).padStart(4, '0');
-export const total = (s) => (+s.costo?.mo || 0) + (+s.costo?.rep || 0);
-export const pagado = (s) => (s.pagos || []).reduce((a, p) => a + (+p.monto || 0), 0);
+export const redondear = (n) => {
+  const num = Number(n) || 0;
+  if (Math.abs(num) < 1e-12) return 0;
+  const r = (Math.sign(num) * Math.round((Math.abs(num) + 1e-11) * 100)) / 100;
+  return r === 0 ? 0 : r;
+};
+export const total = (s) => redondear((+s.costo?.mo || 0) + (+s.costo?.rep || 0));
+export const pagado = (s) => redondear((s.pagos || []).reduce((a, p) => a + Math.round(((+p.monto || 0) + 1e-11) * 100), 0) / 100);
 export const pendiente = (s) => Math.max(0, redondear(total(s) - pagado(s)));
-export const redondear = (n) => Math.round((Number(n) || 0) * 100) / 100;
 export const estadoPago = (s) => {
   const t = total(s), p = pagado(s);
   if (t === 0) return p > 0 ? 'parcial' : 'cotizar';
