@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import { getAdminOrders } from "./actions";
 import { InvoiceCell } from "./InvoiceCell";
+import { DeleteOrderButton } from "./DeleteOrderButton";
 
 export default async function AdminOrdersPage({
   searchParams,
@@ -48,7 +49,14 @@ export default async function AdminOrdersPage({
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1.5">
-                <p className="text-lg font-bold text-accent">S/. {order.total.toFixed(2)}</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-lg font-bold text-accent">S/. {order.total.toFixed(2)}</p>
+                  <DeleteOrderButton
+                    orderId={order.id}
+                    customerName={order.customerName}
+                    total={order.total}
+                  />
+                </div>
                 <InvoiceCell invoice={order.invoice} />
               </div>
             </div>

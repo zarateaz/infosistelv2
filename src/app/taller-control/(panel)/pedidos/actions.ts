@@ -73,3 +73,41 @@ export async function retryOrderInvoice(invoiceId: string): Promise<void> {
   await retryInvoiceEmission(safeInvoiceId);
   revalidatePath("/taller-control/pedidos");
 }
+
+export async function deleteAdminOrder(orderId: string): Promise<void> {
+  const session = await requireSession();
+  const safeOrderId = z.string().trim().min(1, "Identificador de pedido inválido").parse(orderId);
+
+  const deleted = await prisma.$transaction(async (tx) => {
+    const existing = await tx.order.findUnique({
+      where: { id: safeOrderId },
+      select: { id: true, customerName: true, total: true },
+    });
+    if (!existing) return null;
+
+    // Detach any linked invoices before deleting the order so fiscal correlatives remain intact
+    await tx.invoice.updateMany({
+      where: { orderId: safeOrderId },
+      data: { orderId: null },
+    });
+
+    await tx.order.delete({
+      where: { id: safeOrderId },
+    });
+
+    return existing;
+  });
+
+  if (deleted) {
+    await logAudit({
+      action: "ORDER_DELETE",
+      adminId: session.sub,
+      username: session.username,
+      details: `Pedido web eliminado (${deleted.id}): ${deleted.customerName} — S/. ${deleted.total.toFixed(2)}`,
+    });
+  }
+
+  revalidatePath("/taller-control/pedidos");
+  revalidatePath("/taller-control/facturas");
+  revalidatePath("/taller-control");
+}

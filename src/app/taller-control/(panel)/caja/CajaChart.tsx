@@ -258,7 +258,7 @@ export function CajaChart({
             />
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-xl border border-accent/30 bg-accent/[0.08] px-2.5 py-1">
-            <Activity size={12} className="text-accent animate-pulse" />
+            <Activity size={12} className="text-accent" />
             <span className="text-[10px] font-bold uppercase text-accent">Cierre actual:</span>
             <AnimatedMoney
               value={chartStats.current}
@@ -275,7 +275,7 @@ export function CajaChart({
           <p className="mt-1 text-xs text-fg-muted">
             {isSingleAccount
               ? `No hay movimientos registrados en ${mode} para este período.`
-              : "Registra movimientos para ver la curva de evolución en tiempo real."}
+              : "Registra movimientos para ver la evolución del saldo."}
           </p>
         </div>
       ) : (
@@ -454,8 +454,7 @@ export function CajaChart({
                   stroke={LINE_COLORS.ALL}
                   strokeWidth={3}
                   fill="url(#gradAll)"
-                  isAnimationActive={true}
-                  animationDuration={1150}
+                  isAnimationActive={false}
                   dot={{ r: 2.5, fill: LINE_COLORS.ALL, strokeWidth: 0 }}
                   activeDot={{ r: 6, fill: LINE_COLORS.ALL, stroke: "#ffffff", strokeWidth: 2 }}
                 />
@@ -469,8 +468,7 @@ export function CajaChart({
                     stroke={LINE_COLORS.EFECTIVO}
                     strokeWidth={2.6}
                     fill="url(#gradCash)"
-                    isAnimationActive={true}
-                    animationDuration={1150}
+                    isAnimationActive={false}
                     dot={false}
                     activeDot={{ r: 5, fill: LINE_COLORS.EFECTIVO, stroke: "#fff", strokeWidth: 2 }}
                   />
@@ -479,8 +477,7 @@ export function CajaChart({
                     dataKey="YAPE 1"
                     stroke={LINE_COLORS["YAPE 1"]}
                     strokeWidth={2.6}
-                    isAnimationActive={true}
-                    animationDuration={1150}
+                    isAnimationActive={false}
                     dot={false}
                     activeDot={{ r: 5, fill: LINE_COLORS["YAPE 1"], stroke: "#fff", strokeWidth: 2 }}
                   />
@@ -489,8 +486,7 @@ export function CajaChart({
                     dataKey="YAPE 2"
                     stroke={LINE_COLORS["YAPE 2"]}
                     strokeWidth={2.6}
-                    isAnimationActive={true}
-                    animationDuration={1150}
+                    isAnimationActive={false}
                     dot={false}
                     activeDot={{ r: 5, fill: LINE_COLORS["YAPE 2"], stroke: "#fff", strokeWidth: 2 }}
                   />
@@ -510,8 +506,7 @@ export function CajaChart({
                       ? "url(#gradYape1)"
                       : "url(#gradYape2)"
                   }
-                  isAnimationActive={true}
-                  animationDuration={1150}
+                  isAnimationActive={false}
                   dot={{ r: 3.5, fill: LINE_COLORS[mode], stroke: "#ffffff", strokeWidth: 1.5 }}
                   activeDot={{ r: 6, fill: LINE_COLORS[mode], stroke: "#ffffff", strokeWidth: 2 }}
                 />

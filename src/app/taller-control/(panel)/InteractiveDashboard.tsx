@@ -98,9 +98,7 @@ export function InteractiveDashboard({
   initialData: DashboardLiveSnapshot;
 }) {
   const [data, setData] = useState<DashboardLiveSnapshot>(initialData);
-  const [liveEnabled, setLiveEnabled] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [syncError, setSyncError] = useState(false);
 
   const [scope, setScope] = useState<"MONTH" | "TODAY">("MONTH");
   const [selectedAccount, setSelectedAccount] = useState<PaymentMethodType | null>(null);
@@ -129,7 +127,6 @@ export function InteractiveDashboard({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const next: DashboardLiveSnapshot = await res.json();
 
-      // Detectar cambios para animar el pulso en las tarjetas actualizadas
       const prev = prevBalancesRef.current;
       const changed: Record<string, boolean> = {};
       if (Math.abs(next.cashbox.totalBalance - prev.total) > 0.001) changed.total = true;
@@ -146,23 +143,19 @@ export function InteractiveDashboard({
       };
 
       setData(next);
-      setSyncError(false);
 
       if (Object.keys(changed).length > 0) {
         setChangedKeys(changed);
         setTimeout(() => setChangedKeys({}), 1800);
       }
     } catch {
-      setSyncError(true);
+      // ignore background sync error
     } finally {
       if (manual) setIsRefreshing(false);
     }
   }, []);
 
-  // Sondeo en tiempo real cada 5s cuando la pestaña está activa
   useEffect(() => {
-    if (!liveEnabled) return;
-
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") {
         void fetchLive(false);
@@ -182,7 +175,7 @@ export function InteractiveDashboard({
       document.removeEventListener("visibilitychange", onVisibilityOrFocus);
       window.removeEventListener("focus", onVisibilityOrFocus);
     };
-  }, [liveEnabled, fetchLive]);
+  }, [fetchLive]);
 
   const handleSelectAccount = (method: PaymentMethodType) => {
     if (selectedAccount === method) {
@@ -251,39 +244,16 @@ export function InteractiveDashboard({
 
   return (
     <div className="space-y-6 pb-10">
-      {/* ── 1. HEADER COMANDO EN VIVO ─────────────────────────────────────── */}
+      {/* ── 1. HEADER COMANDO ─────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-fg">
               Dashboard Interactivo
             </h1>
-            <button
-              type="button"
-              onClick={() => setLiveEnabled((v) => !v)}
-              title={liveEnabled ? "Sincronización automática cada 5s activa (clic para pausar)" : "Sincronización pausada (clic para activar)"}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider transition-all ${
-                syncError
-                  ? "border-red-500/40 bg-red-500/10 text-red-600"
-                  : liveEnabled
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                    : "border-border bg-bg-alt text-fg-muted"
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  syncError
-                    ? "bg-red-500"
-                    : liveEnabled
-                      ? "bg-emerald-500 animate-pulse"
-                      : "bg-fg-muted"
-                }`}
-              />
-              {syncError ? "Sin conexión" : liveEnabled ? "En vivo · 5s" : "Pausado"}
-            </button>
           </div>
           <p className="mt-1 text-xs sm:text-sm text-fg-muted">
-            Saldos de <strong className="text-fg">Efectivo, Yape 1 y Yape 2</strong> en tiempo real ·{" "}
+            Saldos de <strong className="text-fg">Efectivo, Yape 1 y Yape 2</strong> ·{" "}
             <span className="font-medium">Actualizado {lastUpdatedText} (Lima)</span>
           </p>
         </div>
@@ -322,10 +292,10 @@ export function InteractiveDashboard({
               void fetchLive(true);
             }}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-bg-surface px-3.5 py-2 text-xs font-bold text-fg shadow-xs transition-all hover:border-accent/50 hover:text-accent disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-bg-surface px-3.5 py-2 text-xs font-bold text-fg shadow-xs transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-60"
           >
             <RefreshCw size={14} className={isRefreshing ? "animate-spin text-accent" : ""} />
-            <span>Cargar desde S/. 0.00</span>
+            <span>Actualizar</span>
           </button>
 
           <Link
@@ -350,7 +320,7 @@ export function InteractiveDashboard({
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fg-muted">
-              <Radio size={14} className="text-emerald-500 animate-pulse" />
+              <Radio size={14} className="text-emerald-500" />
               <span>
                 {scope === "TODAY"
                   ? `Flujo neto de hoy (${data.todayLabel})`
@@ -363,7 +333,7 @@ export function InteractiveDashboard({
 
             <div className="mt-2 flex flex-wrap items-baseline gap-3">
               <p
-                className={`font-display text-3xl sm:text-4xl font-black tracking-tight transition-colors duration-300 ${
+                className={`font-display text-3xl sm:text-4xl font-black tracking-tight ${
                   heroBalance >= 0 ? "text-fg" : "text-red-600 dark:text-red-400"
                 }`}
               >
@@ -374,7 +344,7 @@ export function InteractiveDashboard({
                 />
               </p>
               {changedKeys.total && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 animate-bounce">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400">
                   ¡Saldo actualizado!
                 </span>
               )}
@@ -450,7 +420,7 @@ export function InteractiveDashboard({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-xs font-extrabold uppercase tracking-wider text-fg-muted">
-              Saldos en vivo por cuenta
+              Saldos por cuenta
             </h2>
             <span className="hidden sm:inline text-xs text-fg-muted">
               · Haz clic en una cuenta para filtrar el gráfico y los movimientos
@@ -638,7 +608,7 @@ export function InteractiveDashboard({
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-display text-base sm:text-lg font-extrabold text-fg">
-                Evolución de Saldos en Tiempo Real
+                Evolución de Saldos
               </h2>
               <p className="text-xs text-fg-muted">
                 {scope === "TODAY" ? `Movimientos de hoy (${data.todayLabel})` : data.monthLabel}
@@ -665,7 +635,7 @@ export function InteractiveDashboard({
             <div>
               <h2 className="font-display text-base sm:text-lg font-extrabold text-fg flex items-center gap-2">
                 <Activity size={18} className="text-accent" />
-                <span>Actividad en Vivo</span>
+                <span>Últimos Movimientos</span>
               </h2>
               <p className="text-xs text-fg-muted">
                 {selectedAccount ? `Solo ${PAYMENT_METHOD_INFO[selectedAccount].name}` : "Últimos movimientos de las 3 cuentas"}
@@ -768,7 +738,7 @@ export function InteractiveDashboard({
 
       <section>
         <h2 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-fg-muted">
-          Radar Operativo en Vivo
+          Resumen Operativo
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {/* Servicios Técnicos */}
@@ -815,7 +785,7 @@ export function InteractiveDashboard({
                 <CalendarClock size={18} />
               </div>
               {operations.deudas.vencidasCount > 0 && (
-                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-extrabold text-red-600 animate-pulse">
+                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-extrabold text-red-600">
                   {operations.deudas.vencidasCount} vencidas
                 </span>
               )}
