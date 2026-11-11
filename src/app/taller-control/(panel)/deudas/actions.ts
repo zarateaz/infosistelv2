@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/requireSession";
 import { dateToInputValue, parseDateInput } from "../caja/month";
 import {
+  CATEGORY_INFO,
   DEBT_CATEGORIES,
   DEBT_PAYMENT_METHODS,
   isCashboxMethod,
@@ -126,8 +127,30 @@ export async function toggleDebtActive(id: string): Promise<ActionResult> {
 
 export async function deleteDebt(id: string): Promise<ActionResult> {
   await requireSession();
-  await prisma.debt.deleteMany({ where: { id } });
+  const linkedPayments = await prisma.debtPayment.findMany({
+    where: { debtId: id, cashboxTransactionId: { not: null } },
+    select: { cashboxTransactionId: true },
+  });
+  const cashboxIds = linkedPayments
+    .map((p) => p.cashboxTransactionId)
+    .filter((x): x is string => Boolean(x));
+
+  await prisma.$transaction(async (tx) => {
+    if (cashboxIds.length > 0) {
+      await tx.cashboxTransaction.updateMany({
+        where: { id: { in: cashboxIds }, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+    }
+    await tx.debt.deleteMany({ where: { id } });
+  });
+
   revalidatePath(PATH);
+  if (cashboxIds.length > 0) {
+    revalidatePath("/taller-control/caja");
+    revalidatePath("/taller-control/papelera");
+    revalidatePath("/taller-control/reporte-mensual");
+  }
   return { ok: true };
 }
 
@@ -149,7 +172,7 @@ export async function registerDebtPayment(input: PaymentInput): Promise<ActionRe
   await requireSession();
   const parsed = paymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
-  const { debtId, period, amount, paidAt, method, note } = parsed.data;
+  const { debtId, period, amount, paidAt, method, note, addToCashbox } = parsed.data;
 
   const debt = await prisma.debt.findUnique({ where: { id: debtId } });
   if (!debt) return { ok: false, error: "La obligación ya no existe." };
@@ -158,11 +181,58 @@ export async function registerDebtPayment(input: PaymentInput): Promise<ActionRe
   if (existing) return { ok: false, error: `${periodLabel(period)} ya figura como pagado.` };
 
   const paidDate = parseDateInput(paidAt)!;
-  await prisma.debtPayment.create({
-    data: { debtId, period, amount, paidAt: paidDate, method, note },
+  // Para cualquiera de los 3 métodos de Caja (EFECTIVO, YAPE 1, YAPE 2), se registra
+  // automáticamente como egreso en Caja salvo que explícitamente se indique false.
+  const syncCashbox = isCashboxMethod(method) && addToCashbox !== false;
+
+  await prisma.$transaction(async (tx) => {
+    let cashboxTransactionId: string | null = null;
+    if (syncCashbox) {
+      const catLabel = isDebtCategory(debt.category) ? CATEGORY_INFO[debt.category].label : debt.category;
+      const description = `Pago deuda: ${debt.name} (${periodLabel(period)})`.slice(0, 200);
+      const cashboxNotes = [
+        `Categoría: ${catLabel}`,
+        debt.payee ? `Beneficiario: ${debt.payee}` : null,
+        debt.location ? `Local: ${debt.location}` : null,
+        debt.reference ? `Cód/Ref: ${debt.reference}` : null,
+        debt.payTo ? `Destino: ${debt.payTo}` : null,
+        note ? `Nota: ${note}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+        .slice(0, 500);
+
+      const cashboxTx = await tx.cashboxTransaction.create({
+        data: {
+          date: paidDate,
+          description,
+          type: "EXPENSE",
+          amount,
+          paymentMethod: method,
+          notes: cashboxNotes || null,
+        },
+      });
+      cashboxTransactionId = cashboxTx.id;
+    }
+
+    await tx.debtPayment.create({
+      data: {
+        debtId,
+        period,
+        amount,
+        paidAt: paidDate,
+        method,
+        note,
+        cashboxTransactionId,
+      },
+    });
   });
 
   revalidatePath(PATH);
+  if (syncCashbox) {
+    revalidatePath("/taller-control/caja");
+    revalidatePath("/taller-control/reporte-mensual");
+  }
   return { ok: true };
 }
 
@@ -171,8 +241,21 @@ export async function undoDebtPayment(paymentId: string): Promise<ActionResult> 
   const payment = await prisma.debtPayment.findUnique({ where: { id: paymentId } });
   if (!payment) return { ok: false, error: "El pago ya no existe." };
 
-  await prisma.debtPayment.delete({ where: { id: paymentId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.debtPayment.delete({ where: { id: paymentId } });
+    if (payment.cashboxTransactionId) {
+      await tx.cashboxTransaction.updateMany({
+        where: { id: payment.cashboxTransactionId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+    }
+  });
 
   revalidatePath(PATH);
+  if (payment.cashboxTransactionId) {
+    revalidatePath("/taller-control/caja");
+    revalidatePath("/taller-control/papelera");
+    revalidatePath("/taller-control/reporte-mensual");
+  }
   return { ok: true };
 }

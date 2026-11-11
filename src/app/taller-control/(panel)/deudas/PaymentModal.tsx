@@ -14,8 +14,9 @@ import {
   Wallet,
 } from "lucide-react";
 import { registerDebtPayment, undoDebtPayment } from "./actions";
+import { PAYMENT_METHOD_INFO, type PaymentMethodType } from "@/lib/paymentMethods";
 import {
-  DEBT_PAYMENT_METHODS,
+  CASHBOX_COMPATIBLE_METHODS,
   dueText,
   fmtDate,
   isCashboxMethod,
@@ -24,7 +25,6 @@ import {
   periodLabel,
   periodState,
   shiftPeriod,
-  type DebtPaymentMethod,
   type DebtRow,
 } from "./deudas";
 import { ModalShell, modalInput, modalLabel } from "./ModalShell";
@@ -55,9 +55,9 @@ export function PaymentModal({
 
   const [amount, setAmount] = useState<number | string>(debt.amount > 0 ? debt.amount : "");
   const [paidAt, setPaidAt] = useState(today);
-  const [method, setMethod] = useState<DebtPaymentMethod>("YAPE 1");
+  const [method, setMethod] = useState<PaymentMethodType>("YAPE 1");
   const [note, setNote] = useState("");
-  const [addToCashbox, setAddToCashbox] = useState(false);
+  const [addToCashbox, setAddToCashbox] = useState(true);
   const cashboxAllowed = isCashboxMethod(method);
 
   const submit = (e: React.FormEvent) => {
@@ -258,28 +258,38 @@ export function PaymentModal({
             </div>
 
             <div>
-              <p className={modalLabel}>Medio de pago</p>
-              <div className="grid grid-cols-3 gap-1.5">
-                {DEBT_PAYMENT_METHODS.map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMethod(m)}
-                    className={`rounded-xl border px-2 py-2 text-[11px] font-extrabold transition-all ${
-                      method === m
-                        ? "border-blue-600 bg-blue-50 text-blue-800 ring-2 ring-blue-100"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
+              <p className={modalLabel}>Método de pago (Caja)</p>
+              <div className="grid grid-cols-3 gap-2">
+                {CASHBOX_COMPATIBLE_METHODS.map((m) => {
+                  const info = PAYMENT_METHOD_INFO[m];
+                  const active = method === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMethod(m)}
+                      className={`flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition-all ${
+                        active
+                          ? "border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-100"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      <span className="text-[11px] font-extrabold uppercase tracking-wide">{info.id}</span>
+                      <span className="mt-0.5 text-[10px] font-semibold text-slate-500 leading-tight">
+                        {info.titular}
+                      </span>
+                      {info.formattedPhone && (
+                        <span className="text-[10px] font-mono text-slate-400">{info.formattedPhone}</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div>
               <label className={modalLabel} htmlFor="pay-note">
-                <StickyNote size={13} className="text-amber-600" /> Nota (opcional)
+                <StickyNote size={13} className="text-amber-600" /> N° de operación / Nota (opcional)
               </label>
               <input
                 id="pay-note"
@@ -287,13 +297,13 @@ export function PaymentModal({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 className={modalInput}
-                placeholder="Ej. N° de operación 123456, pagó Julia"
+                placeholder="Ej. Op. #123456, pagó Julia"
               />
             </div>
 
             <label
               className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-xs transition-colors ${
-                cashboxAllowed ? "cursor-pointer border-blue-200 bg-blue-50/60" : "border-slate-200 bg-slate-50 opacity-60"
+                cashboxAllowed ? "cursor-pointer border-blue-200 bg-blue-50/70" : "border-slate-200 bg-slate-50 opacity-60"
               }`}
             >
               <input
@@ -304,10 +314,12 @@ export function PaymentModal({
                 className="mt-0.5 h-4 w-4 accent-blue-600"
               />
               <span>
-                <span className="block font-extrabold text-slate-800">Registrar también como egreso en Caja</span>
-                <span className="font-medium text-slate-500">
+                <span className="block font-extrabold text-slate-800">
+                  Subir automáticamente como egreso a Caja
+                </span>
+                <span className="font-medium text-slate-600">
                   {cashboxAllowed
-                    ? `Se descontará ${Number(amount) > 0 ? money(Number(amount)) : "el monto"} de ${method} en la Caja del día ${fmtDate(paidAt || today)}.`
+                    ? `Se descontará ${Number(amount) > 0 ? money(Number(amount)) : "el monto"} de ${method} (${PAYMENT_METHOD_INFO[method].titular}) el ${fmtDate(paidAt || today)} con todos los detalles de la obligación.`
                     : "Disponible solo para Efectivo, Yape 1 y Yape 2."}
                 </span>
               </span>
