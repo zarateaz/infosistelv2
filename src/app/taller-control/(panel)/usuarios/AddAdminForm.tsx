@@ -44,6 +44,19 @@ export function AddAdminForm() {
           <input id="username" name="username" type="text" required minLength={3} maxLength={64} className={inputClass} />
         </div>
         <div>
+          <label className={labelClass} htmlFor="email">
+            Correo para recuperar clave (OTP)
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            maxLength={150}
+            placeholder="correo@ejemplo.com (opcional)"
+            className={inputClass}
+          />
+        </div>
+        <div>
           <label className={labelClass} htmlFor="password">
             Contraseña
           </label>

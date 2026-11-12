@@ -1,15 +1,22 @@
-import { KeyRound, User } from "lucide-react";
+import { AlertTriangle, CheckCircle2, KeyRound, Mail, User } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/requireSuperAdmin";
-import { getAdminUsers, deleteAdminUser, getRecentPasswordResetRequests } from "./actions";
+import {
+  getAdminUsers,
+  deleteAdminUser,
+  getRecentPasswordResetRequests,
+  getEmailConfigStatus,
+} from "./actions";
 import { AddAdminForm } from "./AddAdminForm";
 import { DeleteAdminButton } from "./DeleteAdminButton";
 import { ResetPasswordButton } from "./ResetPasswordButton";
+import { EditEmailButton } from "./EditEmailButton";
 
 export default async function AdminUsersPage() {
   await requireSuperAdmin();
-  const [admins, resetRequests] = await Promise.all([
+  const [admins, resetRequests, emailStatus] = await Promise.all([
     getAdminUsers(),
     getRecentPasswordResetRequests(),
+    getEmailConfigStatus(),
   ]);
 
   return (
@@ -17,7 +24,44 @@ export default async function AdminUsersPage() {
       <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Usuarios</h1>
       <p className="mt-1 text-sm text-fg-muted">{admins.length} cuentas con acceso al panel.</p>
 
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
+      {/* Estado de envío de OTP por correo (.env) */}
+      <div
+        className={`mt-5 rounded-2xl border p-4 text-xs ${
+          emailStatus.provider === "none"
+            ? "border-amber-500/35 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+            : "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
+        }`}
+      >
+        <div className="flex items-start gap-2.5">
+          {emailStatus.provider === "none" ? (
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          ) : (
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          )}
+          <div>
+            {emailStatus.provider === "resend" ? (
+              <p className="font-bold">
+                Envío automático de OTP por correo activo (Resend API). Cada usuario con correo asignado podrá recuperar su clave con un código de 6 dígitos.
+              </p>
+            ) : emailStatus.provider === "smtp" ? (
+              <p className="font-bold">
+                Envío automático de OTP por correo activo (Gmail / SMTP). Cada usuario con correo asignado podrá recuperar su clave con un código de 6 dígitos.
+              </p>
+            ) : (
+              <>
+                <p className="font-bold">
+                  Pendiente activar envío de correo en tu archivo <code className="font-mono">.env</code> del VPS para los códigos OTP de 6 dígitos.
+                </p>
+                <p className="mt-1 opacity-90">
+                  Agrega <strong>Gmail SMTP</strong> (<code>SMTP_USER</code> y <code>SMTP_PASS</code> de contraseña de aplicación) o <strong>Resend</strong> (<code>RESEND_API_KEY</code>) en tu <code>.env</code> y reinicia PM2.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-2">
         <AddAdminForm />
 
         <div className="admin-glass rounded-[var(--radius-lg)] p-6">
@@ -43,9 +87,18 @@ export default async function AdminUsersPage() {
                     <p className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
                       {admin.role === "superadmin" ? "Super administrador" : "Administrador"}
                     </p>
+                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-fg-muted">
+                      <Mail size={11} className="shrink-0" />
+                      <span>{admin.email ?? "Sin correo asignado"}</span>
+                    </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <EditEmailButton
+                    adminId={admin.id}
+                    username={admin.username}
+                    currentEmail={admin.email}
+                  />
                   <ResetPasswordButton adminId={admin.id} username={admin.username} />
                   <DeleteAdminButton
                     username={admin.username}

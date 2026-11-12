@@ -1,13 +1,16 @@
 "use server";
 
 import { z } from "zod";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
-import { verifyPassword, burnPasswordCheckTime } from "@/lib/auth";
+import { verifyPassword, hashPassword, burnPasswordCheckTime } from "@/lib/auth";
 import { decryptPII } from "@/lib/crypto";
+import { env } from "@/lib/env";
 import { verifyTotpToken, normalizeRecoveryCode } from "@/lib/totp";
+import { isEmailProviderConfigured, sendPasswordResetOtpEmail } from "@/lib/mailer";
 import {
   createSessionToken,
   verifySessionToken,
@@ -242,4 +245,265 @@ export async function requestPasswordResetAction(
     requestedUsername: username,
     whatsappUrl: `https://wa.me/51964648202?text=${encodeURIComponent(waMessage)}`,
   };
+}
+
+const OTP_TTL_MS = 10 * 60 * 1000;
+const MAX_OTP_ATTEMPTS = 5;
+
+function hashResetOtp(adminId: string, otpCode: string): string {
+  return createHmac("sha256", env.JWT_SECRET)
+    .update(`${adminId}:${otpCode}`)
+    .digest("hex");
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "***";
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${"*".repeat(Math.max(2, local.length - visible.length))}@${domain}`;
+}
+
+async function findAdminByIdentifier(identifier: string) {
+  const clean = identifier.trim();
+  const normalizedEmail = clean.toLowerCase();
+  return prisma.admin.findFirst({
+    where: {
+      OR: [{ username: clean }, { email: normalizedEmail }],
+    },
+    select: { id: true, username: true, email: true },
+  });
+}
+
+export interface EmailOtpRequestState {
+  error?: string;
+  otpSent?: boolean;
+  identifier?: string;
+  maskedEmail?: string;
+  needsConfig?: boolean;
+}
+
+const otpRequestSchema = z.object({
+  identifier: z.string().trim().min(2, "Ingresa tu usuario o correo electrónico.").max(150),
+});
+
+export async function requestEmailOtpAction(
+  _prevState: EmailOtpRequestState,
+  formData: FormData
+): Promise<EmailOtpRequestState> {
+  const parsed = otpRequestSchema.safeParse({
+    identifier: formData.get("identifier"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Ingresa un usuario o correo válido." };
+  }
+
+  const ip = getClientIP(await headers());
+  const { identifier } = parsed.data;
+  const rlIp = checkRateLimit(rateLimitKey("otp-req-ip", ip), 5, 15 * 60 * 1000, 15 * 60 * 1000);
+  const rlId = checkRateLimit(
+    rateLimitKey("otp-req-id", identifier.toLowerCase()),
+    5,
+    15 * 60 * 1000,
+    15 * 60 * 1000
+  );
+  if (!rlIp.allowed || !rlId.allowed) {
+    const retry = Math.max(rlIp.retryAfterSeconds ?? 0, rlId.retryAfterSeconds ?? 0);
+    const minutes = Math.max(1, Math.ceil(retry / 60));
+    return { error: `Demasiadas solicitudes de código. Intenta de nuevo en ${minutes} min.` };
+  }
+
+  if (!isEmailProviderConfigured()) {
+    return {
+      needsConfig: true,
+      identifier,
+      error:
+        "El envío de correo aún no está activado en el .env del servidor (falta RESEND_API_KEY o Gmail SMTP_USER/SMTP_PASS). Mientras tanto, puedes usar la opción de WhatsApp al Supervisor.",
+    };
+  }
+
+  const admin = await findAdminByIdentifier(identifier);
+  if (admin?.email) {
+    const otpCode = String(randomInt(100000, 1000000));
+    const codeHash = hashResetOtp(admin.id, otpCode);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
+
+    try {
+      await sendPasswordResetOtpEmail({
+        to: admin.email,
+        username: admin.username,
+        otpCode,
+        expiresMinutes: 10,
+      });
+
+      await prisma.$transaction([
+        prisma.passwordResetToken.updateMany({
+          where: { adminId: admin.id, usedAt: null },
+          data: { usedAt: now },
+        }),
+        prisma.passwordResetToken.create({
+          data: {
+            adminId: admin.id,
+            codeHash,
+            expiresAt,
+          },
+        }),
+      ]);
+
+      await logAudit({
+        action: "PASSWORD_RESET_OTP_SENT",
+        adminId: admin.id,
+        username: admin.username,
+        ipAddress: ip,
+        details: `OTP de 6 dígitos enviado a ${maskEmail(admin.email)}`,
+      });
+    } catch (err) {
+      console.error("[mailer] Error enviando OTP:", err);
+      return {
+        identifier,
+        error:
+          "No se pudo enviar el correo de recuperación. Verifica la configuración SMTP/Resend en .env o avisa al Supervisor.",
+      };
+    }
+
+    return {
+      otpSent: true,
+      identifier,
+      maskedEmail: maskEmail(admin.email),
+    };
+  }
+
+  await logAudit({
+    action: "PASSWORD_RESET_REQUEST",
+    adminId: admin?.id,
+    username: identifier,
+    ipAddress: ip,
+    details: "Solicitud OTP por correo (usuario sin correo o inexistente)",
+  });
+
+  // Generic success shape so missing/unlinked accounts are not enumerable
+  return {
+    otpSent: true,
+    identifier,
+  };
+}
+
+export interface EmailOtpVerifyState {
+  error?: string;
+  resetSuccess?: boolean;
+}
+
+const otpVerifySchema = z
+  .object({
+    identifier: z.string().trim().min(2, "Ingresa tu usuario o correo.").max(150),
+    otp: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "El código OTP debe tener exactamente 6 dígitos."),
+    newPassword: z
+      .string()
+      .min(12, "La nueva contraseña debe tener al menos 12 caracteres.")
+      .max(256),
+    confirmPassword: z.string().min(1, "Confirma tu nueva contraseña.").max(256),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    message: "Las contraseñas no coinciden.",
+    path: ["confirmPassword"],
+  });
+
+export async function verifyEmailOtpAndResetAction(
+  _prevState: EmailOtpVerifyState,
+  formData: FormData
+): Promise<EmailOtpVerifyState> {
+  const ip = getClientIP(await headers());
+  const rl = checkRateLimit(rateLimitKey("otp-verify", ip), 8, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    const minutes = Math.max(1, Math.ceil((rl.retryAfterSeconds ?? 0) / 60));
+    return { error: `Demasiados intentos fallidos. Espera ${minutes} min.` };
+  }
+
+  const parsed = otpVerifySchema.safeParse({
+    identifier: formData.get("identifier"),
+    otp: formData.get("otp"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Revisa los campos ingresados." };
+  }
+
+  const { identifier, otp, newPassword } = parsed.data;
+  const admin = await findAdminByIdentifier(identifier);
+  if (!admin) {
+    burnPasswordCheckTime(newPassword);
+    return { error: "Código OTP inválido o expirado." };
+  }
+
+  const now = new Date();
+  const token = await prisma.passwordResetToken.findFirst({
+    where: {
+      adminId: admin.id,
+      usedAt: null,
+      expiresAt: { gt: now },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!token || token.attempts >= MAX_OTP_ATTEMPTS) {
+    return { error: "Código OTP inválido o expirado. Solicita uno nuevo." };
+  }
+
+  const expectedHex = hashResetOtp(admin.id, otp);
+  const a = Buffer.from(expectedHex, "hex");
+  const b = Buffer.from(token.codeHash, "hex");
+  const matches = a.length === b.length && timingSafeEqual(a, b);
+
+  if (!matches) {
+    const nextAttempts = token.attempts + 1;
+    await prisma.passwordResetToken.update({
+      where: { id: token.id },
+      data: {
+        attempts: nextAttempts,
+        ...(nextAttempts >= MAX_OTP_ATTEMPTS ? { usedAt: now } : {}),
+      },
+    });
+    await logAudit({
+      action: "PASSWORD_RESET_OTP_FAILED",
+      adminId: admin.id,
+      username: admin.username,
+      ipAddress: ip,
+      details: `Código OTP incorrecto (intento ${nextAttempts}/${MAX_OTP_ATTEMPTS})`,
+    });
+    return {
+      error:
+        nextAttempts >= MAX_OTP_ATTEMPTS
+          ? "Código bloqueado por demasiados intentos. Solicita un nuevo código."
+          : "Código OTP incorrecto. Revisa tu correo e intenta de nuevo.",
+    };
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.$transaction([
+    prisma.passwordResetToken.update({
+      where: { id: token.id },
+      data: { usedAt: now },
+    }),
+    prisma.admin.update({
+      where: { id: admin.id },
+      data: {
+        passwordHash,
+        tokenVersion: { increment: 1 },
+      },
+    }),
+  ]);
+
+  await logAudit({
+    action: "PASSWORD_RESET_BY_EMAIL_OTP",
+    adminId: admin.id,
+    username: admin.username,
+    ipAddress: ip,
+    details: "Contraseña restablecida exitosamente usando código OTP de correo",
+  });
+
+  return { resetSuccess: true };
 }

@@ -367,6 +367,7 @@ model Payable {
 model Admin {
   id           String   @id @default(cuid())
   username     String   @unique
+  email        String? // Correo corporativo o personal normalizado en minúsculas para recuperación con OTP de 6 dígitos
   passwordHash String // "salt:hash", both hex — see src/lib/auth.ts (scrypt, not bcrypt: no native deps)
   role         String   @default("admin") // "admin" or "superadmin" — only superadmin can manage other admins (Usuarios section)
   createdAt    DateTime @default(now())
@@ -383,6 +384,23 @@ model Admin {
 
   // Brecha V3.3.1/V3.3.3 (Hardening Fase 6+) — Invalidación de sesión del lado del servidor.
   tokenVersion Int @default(0)
+
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([email])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  adminId   String
+  admin     Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  codeHash  String // HMAC-SHA256 hex digest of `${adminId}:${otp6}`
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([adminId, createdAt])
 }
 
 /**
