@@ -121,6 +121,9 @@ export async function sendPasswordResetOtpEmail(params: {
   const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
   const port = Number(process.env.SMTP_PORT) || 465;
   const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE !== "false" : port === 465;
+  const rawPass = process.env.SMTP_PASS!.trim();
+  // Gmail App Passwords are displayed by Google with spaces ("xxxx xxxx xxxx xxxx"); strip spaces for Gmail
+  const pass = host.toLowerCase().includes("gmail") ? rawPass.replace(/\s+/g, "") : rawPass;
 
   const transporter = nodemailer.createTransport({
     host,
@@ -128,7 +131,7 @@ export async function sendPasswordResetOtpEmail(params: {
     secure,
     auth: {
       user: process.env.SMTP_USER!.trim(),
-      pass: process.env.SMTP_PASS!.trim(),
+      pass,
     },
   });
 

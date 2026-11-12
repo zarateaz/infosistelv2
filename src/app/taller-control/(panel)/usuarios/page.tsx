@@ -10,6 +10,7 @@ import { AddAdminForm } from "./AddAdminForm";
 import { DeleteAdminButton } from "./DeleteAdminButton";
 import { ResetPasswordButton } from "./ResetPasswordButton";
 import { EditEmailButton } from "./EditEmailButton";
+import { TestEmailButton } from "./TestEmailButton";
 
 export default async function AdminUsersPage() {
   await requireSuperAdmin();
@@ -57,6 +58,7 @@ export default async function AdminUsersPage() {
                 </p>
               </>
             )}
+            <TestEmailButton configured={emailStatus.provider !== "none"} />
           </div>
         </div>
       </div>

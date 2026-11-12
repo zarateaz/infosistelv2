@@ -6,7 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { requireSuperAdmin } from "@/lib/requireSuperAdmin";
 import { logAudit } from "@/lib/audit";
-import { getConfiguredEmailProvider, type EmailProvider } from "@/lib/mailer";
+import {
+  getConfiguredEmailProvider,
+  sendPasswordResetOtpEmail,
+  type EmailProvider,
+} from "@/lib/mailer";
 
 export interface AdminUser {
   id: string;
@@ -27,6 +31,29 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
 export async function getEmailConfigStatus(): Promise<{ provider: EmailProvider }> {
   await requireSuperAdmin();
   return { provider: getConfiguredEmailProvider() };
+}
+
+export async function sendTestEmailAction(
+  toEmail: string
+): Promise<{ error?: string; ok?: boolean }> {
+  const session = await requireSuperAdmin();
+  const parsed = z.string().trim().toLowerCase().email("Ingresa un correo electrónico válido.").safeParse(toEmail);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Correo inválido." };
+  }
+
+  try {
+    await sendPasswordResetOtpEmail({
+      to: parsed.data,
+      username: `${session.username} (PRUEBA DE CONEXIÓN)`,
+      otpCode: "123456",
+      expiresMinutes: 10,
+    });
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error desconocido al conectar con el servidor de correo.";
+    return { error: msg };
+  }
 }
 
 export interface AdminUserFormState {
