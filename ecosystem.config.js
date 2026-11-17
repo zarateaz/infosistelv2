@@ -1,10 +1,8 @@
 /**
  * ecosystem.config.js — PM2 configuration for INFOSISTEL v2.
  *
- * No secrets live here on purpose (same reasoning as the previous
- * Infosistel project). They come from `.env` on the VPS, loaded by
- * scripts/deploy-vps.sh and passed through to PM2 via `--update-env`.
- * Never commit a real .env — see .gitignore / .env.example.
+ * No secrets live here on purpose. They come from `.env` on the VPS,
+ * loaded by scripts/deploy-vps.sh and passed through to PM2 via `--update-env`.
  */
 module.exports = {
   apps: [
@@ -21,8 +19,22 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 3000,
         HOSTNAME: "0.0.0.0",
-        // DATABASE_URL, JWT_SECRET, ENCRYPTION_KEY, DNI_HMAC_SECRET,
-        // ANTHROPIC_API_KEY, PRODUCT_IMAGES_DIR → set in .env on the VPS.
+      },
+    },
+    {
+      name: "infosistel-whatsapp",
+      script: "scripts/whatsapp-gateway/server.ts",
+      interpreter: "./node_modules/.bin/tsx",
+      cwd: "./",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "400M",
+      env: {
+        NODE_ENV: "production",
+        WHATSAPP_PORT: 3005,
+        WHATSAPP_AUTH_DIR: "/home/zarate/infosistel-v2-data/whatsapp-auth",
       },
     },
   ],

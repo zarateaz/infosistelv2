@@ -38,7 +38,7 @@ if [[ "$DATABASE_URL" != file:/* ]]; then
 fi
 
 echo "=== Preparando directorio de datos persistentes ==="
-mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones" "$DATA_DIR/servicios-tecnicos"
+mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones" "$DATA_DIR/servicios-tecnicos" "$DATA_DIR/whatsapp-auth"
 chmod 755 "$HOME" 2>/dev/null || true
 chmod -R 755 "$DATA_DIR" 2>/dev/null || true
 DB_PATH="${DATABASE_URL#file:}"
@@ -110,6 +110,7 @@ ln -s "$DATA_DIR/servicios-tecnicos" "$APP_DIR/datos/servicios-tecnicos"
 
 echo "=== PM2 ==="
 npx pm2 delete infosistel-v2 2>/dev/null || true
+npx pm2 delete infosistel-whatsapp 2>/dev/null || true
 npx pm2 start ecosystem.config.js --update-env
 npx pm2 save
 npx pm2 list
