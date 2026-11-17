@@ -53,6 +53,25 @@ fi
 echo "=== Instalando dependencias ==="
 npm ci
 
+echo "=== Aplicando parche de compatibilidad Node 26 para WhatsApp ==="
+node -e '
+const p = "node_modules/whatsapp-rust-bridge/package.json";
+if (require("fs").existsSync(p)) {
+  const pkg = JSON.parse(require("fs").readFileSync(p, "utf8"));
+  pkg.main = "./dist/index.js";
+  pkg.exports = {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  };
+  require("fs").writeFileSync(p, JSON.stringify(pkg, null, 2));
+  console.log("Parche whatsapp-rust-bridge Node 26 aplicado exitosamente.");
+}
+' || true
+
 echo "=== Prisma: generar cliente y aplicar migraciones ==="
 npx prisma generate
 npx prisma migrate deploy || npx prisma db push
