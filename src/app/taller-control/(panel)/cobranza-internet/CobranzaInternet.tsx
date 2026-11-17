@@ -33,6 +33,7 @@ import {
   daysUntil,
   whatsappLink,
   directWhatsappLink,
+  formatMonthKeyLabel,
   parsePaidMonths,
   getYearMonthsInfo,
   ROUTERS,
@@ -42,6 +43,7 @@ import {
 import { EditInternetClientModal } from "./EditInternetClientModal";
 import { ClientYearlyMonthsView } from "./ClientYearlyMonthsView";
 import { RouterSwitchMapModal } from "./RouterSwitchMapModal";
+import { InternetPaymentModal } from "./InternetPaymentModal";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -67,6 +69,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
   const [dismissed, setDismissed] = useState<boolean>(false);
   const [tab, setTab] = useState<"all" | "deudores">("all");
   const [editingClient, setEditingClient] = useState<InternetClientRow | null>(null);
+  const [payingClient, setPayingClient] = useState<InternetClientRow | null>(null);
   const [confirmDeleteClient, setConfirmDeleteClient] = useState<InternetClientRow | null>(null);
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [mapModalOpen, setMapModalOpen] = useState(false);
@@ -753,9 +756,9 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
 
                           <button
                             type="button"
-                            title="Marcar como pagado (+1 mes)"
-                            onClick={() => startTransition(() => markInternetPaid(c.id))}
-                            className="rounded-full p-2 text-accent hover:bg-accent/10"
+                            title="Confirmar pago mensual e ingresar a Caja"
+                            onClick={() => setPayingClient(c)}
+                            className="rounded-full p-2 text-accent hover:bg-accent/10 transition-colors"
                           >
                             <Check size={16} />
                           </button>
@@ -850,6 +853,37 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
             setNewCode(`R${rNum}-P${String(port).padStart(2, "0")}`);
             setMapModalOpen(false);
             document.getElementById("ic-name")?.focus();
+          }}
+        />
+      )}
+
+      {/* Modal de confirmación de pago e ingreso a Caja */}
+      {payingClient && (
+        <InternetPaymentModal
+          isOpen={Boolean(payingClient)}
+          client={payingClient}
+          monthKey={
+            payingClient.nextPaymentDate
+              ? payingClient.nextPaymentDate.slice(0, 7)
+              : undefined
+          }
+          monthLabel={
+            payingClient.nextPaymentDate
+              ? formatMonthKeyLabel(payingClient.nextPaymentDate.slice(0, 7))
+              : undefined
+          }
+          initialAmount={payingClient.amount}
+          initialMethod="YAPE 1"
+          onClose={() => setPayingClient(null)}
+          onConfirm={async (payment) => {
+            await markInternetPaid(payingClient.id, {
+              amount: payment.amount,
+              method: payment.method,
+              paidAt: payment.paidAt,
+              note: payment.note,
+              syncToCashbox: payment.syncToCashbox,
+            });
+            setPayingClient(null);
           }}
         />
       )}

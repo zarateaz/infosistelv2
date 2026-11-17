@@ -1,5 +1,7 @@
 /** Helpers puros de la cobranza de internet (sin "use server": se usan también en el cliente). */
 
+import type { PaymentMethodType } from "@/lib/paymentMethods";
+
 export const MONTH_NAMES = [
   "Enero",
   "Febrero",
@@ -48,8 +50,26 @@ export interface MonthPaymentRecord {
   status: "paid" | "unpaid";
   paidAt?: string; // YYYY-MM-DD
   amount?: number;
-  method?: string; // "YAPE" | "PLIN" | "EFECTIVO" | "TRANSFERENCIA" | "OTRO"
+  method?: string; // "EFECTIVO" | "YAPE 1" | "YAPE 2" (o legacy "YAPE", "PLIN")
   note?: string;
+  cashboxTransactionId?: string; // ID en CashboxTransaction para trazabilidad y reversión en Caja
+}
+
+/** Formatea una clave "YYYY-MM" a etiqueta humana legible, ej: "2026-05" -> "Mayo 2026" */
+export function formatMonthKeyLabel(yearMonth: string): string {
+  if (!yearMonth) return "";
+  const [y, m] = yearMonth.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return yearMonth;
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** Normaliza cualquier variante de método de pago al estándar exacto de Caja */
+export function normalizeInternetPaymentMethod(method?: string | null): PaymentMethodType {
+  if (!method) return "YAPE 1";
+  const up = method.trim().toUpperCase();
+  if (up === "YAPE 2" || up === "YAPE2") return "YAPE 2";
+  if (up === "EFECTIVO") return "EFECTIVO";
+  return "YAPE 1";
 }
 
 export type PaidMonthsMap = Record<string, MonthPaymentRecord>; // Key: "YYYY-MM" (ej: "2026-01")
@@ -216,6 +236,7 @@ export interface MonthUIInfo {
   amount?: number;
   method?: string;
   note?: string;
+  cashboxTransactionId?: string;
   isOverdue: boolean;
   isDueThisMonth: boolean;
   isAdvance: boolean;
@@ -301,6 +322,7 @@ export function getYearMonthsInfo(
       amount: rec?.amount ?? clientAmount,
       method: rec?.method,
       note: rec?.note,
+      cashboxTransactionId: rec?.cashboxTransactionId,
       isOverdue,
       isDueThisMonth,
       isAdvance,

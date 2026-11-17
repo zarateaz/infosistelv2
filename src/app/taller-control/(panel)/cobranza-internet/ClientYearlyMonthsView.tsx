@@ -19,6 +19,7 @@ import {
   getYearMonthsInfo,
   parsePaidMonths,
   whatsappLink,
+  formatMonthKeyLabel,
   type InternetClientRow,
   type MonthUIInfo,
 } from "./cobranza";
@@ -28,6 +29,8 @@ import {
   updateInternetMonthDetails,
 } from "./internetActions";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { InternetPaymentModal } from "./InternetPaymentModal";
+import { PAYMENT_METHOD_INFO, PAYMENT_METHODS, type PaymentMethodType } from "@/lib/paymentMethods";
 
 interface ClientYearlyMonthsViewProps {
   client: InternetClientRow;
@@ -47,11 +50,15 @@ export function ClientYearlyMonthsView({
   // Estado para edición individual de un mes
   const [editingMonthKey, setEditingMonthKey] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(client.amount);
-  const [editMethod, setEditMethod] = useState<string>("YAPE");
+  const [editMethod, setEditMethod] = useState<PaymentMethodType>("YAPE 1");
   const [editNote, setEditNote] = useState<string>("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [confirmUnmark, setConfirmUnmark] = useState<MonthUIInfo | null>(null);
   const [confirmEditMonth, setConfirmEditMonth] = useState<{ key: string; isPaid: boolean } | null>(null);
+
+  // Modales de confirmación con sincronización a Caja
+  const [payingMonthInfo, setPayingMonthInfo] = useState<MonthUIInfo | null>(null);
+  const [advanceModal, setAdvanceModal] = useState<{ isOpen: boolean; count: number } | null>(null);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -78,21 +85,15 @@ export function ClientYearlyMonthsView({
 
   const visibleMonths = yearInfo.months.filter((m) => !m.isBeforeStart);
 
-  const executeToggleMonth = (m: MonthUIInfo) => {
+  // Ejecuta la reversión de un mes pagado (desmarcar)
+  const executeUnmarkMonth = (m: MonthUIInfo) => {
     startTransition(async () => {
       const res = await toggleInternetClientMonth(client.id, m.key, {
-        paid: !m.isPaid,
-        amount: client.amount,
-        method: "YAPE",
-        note: !m.isPaid ? "Marcado desde panel anual" : undefined,
+        paid: false,
       });
       setConfirmUnmark(null);
       if (res.ok) {
-        showToast(
-          !m.isPaid
-            ? `✓ ${m.monthName} marcado como PAGADO`
-            : `Mes ${m.monthName} desmarcado (pendiente)`
-        );
+        showToast(`Mes ${m.monthName} desmarcado (revertido y enviado a papelera en Caja si aplicaba)`);
       }
     });
   };
@@ -102,20 +103,11 @@ export function ClientYearlyMonthsView({
       setConfirmUnmark(m);
       return;
     }
-    executeToggleMonth(m);
+    setPayingMonthInfo(m);
   };
 
-  const handleAdvancePay = (monthsCount: number) => {
-    startTransition(async () => {
-      const res = await payAdvanceInternetMonths(client.id, monthsCount, {
-        amountPerMonth: client.amount,
-        method: "YAPE",
-        note: `Adelanto de ${monthsCount} meses`,
-      });
-      if (res.ok) {
-        showToast(`🎉 ¡${res.countPaid ?? monthsCount} mes(es) pagados por adelantado! Próximo pago actualizado.`);
-      }
-    });
+  const handleOpenAdvancePay = (monthsCount: number) => {
+    setAdvanceModal({ isOpen: true, count: monthsCount });
   };
 
   const executeSaveMonthDetails = (key: string, isCurrentlyPaid: boolean) => {
@@ -129,7 +121,7 @@ export function ClientYearlyMonthsView({
       setConfirmEditMonth(null);
       if (res.ok) {
         setEditingMonthKey(null);
-        showToast("✓ Detalles del mes actualizados correctamente.");
+        showToast("✓ Detalles del mes y movimiento en Caja actualizados correctamente.");
       }
     });
   };
@@ -141,7 +133,14 @@ export function ClientYearlyMonthsView({
   const openMonthEditor = (m: MonthUIInfo) => {
     setEditingMonthKey(m.key);
     setEditAmount(m.amount ?? client.amount);
-    setEditMethod(m.method || "YAPE");
+    const mMethod = m.method?.trim().toUpperCase();
+    if (mMethod === "YAPE 2" || mMethod === "YAPE2") {
+      setEditMethod("YAPE 2");
+    } else if (mMethod === "EFECTIVO") {
+      setEditMethod("EFECTIVO");
+    } else {
+      setEditMethod("YAPE 1");
+    }
     setEditNote(m.note || "");
   };
 
@@ -250,9 +249,9 @@ export function ClientYearlyMonthsView({
           <button
             type="button"
             disabled={isPending}
-            onClick={() => handleAdvancePay(2)}
+            onClick={() => handleOpenAdvancePay(2)}
             className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-md hover:from-blue-700 hover:to-indigo-700 active:scale-95 transition-all disabled:opacity-60"
-            title="Paga automáticamente los próximos 2 meses pendientes y actualiza la fecha de próximo pago"
+            title="Paga automáticamente los próximos 2 meses pendientes e ingresa a Caja"
           >
             <Zap size={13} className="text-amber-300" />
             + Pagar 2 meses adelantados
@@ -261,9 +260,9 @@ export function ClientYearlyMonthsView({
           <button
             type="button"
             disabled={isPending}
-            onClick={() => handleAdvancePay(1)}
+            onClick={() => handleOpenAdvancePay(1)}
             className="inline-flex items-center gap-1 rounded-xl border border-border bg-bg-surface px-3 py-1.5 text-xs font-bold text-fg hover:bg-bg-alt active:scale-95 transition-all disabled:opacity-60"
-            title="Paga 1 mes adelantado"
+            title="Paga 1 mes adelantado e ingresa a Caja"
           >
             + 1 mes
           </button>
@@ -386,17 +385,17 @@ export function ClientYearlyMonthsView({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-fg-muted uppercase">Método</label>
+                    <label className="text-[10px] font-bold text-fg-muted uppercase">Método de Pago (Caja)</label>
                     <select
                       value={editMethod}
-                      onChange={(e) => setEditMethod(e.target.value)}
-                      className="admin-field mt-0.5 w-full rounded-lg px-2 py-1 text-xs text-fg"
+                      onChange={(e) => setEditMethod(e.target.value as PaymentMethodType)}
+                      className="admin-field mt-0.5 w-full rounded-lg px-2 py-1 text-xs text-fg font-bold"
                     >
-                      <option value="YAPE">Yape</option>
-                      <option value="PLIN">Plin</option>
-                      <option value="EFECTIVO">Efectivo</option>
-                      <option value="TRANSFERENCIA">Transferencia</option>
-                      <option value="OTRO">Otro</option>
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {PAYMENT_METHOD_INFO[m].labelSelect}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -485,20 +484,80 @@ export function ClientYearlyMonthsView({
       {confirmUnmark && (
         <ConfirmDialog
           title="Desmarcar mes pagado"
-          message={`¡Atención! ¿Seguro que deseas revertir el pago de ${confirmUnmark.monthName} (${selectedYear}) para "${client.clientName}"? Volverá a figurar como pendiente/deuda.`}
+          message={`¡Atención! ¿Seguro que deseas revertir el pago de ${confirmUnmark.monthName} (${selectedYear}) para "${client.clientName}"? Si este pago fue registrado en Caja, el movimiento se enviará a la Papelera de Caja para mantener el balance exacto.`}
           danger
           confirmLabel="Sí, desmarcar"
           pendingLabel="Revirtiendo..."
           pending={isPending}
-          onConfirm={() => executeToggleMonth(confirmUnmark)}
+          onConfirm={() => executeUnmarkMonth(confirmUnmark)}
           onCancel={() => setConfirmUnmark(null)}
+        />
+      )}
+
+      {/* Modal para pagar un mes específico con selección de método e ingreso a Caja */}
+      {payingMonthInfo && (
+        <InternetPaymentModal
+          isOpen={Boolean(payingMonthInfo)}
+          client={client}
+          monthKey={payingMonthInfo.key}
+          monthLabel={`${payingMonthInfo.monthName} ${selectedYear}`}
+          initialAmount={payingMonthInfo.amount ?? client.amount}
+          initialMethod="YAPE 1"
+          onClose={() => setPayingMonthInfo(null)}
+          onConfirm={async (payment) => {
+            const res = await toggleInternetClientMonth(client.id, payingMonthInfo.key, {
+              paid: true,
+              amount: payment.amount,
+              method: payment.method,
+              paidAt: payment.paidAt,
+              note: payment.note,
+              syncToCashbox: payment.syncToCashbox,
+            });
+            if (res.ok) {
+              showToast(
+                `✓ ${payingMonthInfo.monthName} marcado como PAGADO e ingresado a Caja (${payment.method})`
+              );
+            }
+            setPayingMonthInfo(null);
+          }}
+        />
+      )}
+
+      {/* Modal para pagar meses adelantados (+1 o +2 meses) */}
+      {advanceModal && (
+        <InternetPaymentModal
+          isOpen={advanceModal.isOpen}
+          client={client}
+          isAdvance={true}
+          advanceCount={advanceModal.count}
+          monthLabel={`${advanceModal.count} mes(es) por adelantado`}
+          initialAmount={client.amount}
+          initialMethod="YAPE 1"
+          onClose={() => setAdvanceModal(null)}
+          onConfirm={async (payment) => {
+            const count = advanceModal.count;
+            const amountPerMonth = count > 0 ? payment.amount / count : payment.amount;
+            const res = await payAdvanceInternetMonths(client.id, count, {
+              amountPerMonth,
+              method: payment.method,
+              paidAt: payment.paidAt,
+              note: payment.note,
+              syncToCashbox: payment.syncToCashbox,
+            });
+            if (res.ok) {
+              showToast(
+                `🎉 ¡${res.countPaid ?? count} mes(es) pagados por adelantado e ingresados a Caja (${payment.method})!`
+              );
+            }
+            setAdvanceModal(null);
+          }}
         />
       )}
 
       {confirmEditMonth && (
         <ConfirmDialog
           title="Confirmar modificación del mes"
-          message={`¿Confirmas actualizar los detalles del mes ${confirmEditMonth.key} para "${client.clientName}"?`}
+          message={`¿Confirmas actualizar los detalles del mes ${confirmEditMonth.key} para "${client.clientName}"? Si ya está en Caja, su monto y método se actualizarán en sincronía.`}
           fields={[
             { label: "Monto", value: `S/. ${editAmount.toFixed(2)}` },
             { label: "Método", value: editMethod },
