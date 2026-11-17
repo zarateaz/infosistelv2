@@ -155,9 +155,8 @@ export function validarDatos(d, { nuevo, adelanto } = {}) {
   if (!String(c.nombre || '').trim()) e.nombre = 'Escribe el nombre del cliente';
   if (c.dni && !/^\d{8}$/.test(c.dni)) e.dni = 'El DNI tiene 8 dígitos';
   if (c.ruc && !/^(10|15|17|20)\d{9}$/.test(c.ruc)) e.ruc = 'El RUC tiene 11 dígitos y empieza en 10 o 20';
-  if (!/^9\d{8}$/.test(c.cel || '')) e.cel = 'El celular tiene 9 dígitos y empieza en 9';
-  if (!String(d.equipo?.marca || '').trim()) e.marca = 'Escribe la marca';
-  if (!String(d.falla || '').trim()) e.falla = 'Escribe qué falla dice el cliente';
+  if (c.cel && !/^9\d{8}$/.test(c.cel)) e.cel = 'El celular tiene 9 dígitos y empieza en 9';
+  if (!String(d.falla || '').trim()) e.falla = 'Describe el problema o falla del equipo';
   if (!d.fecha || isNaN(new Date(d.fecha))) e.fecha = 'Indica la fecha de recepción';
   if (nuevo && adelanto) {
     const m = +adelanto.monto || 0, t = (+d.costo?.mo || 0) + (+d.costo?.rep || 0);
@@ -179,7 +178,7 @@ export function limpiarDatos(d) {
     cliente: { nombre: up(d.cliente?.nombre, 120), dni: txt(d.cliente?.dni, 8), ruc: txt(d.cliente?.ruc, 11), cel: txt(d.cliente?.cel, 9) },
     equipo: {
       tipo: TIPOS.includes(d.equipo?.tipo) ? d.equipo.tipo : 'Otro',
-      marca: up(d.equipo?.marca, 60), modelo: txt(d.equipo?.modelo, 80), serie: up(d.equipo?.serie, 60),
+      marca: up(d.equipo?.marca || d.equipo?.tipo || 'Equipo', 60), modelo: txt(d.equipo?.modelo, 80), serie: up(d.equipo?.serie, 60),
       acc: lista(d.equipo?.acc, ACCS), accOtros: txt(d.equipo?.accOtros, 200), clave: txt(d.equipo?.clave, 60),
     },
     llegada: { enciende: ['si', 'no', 'nd'].includes(d.llegada?.enciende) ? d.llegada.enciende : 'nd', checks: lista(d.llegada?.checks, CHECKS), obs: txt(d.llegada?.obs, 500) },
