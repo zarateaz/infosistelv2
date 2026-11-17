@@ -155,7 +155,6 @@ export function validarDatos(d, { nuevo, adelanto } = {}) {
   if (!String(c.nombre || '').trim()) e.nombre = 'Escribe el nombre del cliente';
   if (c.dni && !/^\d{8}$/.test(c.dni)) e.dni = 'El DNI tiene 8 dígitos';
   if (c.ruc && !/^(10|15|17|20)\d{9}$/.test(c.ruc)) e.ruc = 'El RUC tiene 11 dígitos y empieza en 10 o 20';
-  if (!c.dni && !c.ruc) e.dni = 'Escribe el DNI (o el RUC si es empresa)';
   if (!/^9\d{8}$/.test(c.cel || '')) e.cel = 'El celular tiene 9 dígitos y empieza en 9';
   if (!String(d.equipo?.marca || '').trim()) e.marca = 'Escribe la marca';
   if (!String(d.falla || '').trim()) e.falla = 'Escribe qué falla dice el cliente';

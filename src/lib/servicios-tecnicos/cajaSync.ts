@@ -7,6 +7,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { round2 } from "@/lib/money";
 import { aMetodoCaja, code } from "./logic";
 
 /**
@@ -53,21 +54,20 @@ export async function sincronizarIngresoCaja({
     const metodoCaja = aMetodoCaja(pago.metodo);
     const osCode = cfg ? code(cfg, servicio.num) : `OS-${String(servicio.num).padStart(4, "0")}`;
     const clienteNombre = String(servicio.cliente?.nombre || "CLIENTE").trim();
-
-    // Descripción clara para la tabla de movimientos (máx 200 car.)
-    const description = `Servicio ${osCode} — ${clienteNombre}`.slice(0, 200);
-
-    // Notas detalladas con tipo de equipo, concepto, N° de operación y celular (máx 500 car.)
     const eq = `${servicio.equipo?.tipo || "Equipo"} ${servicio.equipo?.marca || ""}${
       servicio.equipo?.modelo ? " " + servicio.equipo.modelo : ""
     }`.trim();
 
+    // Descripción clara para la tabla de movimientos (máx 200 car.)
+    const description = `Servicio Técnico ${osCode} — ${clienteNombre}${eq ? ` · ${eq}` : ""}`.slice(0, 200);
+
+    // Notas detalladas con tipo de equipo, concepto, N° de operación y celular (máx 500 car.)
     const notasArray = [
-      pago.nota || "Cobro de servicio",
-      eq,
+      pago.nota || "Cobro de servicio técnico",
+      servicio.falla ? `Falla: ${servicio.falla.slice(0, 80)}` : null,
       pago.op ? `Op. #${pago.op}` : null,
       servicio.cliente?.cel ? `Cel: ${servicio.cliente.cel}` : null,
-      servicio.falla ? `Falla: ${servicio.falla.slice(0, 60)}` : null,
+      servicio.tecnico ? `Técnico: ${servicio.tecnico}` : null,
     ].filter(Boolean);
 
     const notes = notasArray.join(" · ").slice(0, 500);
@@ -76,7 +76,7 @@ export async function sincronizarIngresoCaja({
       data: {
         date: obtenerFechaCaja(pago.fecha),
         type: "INCOME",
-        amount: Number(pago.monto),
+        amount: round2(pago.monto),
         paymentMethod: metodoCaja,
         description,
         notes: notes || null,
@@ -86,6 +86,7 @@ export async function sincronizarIngresoCaja({
     try {
       revalidatePath("/taller-control/caja");
       revalidatePath("/taller-control/papelera");
+      revalidatePath("/taller-control/reporte-mensual");
     } catch {
       // Ignorar si se ejecuta fuera de ciclo de request de Next.js
     }
