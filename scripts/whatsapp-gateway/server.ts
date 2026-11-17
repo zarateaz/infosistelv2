@@ -283,14 +283,69 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 4. GET /trigger-reminders — Disparo manual o para pruebas
+  if (req.method === "GET" && url.pathname === "/trigger-reminders") {
+    const isDryRun = url.searchParams.get("dryRun") === "true";
+    try {
+      const { runAutomatedInternetReminders } = await import("../../src/lib/whatsappAutoNotifier");
+      const report = await runAutomatedInternetReminders({ dryRun: isDryRun, includeDueToday: true });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, report }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: err?.message }));
+    }
+    return;
+  }
+
   res.writeHead(404);
   res.end("Not Found");
 });
+
+// Programador automático interno (todos los días a las 9:00 AM hora Perú)
+let lastTriggerDate = "";
+
+function startDailyCron() {
+  setInterval(async () => {
+    try {
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Lima",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(new Date());
+      const year = parts.find((p) => p.type === "year")?.value;
+      const month = parts.find((p) => p.type === "month")?.value;
+      const day = parts.find((p) => p.type === "day")?.value;
+      const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+      const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+
+      const todayDate = `${year}-${month}-${day}`;
+
+      // Si son las 9:00 AM en Huancayo y aún no se ejecutó hoy
+      if (hour === 9 && minute === 0 && lastTriggerDate !== todayDate) {
+        lastTriggerDate = todayDate;
+        console.log(`\n[Auto-Reminder] ⏰ Son las 9:00 AM en Huancayo (${todayDate}). Iniciando envío automático de recordatorios...`);
+        const { runAutomatedInternetReminders } = await import("../../src/lib/whatsappAutoNotifier");
+        const res = await runAutomatedInternetReminders({ includeDueToday: true });
+        console.log(`[Auto-Reminder] Finalizado: ${res.sentCount} enviados, ${res.skippedPaid} ya pagados, ${res.failedCount} fallidos.\n`);
+      }
+    } catch (err: any) {
+      console.error("[Auto-Reminder] Error en chequeo programado:", err?.message);
+    }
+  }, 45_000);
+  console.log("[Auto-Reminder] ✅ Programador interno activo: se ejecutará todos los días a las 9:00 AM (Hora Perú) sin necesidad de cron.");
+}
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[WhatsApp Gateway] Servicio HTTP corriendo en http://0.0.0.0:${PORT}`);
   startWhatsApp().catch((err) => {
     console.error("[WhatsApp Gateway] Error fatal al iniciar WhatsApp:", err);
   });
+  startDailyCron();
 });
 
