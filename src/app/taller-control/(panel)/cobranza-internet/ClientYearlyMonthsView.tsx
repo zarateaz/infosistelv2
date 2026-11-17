@@ -511,6 +511,7 @@ export function ClientYearlyMonthsView({
               method: payment.method,
               paidAt: payment.paidAt,
               note: payment.note,
+              receiptNumber: payment.receiptNumber,
               syncToCashbox: payment.syncToCashbox,
             });
             if (res.ok) {
@@ -518,7 +519,7 @@ export function ClientYearlyMonthsView({
                 `✓ ${payingMonthInfo.monthName} marcado como PAGADO e ingresado a Caja (${payment.method})`
               );
             }
-            setPayingMonthInfo(null);
+            return { receiptNumber: res.receiptNumber };
           }}
         />
       )}
@@ -549,7 +550,7 @@ export function ClientYearlyMonthsView({
                 `🎉 ¡${res.countPaid ?? count} mes(es) pagados por adelantado e ingresados a Caja (${payment.method})!`
               );
             }
-            setAdvanceModal(null);
+            return { receiptNumbers: res.receiptNumbers, receiptNumber: res.receiptNumbers?.[0] };
           }}
         />
       )}

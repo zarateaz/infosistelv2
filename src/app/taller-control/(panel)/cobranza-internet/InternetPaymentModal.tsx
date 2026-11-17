@@ -6,21 +6,27 @@ import {
   X,
   Check,
   CheckCircle2,
-  DollarSign,
   Calendar,
   Building2,
   Router,
   Smartphone,
   Banknote,
-  StickyNote,
   AlertCircle,
-  Zap,
-  ArrowRight,
+  FileText,
+  Download,
+  Share2,
+  Hash,
 } from "lucide-react";
 import { PAYMENT_METHODS, PAYMENT_METHOD_INFO, type PaymentMethodType } from "@/lib/paymentMethods";
 import { todayInputValue } from "../caja/month";
 import { round2 } from "@/lib/money";
-import type { InternetClientRow } from "./cobranza";
+import {
+  deriveReceiptNumber,
+  internetReceiptWhatsappLink,
+  type InternetClientRow,
+} from "./cobranza";
+import { peekNextInternetReceiptNumber } from "./internetActions";
+import { generateInternetReceiptPDF } from "@/lib/internetReceiptPdf";
 
 export interface InternetPaymentModalProps {
   isOpen: boolean;
@@ -37,8 +43,9 @@ export interface InternetPaymentModalProps {
     method: PaymentMethodType;
     paidAt: string;
     note?: string;
+    receiptNumber?: string;
     syncToCashbox: boolean;
-  }) => Promise<void> | void;
+  }) => Promise<{ receiptNumber?: string; receiptNumbers?: string[] } | void> | void;
 }
 
 export function InternetPaymentModal({
@@ -64,8 +71,18 @@ export function InternetPaymentModal({
   const [amount, setAmount] = useState<number | string>(defaultTotal > 0 ? defaultTotal : "");
   const [method, setMethod] = useState<PaymentMethodType>(initialMethod);
   const [paidAt, setPaidAt] = useState<string>(todayInputValue());
+  const [receiptNumber, setReceiptNumber] = useState<string>("");
   const [note, setNote] = useState<string>("");
   const [syncToCashbox, setSyncToCashbox] = useState<boolean>(true);
+
+  // Vista de éxito tras confirmar pago
+  const [successReceipt, setSuccessReceipt] = useState<{
+    receiptNumber: string;
+    amount: number;
+    method: string;
+    paidAt: string;
+    periodLabel: string;
+  } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -82,6 +99,16 @@ export function InternetPaymentModal({
       setNote("");
       setSyncToCashbox(true);
       setError(null);
+      setSuccessReceipt(null);
+
+      // Cargar sugerencia de número correlativo
+      peekNextInternetReceiptNumber()
+        .then((num) => {
+          setReceiptNumber(num);
+        })
+        .catch(() => {
+          setReceiptNumber("000101");
+        });
     }
   }, [isOpen, client, isAdvance, advanceCount, initialAmount, initialMethod]);
 
@@ -97,6 +124,8 @@ export function InternetPaymentModal({
 
   if (!mounted || !isOpen) return null;
 
+  const currentPeriodLabel = monthLabel || (monthKey ? monthKey : "Mes en curso");
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount);
@@ -108,18 +137,69 @@ export function InternetPaymentModal({
     setError(null);
     startTransition(async () => {
       try {
-        await onConfirm({
+        const cleanedRec = receiptNumber.trim()
+          ? receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
+          : undefined;
+
+        const result = await onConfirm({
           amount: round2(numAmount),
           method,
           paidAt: paidAt || todayInputValue(),
           note: note.trim() || undefined,
+          receiptNumber: cleanedRec,
           syncToCashbox,
         });
-        onClose();
+
+        const finalRecNumber =
+          result && "receiptNumber" in result && result.receiptNumber
+            ? result.receiptNumber
+            : cleanedRec || deriveReceiptNumber(undefined, client.clientCode, client.id, monthKey);
+
+        setSuccessReceipt({
+          receiptNumber: finalRecNumber,
+          amount: round2(numAmount),
+          method,
+          paidAt: paidAt || todayInputValue(),
+          periodLabel: currentPeriodLabel,
+        });
       } catch (err: any) {
         setError(err?.message || "Ocurrió un error al registrar el pago.");
       }
     });
+  };
+
+  const handleDownloadPDF = () => {
+    if (!successReceipt) return;
+    generateInternetReceiptPDF({
+      receiptNumber: successReceipt.receiptNumber,
+      clientName: client.clientName,
+      clientCode: client.clientCode,
+      whatsapp: client.whatsapp,
+      galeria: client.galeria,
+      router: client.router,
+      portNumber: client.portNumber,
+      periodLabel: successReceipt.periodLabel,
+      paidAt: successReceipt.paidAt,
+      amount: successReceipt.amount,
+      method: successReceipt.method,
+      note: note.trim() || null,
+    });
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!successReceipt) return;
+    const link = internetReceiptWhatsappLink({
+      whatsapp: client.whatsapp,
+      clientName: client.clientName,
+      clientCode: client.clientCode,
+      receiptNumber: successReceipt.receiptNumber,
+      periodLabel: successReceipt.periodLabel,
+      amount: successReceipt.amount,
+      paidAt: successReceipt.paidAt,
+      method: successReceipt.method,
+      galeria: client.galeria,
+    });
+    window.open(link, "_blank");
   };
 
   return createPortal(
@@ -140,10 +220,16 @@ export function InternetPaymentModal({
             </span>
             <div>
               <h3 className="font-display text-lg font-black text-slate-900 dark:text-white">
-                {isAdvance ? `Confirmar Adelanto (${advanceCount} Meses)` : "Confirmar Pago de Internet"}
+                {successReceipt
+                  ? "¡Comprobante Emitido Con Éxito!"
+                  : isAdvance
+                  ? `Confirmar Adelanto (${advanceCount} Meses)`
+                  : "Confirmar Pago de Internet"}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Registra el pago del servicio y sincronízalo automáticamente con Caja.
+                {successReceipt
+                  ? "El pago ha sido registrado e ingresado a Caja con correlativo oficial."
+                  : "Registra el pago del servicio y sincronízalo automáticamente con Caja."}
               </p>
             </div>
           </div>
@@ -157,216 +243,296 @@ export function InternetPaymentModal({
           </button>
         </div>
 
-        {/* Tarjeta resumen del Cliente */}
-        <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cliente</span>
-              <h4 className="truncate font-display text-base font-bold text-slate-900 dark:text-white">
-                {client.clientName}
+        {/* ─── PASO 2: PANTALLA DE ÉXITO CON WHATSAPP Y PDF ─── */}
+        {successReceipt ? (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center dark:bg-emerald-500/15">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1 text-xs font-mono font-black text-white">
+                <FileText size={12} />
+                RECIBO N° {successReceipt.receiptNumber}
+              </span>
+
+              <h4 className="mt-2.5 font-display text-xl font-black text-slate-900 dark:text-white">
+                S/. {successReceipt.amount.toFixed(2)}
               </h4>
-            </div>
-            {client.clientCode && (
-              <span className="shrink-0 rounded-lg bg-indigo-500/10 px-2 py-0.5 text-xs font-mono font-black text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                {client.clientCode}
-              </span>
-            )}
-          </div>
-
-          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-            {client.galeria && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-2xs dark:bg-slate-800">
-                <Building2 size={12} className="text-slate-400" />
-                <span className="font-semibold">{client.galeria}</span>
-              </span>
-            )}
-            {client.router && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-2xs dark:bg-slate-800">
-                <Router size={12} className="text-blue-500" />
-                <span className="font-semibold">
-                  {client.router}
-                  {client.portNumber ? ` · Puerto ${client.portNumber}` : ""}
-                </span>
-              </span>
-            )}
-            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-1 font-bold text-emerald-800 dark:text-emerald-300">
-              <Calendar size={12} />
-              {monthLabel ? `Mes: ${monthLabel}` : `Próximo: ${client.nextPaymentDate}`}
-            </span>
-          </div>
-        </div>
-
-        {/* Formulario de Pago */}
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-          {/* Selección de Método de Pago (EFECTIVO, YAPE 1, YAPE 2) */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Método de Pago (Caja) *
-            </label>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {PAYMENT_METHODS.map((m) => {
-                const info = PAYMENT_METHOD_INFO[m];
-                const active = method === m;
-                const isYape = m === "YAPE 1" || m === "YAPE 2";
-
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMethod(m)}
-                    className={`relative flex flex-col items-start rounded-2xl border p-3 text-left transition-all ${
-                      active
-                        ? "border-emerald-600 bg-emerald-500/10 text-emerald-950 ring-2 ring-emerald-500/40 dark:border-emerald-500 dark:bg-emerald-500/15 dark:text-emerald-200"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-850 dark:text-slate-300 dark:hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex w-full items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wide">
-                        {isYape ? (
-                          <Smartphone size={13} className="text-purple-600 dark:text-purple-400" />
-                        ) : (
-                          <Banknote size={13} className="text-emerald-600 dark:text-emerald-400" />
-                        )}
-                        {info.id}
-                      </span>
-                      {active && (
-                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white">
-                          <Check size={10} strokeWidth={3} />
-                        </span>
-                      )}
-                    </div>
-                    <span className="mt-1 text-[11px] font-bold text-slate-600 dark:text-slate-400 leading-tight">
-                      {info.titular}
-                    </span>
-                    {info.formattedPhone && (
-                      <span className="mt-0.5 text-[10px] font-mono font-semibold text-slate-400 dark:text-slate-500">
-                        {info.formattedPhone}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Fila: Monto y Fecha */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div>
-              <label
-                htmlFor="pay-amount-input"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-              >
-                Monto cobrado (S/.) *
-              </label>
-              <div className="relative mt-1.5">
-                <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-sm font-bold text-slate-400">
-                  S/.
-                </span>
-                <input
-                  id="pay-amount-input"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  required
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-base font-black text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
-                  placeholder="30.00"
-                />
+              <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Cancelado por <strong className="text-slate-900 dark:text-white">{client.clientName}</strong> {client.clientCode ? `(${client.clientCode})` : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span>Período: <strong className="text-slate-700 dark:text-slate-200">{successReceipt.periodLabel}</strong></span>
+                <span>·</span>
+                <span>Medio: <strong className="text-slate-700 dark:text-slate-200">{successReceipt.method}</strong></span>
+                <span>·</span>
+                <span>Fecha: <strong className="text-slate-700 dark:text-slate-200">{successReceipt.paidAt}</strong></span>
               </div>
             </div>
 
-            <div>
-              <label
-                htmlFor="pay-date-input"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+            {/* Acciones principales: WhatsApp y PDF */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700 active:scale-95 transition-all"
               >
-                Fecha de pago *
-              </label>
-              <input
-                id="pay-date-input"
-                type="date"
-                required
-                value={paidAt}
-                onChange={(e) => setPaidAt(e.target.value)}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
-              />
+                <Share2 size={16} />
+                <span>Enviar por WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-sky-500/20 hover:bg-sky-700 active:scale-95 transition-all"
+              >
+                <Download size={16} />
+                <span>Descargar PDF</span>
+              </button>
             </div>
-          </div>
 
-          {/* Nota / N° de operación */}
-          <div>
-            <label
-              htmlFor="pay-note-input"
-              className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-            >
-              N° de Operación / Nota (opcional)
-            </label>
-            <input
-              id="pay-note-input"
-              type="text"
-              maxLength={150}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Ej. Op. 483921 · Pagó puntual en efectivo"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          {/* Switch de Sincronización con Caja */}
-          <label className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 cursor-pointer hover:bg-emerald-500/10 transition-colors dark:bg-emerald-950/20">
-            <input
-              type="checkbox"
-              checked={syncToCashbox}
-              onChange={(e) => setSyncToCashbox(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded accent-emerald-600 focus:ring-emerald-500 cursor-pointer"
-            />
-            <div className="text-xs">
-              <span className="font-bold text-slate-900 dark:text-white">
-                Ingresar automáticamente a Caja
-              </span>
-              <p className="mt-0.5 text-slate-500 dark:text-slate-400">
-                Se creará un movimiento de <strong className="text-emerald-600 dark:text-emerald-400">INGRESO</strong> en Caja con el método <strong>{method}</strong>, nombre del cliente y mes pagado.
-              </p>
-            </div>
-          </label>
-
-          {error && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-500/10 p-3 text-xs font-bold text-red-600 dark:text-red-400">
-              <AlertCircle size={15} className="shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Botones de Acción */}
-          <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              disabled={isPending}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-750 disabled:opacity-40"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-750"
             >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50"
-            >
-              {isPending ? (
-                <span>Registrando...</span>
-              ) : (
-                <>
-                  <Check size={14} />
-                  <span>Confirmar e Ingresar a Caja</span>
-                </>
-              )}
+              Listo / Cerrar
             </button>
           </div>
-        </form>
+        ) : (
+          /* ─── PASO 1: FORMULARIO DE PAGO ─── */
+          <>
+            {/* Tarjeta resumen del Cliente */}
+            <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 dark:border-slate-800/80 dark:bg-slate-800/40">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cliente</span>
+                  <h4 className="truncate font-display text-base font-bold text-slate-900 dark:text-white">
+                    {client.clientName}
+                  </h4>
+                </div>
+                {client.clientCode && (
+                  <span className="shrink-0 rounded-lg bg-indigo-500/10 px-2 py-0.5 text-xs font-mono font-black text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                    {client.clientCode}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                {client.galeria && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-2xs dark:bg-slate-800">
+                    <Building2 size={12} className="text-slate-400" />
+                    <span className="font-semibold">{client.galeria}</span>
+                  </span>
+                )}
+                {client.router && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-2xs dark:bg-slate-800">
+                    <Router size={12} className="text-blue-500" />
+                    <span className="font-semibold">
+                      {client.router}
+                      {client.portNumber ? ` · Puerto ${client.portNumber}` : ""}
+                    </span>
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-1 font-bold text-emerald-800 dark:text-emerald-300">
+                  <Calendar size={12} />
+                  {monthLabel ? `Mes: ${monthLabel}` : `Próximo: ${client.nextPaymentDate}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Formulario de Pago */}
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+              {/* Selección de Método de Pago (EFECTIVO, YAPE 1, YAPE 2) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Método de Pago (Caja) *
+                </label>
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {PAYMENT_METHODS.map((m) => {
+                    const info = PAYMENT_METHOD_INFO[m];
+                    const active = method === m;
+                    const isYape = m === "YAPE 1" || m === "YAPE 2";
+
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMethod(m)}
+                        className={`relative flex flex-col items-start rounded-2xl border p-3 text-left transition-all ${
+                          active
+                            ? "border-emerald-600 bg-emerald-500/10 text-emerald-950 ring-2 ring-emerald-500/40 dark:border-emerald-500 dark:bg-emerald-500/15 dark:text-emerald-200"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-850 dark:text-slate-300 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wide">
+                            {isYape ? (
+                              <Smartphone size={13} className="text-purple-600 dark:text-purple-400" />
+                            ) : (
+                              <Banknote size={13} className="text-emerald-600 dark:text-emerald-400" />
+                            )}
+                            {info.id}
+                          </span>
+                          {active && (
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white">
+                              <Check size={10} strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+                        <span className="mt-1 text-[11px] font-bold text-slate-600 dark:text-slate-400 leading-tight">
+                          {info.titular}
+                        </span>
+                        {info.formattedPhone && (
+                          <span className="mt-0.5 text-[10px] font-mono font-semibold text-slate-400 dark:text-slate-500">
+                            {info.formattedPhone}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Fila: Monto, Fecha y N° Recibo */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label
+                    htmlFor="pay-amount-input"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                  >
+                    Monto cobrado *
+                  </label>
+                  <div className="relative mt-1.5">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm font-bold text-slate-400">
+                      S/.
+                    </span>
+                    <input
+                      id="pay-amount-input"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm font-black text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                      placeholder="30.00"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="pay-date-input"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                  >
+                    Fecha de pago *
+                  </label>
+                  <input
+                    id="pay-date-input"
+                    type="date"
+                    required
+                    value={paidAt}
+                    onChange={(e) => setPaidAt(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="pay-receipt-input"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                  >
+                    N° Recibo (6 díg.)
+                  </label>
+                  <div className="relative mt-1.5">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-xs font-mono text-slate-400">
+                      <Hash size={13} />
+                    </span>
+                    <input
+                      id="pay-receipt-input"
+                      type="text"
+                      maxLength={6}
+                      value={receiptNumber}
+                      onChange={(e) => setReceiptNumber(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000101"
+                      className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-sm font-mono font-bold text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Nota / N° de operación */}
+              <div>
+                <label
+                  htmlFor="pay-note-input"
+                  className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                >
+                  N° de Operación / Nota (opcional)
+                </label>
+                <input
+                  id="pay-note-input"
+                  type="text"
+                  maxLength={150}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Ej. Op. 483921 · Pagó puntual en efectivo"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-2xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              {/* Switch de Sincronización con Caja */}
+              <label className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 cursor-pointer hover:bg-emerald-500/10 transition-colors dark:bg-emerald-950/20">
+                <input
+                  type="checkbox"
+                  checked={syncToCashbox}
+                  onChange={(e) => setSyncToCashbox(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded accent-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    Ingresar automáticamente a Caja
+                  </span>
+                  <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+                    Se creará un movimiento de <strong className="text-emerald-600 dark:text-emerald-400">INGRESO</strong> en Caja con el método <strong>{method}</strong>, nombre del cliente y mes pagado.
+                  </p>
+                </div>
+              </label>
+
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl bg-red-500/10 p-3 text-xs font-bold text-red-600 dark:text-red-400">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Botones de Acción */}
+              <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isPending}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-750 disabled:opacity-40"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isPending ? (
+                    <span>Registrando...</span>
+                  ) : (
+                    <>
+                      <Check size={14} />
+                      <span>Confirmar e Ingresar a Caja</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>,
     document.body
   );
 }
-

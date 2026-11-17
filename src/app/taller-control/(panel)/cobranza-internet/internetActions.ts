@@ -20,11 +20,41 @@ const PATH = "/taller-control/cobranza-internet";
 function revalidateAllRelatedPaths() {
   try {
     revalidatePath(PATH);
+    revalidatePath("/taller-control/internetlista");
     revalidatePath("/taller-control/caja");
     revalidatePath("/taller-control/papelera");
     revalidatePath("/taller-control/reporte-mensual");
   } catch {
     // Fuera de ciclo Next.js
+  }
+}
+
+/**
+ * Incrementa atómicamente el correlativo de boletas/recibos de internet en InvoiceCounter
+ * y retorna un número formateado exactamente a 6 dígitos (ej: "000101").
+ */
+export async function getNextInternetReceiptNumber(tx?: any): Promise<string> {
+  const runner = tx || prisma;
+  const counter = await runner.invoiceCounter.upsert({
+    where: { serie: "REC_INT" },
+    create: { serie: "REC_INT", lastNumber: 101 },
+    update: { lastNumber: { increment: 1 } },
+  });
+  return String(counter.lastNumber).padStart(6, "0");
+}
+
+/**
+ * Lee sin incrementar el próximo número sugerido de recibo (para preview en UI).
+ */
+export async function peekNextInternetReceiptNumber(): Promise<string> {
+  try {
+    const counter = await prisma.invoiceCounter.findUnique({
+      where: { serie: "REC_INT" },
+    });
+    const nextNum = (counter?.lastNumber ?? 100) + 1;
+    return String(nextNum).padStart(6, "0");
+  } catch {
+    return "000101";
   }
 }
 
@@ -182,17 +212,19 @@ export interface MarkPaidOptions {
   method?: PaymentMethodType | string;
   paidAt?: string;
   note?: string;
+  receiptNumber?: string;
   syncToCashbox?: boolean;
 }
 
 /**
  * "Pagó": corre la próxima fecha de pago al siguiente mes pendiente,
- * marca el mes pagado en paidMonths y opcionalmente sincroniza a Caja (CashboxTransaction).
+ * marca el mes pagado en paidMonths con correlativo de recibo de 6 dígitos
+ * y opcionalmente sincroniza a Caja (CashboxTransaction).
  */
 export async function markInternetPaid(
   id: string,
   options?: MarkPaidOptions
-): Promise<{ ok: boolean; error?: string; newNextPaymentDate?: string }> {
+): Promise<{ ok: boolean; error?: string; newNextPaymentDate?: string; receiptNumber?: string }> {
   const row = await prisma.internetClient.findUnique({ where: { id } });
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
@@ -209,6 +241,8 @@ export async function markInternetPaid(
   const payMethod = normalizeInternetPaymentMethod(options?.method);
   const syncToCashbox = options?.syncToCashbox !== false;
 
+  let finalReceiptNumber = options?.receiptNumber?.trim();
+
   const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, {
     ...map,
     [key]: { status: "paid", amount: payAmount, method: payMethod, paidAt: paidAtStr },
@@ -218,10 +252,16 @@ export async function markInternetPaid(
   await prisma.$transaction(async (tx) => {
     let cashboxTransactionId: string | undefined = undefined;
 
+    if (!finalReceiptNumber) {
+      finalReceiptNumber = await getNextInternetReceiptNumber(tx);
+    } else {
+      finalReceiptNumber = finalReceiptNumber.replace(/\D/g, "").slice(-6).padStart(6, "0");
+    }
+
     if (syncToCashbox && payAmount > 0) {
       const monthLabel = formatMonthKeyLabel(key);
       const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
-      const notes = buildCashboxNotes(row, options?.note || "Pago puntual");
+      const notes = buildCashboxNotes(row, options?.note ? `${options.note} · Recibo #${finalReceiptNumber}` : `Recibo #${finalReceiptNumber}`);
 
       const cashboxTx = await tx.cashboxTransaction.create({
         data: {
@@ -242,6 +282,7 @@ export async function markInternetPaid(
       amount: payAmount,
       method: payMethod,
       note: options?.note || "Pago puntual",
+      receiptNumber: finalReceiptNumber,
       ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
     };
 
@@ -255,7 +296,7 @@ export async function markInternetPaid(
   });
 
   revalidateAllRelatedPaths();
-  return { ok: true, newNextPaymentDate: newNextPaymentDateStr };
+  return { ok: true, newNextPaymentDate: newNextPaymentDateStr, receiptNumber: finalReceiptNumber };
 }
 
 export async function deleteInternetClient(id: string): Promise<void> {
@@ -403,9 +444,10 @@ export async function toggleInternetClientMonth(
     method?: string;
     note?: string;
     paidAt?: string;
+    receiptNumber?: string;
     syncToCashbox?: boolean;
   }
-): Promise<{ ok: boolean; newNextPaymentDate?: string; error?: string }> {
+): Promise<{ ok: boolean; newNextPaymentDate?: string; receiptNumber?: string; error?: string }> {
   const row = await prisma.internetClient.findUnique({ where: { id } });
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
@@ -425,13 +467,19 @@ export async function toggleInternetClientMonth(
   const syncToCashbox = details?.syncToCashbox !== false;
   const existingTxId = map[yearMonth]?.cashboxTransactionId;
 
+  let assignedReceiptNumber: string | undefined = undefined;
+
   await prisma.$transaction(async (tx) => {
     if (shouldBePaid) {
       let cashboxTransactionId = existingTxId;
+      assignedReceiptNumber = details?.receiptNumber?.trim()
+        ? details.receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
+        : map[yearMonth]?.receiptNumber || (await getNextInternetReceiptNumber(tx));
+
       if (!cashboxTransactionId && syncToCashbox && payAmount > 0) {
         const monthLabel = formatMonthKeyLabel(yearMonth);
         const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
-        const notes = buildCashboxNotes(row, details?.note || "Pago registrado desde panel");
+        const notes = buildCashboxNotes(row, details?.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
 
         const cashboxTx = await tx.cashboxTransaction.create({
           data: {
@@ -452,6 +500,7 @@ export async function toggleInternetClientMonth(
         amount: payAmount,
         method: payMethod,
         note: details?.note ?? map[yearMonth]?.note ?? "Pago registrado",
+        receiptNumber: assignedReceiptNumber,
         ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
       };
     } else {
@@ -481,7 +530,7 @@ export async function toggleInternetClientMonth(
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
   revalidateAllRelatedPaths();
-  return { ok: true, newNextPaymentDate: finalNextPaymentDateStr };
+  return { ok: true, newNextPaymentDate: finalNextPaymentDateStr, receiptNumber: assignedReceiptNumber };
 }
 
 /**
@@ -498,7 +547,7 @@ export async function payAdvanceInternetMonths(
     paidAt?: string;
     syncToCashbox?: boolean;
   }
-): Promise<{ ok: boolean; countPaid?: number; newNextPaymentDate?: string; error?: string }> {
+): Promise<{ ok: boolean; countPaid?: number; newNextPaymentDate?: string; receiptNumbers?: string[]; error?: string }> {
   if (count <= 0) return { ok: false, error: "Cantidad de meses inválida." };
 
   const row = await prisma.internetClient.findUnique({ where: { id } });
@@ -534,10 +583,14 @@ export async function payAdvanceInternetMonths(
     }
   }
 
+  const generatedReceipts: string[] = [];
+
   await prisma.$transaction(async (tx) => {
     for (let i = 0; i < keysToPay.length; i++) {
       const key = keysToPay[i];
       let cashboxTransactionId: string | undefined = undefined;
+      const receiptNumber = await getNextInternetReceiptNumber(tx);
+      generatedReceipts.push(receiptNumber);
 
       if (syncToCashbox && amountPerMonth > 0) {
         const monthLabel = formatMonthKeyLabel(key);
@@ -546,7 +599,9 @@ export async function payAdvanceInternetMonths(
           `${monthLabel} (Adelanto)`,
           row.clientCode
         );
-        const noteDetail = options?.note || `Adelanto (${i + 1}/${keysToPay.length} meses)`;
+        const noteDetail = options?.note
+          ? `${options.note} (${i + 1}/${keysToPay.length} meses) · Recibo #${receiptNumber}`
+          : `Adelanto (${i + 1}/${keysToPay.length} meses) · Recibo #${receiptNumber}`;
         const notes = buildCashboxNotes(row, noteDetail);
 
         const cashboxTx = await tx.cashboxTransaction.create({
@@ -568,6 +623,7 @@ export async function payAdvanceInternetMonths(
         amount: amountPerMonth,
         method: payMethod,
         note: options?.note || `Adelanto (${i + 1}/${keysToPay.length} meses)`,
+        receiptNumber,
         ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
       };
     }
@@ -586,11 +642,11 @@ export async function payAdvanceInternetMonths(
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
   revalidateAllRelatedPaths();
-  return { ok: true, countPaid: paidSoFar, newNextPaymentDate: finalNextPaymentDateStr };
+  return { ok: true, countPaid: paidSoFar, newNextPaymentDate: finalNextPaymentDateStr, receiptNumbers: generatedReceipts };
 }
 
 /**
- * Actualiza los detalles específicos de un mes (monto especial, método de pago, nota).
+ * Actualiza los detalles específicos de un mes (monto especial, método de pago, nota, recibo).
  * Si ya tenía movimiento en Caja, lo actualiza atómicamente; si se desmarca, lo envía a papelera.
  */
 export async function updateInternetMonthDetails(
@@ -602,9 +658,10 @@ export async function updateInternetMonthDetails(
     method?: string;
     note?: string;
     paidAt?: string;
+    receiptNumber?: string;
     syncToCashbox?: boolean;
   }
-): Promise<{ ok: boolean; newNextPaymentDate?: string; error?: string }> {
+): Promise<{ ok: boolean; newNextPaymentDate?: string; receiptNumber?: string; error?: string }> {
   const row = await prisma.internetClient.findUnique({ where: { id } });
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
@@ -618,6 +675,8 @@ export async function updateInternetMonthDetails(
   const paidAtStr = details.paidAt || map[yearMonth]?.paidAt || todayStr;
   const paidDate = parseDateInput(paidAtStr) ?? parseDateInput(todayStr)!;
   const syncToCashbox = details.syncToCashbox !== false;
+
+  let assignedReceiptNumber: string | undefined = undefined;
 
   await prisma.$transaction(async (tx) => {
     let finalTxId = existingTxId;
@@ -634,6 +693,10 @@ export async function updateInternetMonthDetails(
         status: "unpaid",
       };
     } else {
+      assignedReceiptNumber = details.receiptNumber?.trim()
+        ? details.receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
+        : map[yearMonth]?.receiptNumber || (await getNextInternetReceiptNumber(tx));
+
       if (existingTxId) {
         // Actualizar el movimiento existente en Caja
         await tx.cashboxTransaction.updateMany({
@@ -642,14 +705,14 @@ export async function updateInternetMonthDetails(
             amount: payAmount,
             paymentMethod: payMethod,
             date: paidDate,
-            notes: buildCashboxNotes(row, details.note),
+            notes: buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`),
           },
         });
       } else if (syncToCashbox && payAmount > 0) {
         // Crear nuevo movimiento si no tenía
         const monthLabel = formatMonthKeyLabel(yearMonth);
         const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
-        const notes = buildCashboxNotes(row, details.note || "Pago registrado");
+        const notes = buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
 
         const cashboxTx = await tx.cashboxTransaction.create({
           data: {
@@ -670,6 +733,7 @@ export async function updateInternetMonthDetails(
         method: payMethod,
         note: details.note,
         paidAt: paidAtStr,
+        receiptNumber: assignedReceiptNumber,
         ...(finalTxId ? { cashboxTransactionId: finalTxId } : {}),
       };
     }
@@ -688,5 +752,5 @@ export async function updateInternetMonthDetails(
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
   revalidateAllRelatedPaths();
-  return { ok: true, newNextPaymentDate: finalNextPaymentDateStr };
+  return { ok: true, newNextPaymentDate: finalNextPaymentDateStr, receiptNumber: assignedReceiptNumber };
 }

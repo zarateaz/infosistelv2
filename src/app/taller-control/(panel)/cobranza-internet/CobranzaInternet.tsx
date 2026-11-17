@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   BellRing,
   MessageCircle,
@@ -21,6 +22,7 @@ import {
   QrCode,
   Search,
   Filter,
+  FileText,
 } from "lucide-react";
 import {
   createInternetClient,
@@ -511,6 +513,13 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
             >
               <AlertTriangle size={13} /> Lista de deudores ({alerts.length})
             </button>
+            <Link
+              href="/taller-control/internetlista"
+              className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-3.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-500/20 dark:text-sky-300 flex items-center gap-1.5 transition-all shadow-2xs"
+            >
+              <FileText size={13} />
+              <span>Internet Lista (Recibos)</span>
+            </Link>
           </div>
 
           {/* Filtros rápidos: Router y Galería */}
@@ -876,14 +885,15 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
           initialMethod="YAPE 1"
           onClose={() => setPayingClient(null)}
           onConfirm={async (payment) => {
-            await markInternetPaid(payingClient.id, {
+            const res = await markInternetPaid(payingClient.id, {
               amount: payment.amount,
               method: payment.method,
               paidAt: payment.paidAt,
               note: payment.note,
+              receiptNumber: payment.receiptNumber,
               syncToCashbox: payment.syncToCashbox,
             });
-            setPayingClient(null);
+            return { receiptNumber: res.receiptNumber };
           }}
         />
       )}

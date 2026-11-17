@@ -53,6 +53,7 @@ export interface MonthPaymentRecord {
   method?: string; // "EFECTIVO" | "YAPE 1" | "YAPE 2" (o legacy "YAPE", "PLIN")
   note?: string;
   cashboxTransactionId?: string; // ID en CashboxTransaction para trazabilidad y reversión en Caja
+  receiptNumber?: string; // 6 dígitos correlativo (ej: "000101")
 }
 
 /** Formatea una clave "YYYY-MM" a etiqueta humana legible, ej: "2026-05" -> "Mayo 2026" */
@@ -236,6 +237,7 @@ export interface MonthUIInfo {
   amount?: number;
   method?: string;
   note?: string;
+  receiptNumber?: string;
   cashboxTransactionId?: string;
   isOverdue: boolean;
   isDueThisMonth: boolean;
@@ -322,6 +324,7 @@ export function getYearMonthsInfo(
       amount: rec?.amount ?? clientAmount,
       method: rec?.method,
       note: rec?.note,
+      receiptNumber: rec?.receiptNumber,
       cashboxTransactionId: rec?.cashboxTransactionId,
       isOverdue,
       isDueThisMonth,
@@ -339,4 +342,203 @@ export function getYearMonthsInfo(
     overdueCount,
     totalCollected,
   };
+}
+
+/**
+ * Deriva un número de recibo de 6 dígitos consistente.
+ * Si ya tiene receiptNumber registrado, lo normaliza a 6 dígitos.
+ * Si no, genera un correlativo determinista de 6 dígitos basado en el cliente y mes
+ * para que ningún comprobante quede vacío ante reclamos de clientes.
+ */
+export function deriveReceiptNumber(
+  existingReceipt?: string | null,
+  clientCode?: string | null,
+  clientId?: string,
+  yearMonth?: string
+): string {
+  if (existingReceipt && existingReceipt.trim()) {
+    const clean = existingReceipt.replace(/\D/g, "");
+    if (clean.length > 0) return clean.slice(-6).padStart(6, "0");
+    return existingReceipt.trim().slice(0, 10);
+  }
+  const seed = `${clientCode || clientId || "CLI"}-${yearMonth || "2026-01"}`;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const positive = (Math.abs(hash) % 900000) + 100000;
+  return String(positive);
+}
+
+/**
+ * Genera el enlace de WhatsApp con el recibo preformateado listo para enviar al cliente.
+ */
+export function internetReceiptWhatsappLink(params: {
+  whatsapp: string;
+  clientName: string;
+  clientCode?: string | null;
+  receiptNumber: string;
+  periodLabel: string;
+  amount: number;
+  paidAt: string;
+  method?: string;
+  galeria?: string | null;
+}): string {
+  const clean = params.whatsapp.replace(/\D/g, "");
+  const number = clean.length === 9 ? `51${clean}` : clean;
+  const codeTxt = params.clientCode ? ` (${params.clientCode})` : "";
+  const galTxt = params.galeria ? `\n📍 *Ubicación:* ${params.galeria}` : "";
+  const methodTxt = params.method || "EFECTIVO";
+
+  const msg =
+    `🧾 *RECIBO DE PAGO — INFOSISTEL INTERNET*\n\n` +
+    `*N° de Recibo:* #${params.receiptNumber}\n` +
+    `*Cliente:* ${params.clientName}${codeTxt}${galTxt}\n` +
+    `*Período Pagado:* ${params.periodLabel}\n` +
+    `*Fecha de Pago:* ${params.paidAt}\n` +
+    `*Medio de Pago:* ${methodTxt}\n` +
+    `*Monto Cancelado:* S/. ${params.amount.toFixed(2)}\n` +
+    `*Estado:* PAGADO CONFORME ✅\n\n` +
+    `Muchas gracias por su puntualidad y preferencia.\n` +
+    `*INFOSISTEL* · Soporte y Conectividad`;
+
+  return `https://wa.me/${number}?text=${encodeURIComponent(msg)}`;
+}
+
+export interface InternetHistoryItem {
+  id: string; // client.id + "_" + yearMonth
+  clientId: string;
+  clientCode?: string | null;
+  clientName: string;
+  whatsapp: string;
+  galeria?: string | null;
+  router?: string | null;
+  portNumber?: number | null;
+  startDate: string; // YYYY-MM-DD
+  yearMonth: string; // YYYY-MM
+  periodLabel: string; // "Mayo 2026"
+  dueDate: string; // YYYY-MM-DD
+  paidAt?: string; // YYYY-MM-DD
+  amount: number;
+  method?: string; // "EFECTIVO" | "YAPE 1" | "YAPE 2"
+  status: "PAGADO" | "VENCIDO" | "PENDIENTE";
+  receiptNumber: string; // 6 dígitos ej: "000101"
+  note?: string;
+  cashboxTransactionId?: string;
+  daysOverdue?: number;
+}
+
+/**
+ * Aplana y construye el historial mes a mes de todos los clientes de internet.
+ * Permite auditar pagos atrasados de 2 a 3 meses con comprobante de 6 dígitos.
+ */
+export function buildInternetPaymentHistory(
+  clients: InternetClientRow[],
+  today: Date = new Date()
+): InternetHistoryItem[] {
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const currentKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+
+  const history: InternetHistoryItem[] = [];
+
+  for (const client of clients) {
+    const map = parsePaidMonths(
+      client.paidMonths,
+      client.startDate,
+      client.nextPaymentDate,
+      client.amount
+    );
+
+    // Obtener día de corte del cliente
+    const nextPayParts = client.nextPaymentDate ? client.nextPaymentDate.split("-").map(Number) : [];
+    const startParts = client.startDate ? client.startDate.split("-").map(Number) : [];
+    const billingDay = nextPayParts[2] || startParts[2] || 1;
+
+    // Determinar el rango de meses del cliente
+    const sy = startParts[0] || currentYear;
+    const sm = startParts[1] || 1;
+    const startKey = `${sy}-${String(sm).padStart(2, "0")}`;
+
+    // Buscar el mes más alto entre los pagados y el mes actual + 2 meses adelante
+    let maxYear = Math.max(currentYear, sy);
+    let maxMonth = Math.max(currentMonth, 1);
+    for (const k of Object.keys(map)) {
+      if (k.length === 7) {
+        const [ky, km] = k.split("-").map(Number);
+        if (ky > maxYear || (ky === maxYear && km > maxMonth)) {
+          maxYear = ky;
+          maxMonth = km;
+        }
+      }
+    }
+
+    let cy = sy;
+    let cm = sm;
+
+    while (cy < maxYear || (cy === maxYear && cm <= maxMonth)) {
+      const yearMonth = `${cy}-${String(cm).padStart(2, "0")}`;
+      if (yearMonth >= startKey) {
+        const rec = map[yearMonth];
+        const isPaid = rec?.status === "paid";
+
+        const lastDayOfMonth = new Date(Date.UTC(cy, cm, 0)).getUTCDate();
+        const dueDayClamped = Math.min(billingDay, lastDayOfMonth);
+        const dueDate = `${cy}-${String(cm).padStart(2, "0")}-${String(dueDayClamped).padStart(2, "0")}`;
+
+        const periodLabel = formatMonthKeyLabel(yearMonth);
+        const receiptNumber = deriveReceiptNumber(
+          rec?.receiptNumber,
+          client.clientCode,
+          client.id,
+          yearMonth
+        );
+
+        let status: InternetHistoryItem["status"] = "PENDIENTE";
+        let daysOverdue = 0;
+
+        if (isPaid) {
+          status = "PAGADO";
+        } else if (yearMonth < currentKey) {
+          status = "VENCIDO";
+          daysOverdue = Math.max(0, -daysUntil(dueDate, today));
+        } else {
+          status = "PENDIENTE";
+        }
+
+        history.push({
+          id: `${client.id}_${yearMonth}`,
+          clientId: client.id,
+          clientCode: client.clientCode,
+          clientName: client.clientName,
+          whatsapp: client.whatsapp,
+          galeria: client.galeria,
+          router: client.router,
+          portNumber: client.portNumber,
+          startDate: client.startDate,
+          yearMonth,
+          periodLabel,
+          dueDate,
+          paidAt: isPaid ? rec?.paidAt || dueDate : undefined,
+          amount: isPaid ? (rec?.amount ?? client.amount) : client.amount,
+          method: isPaid ? rec?.method || "YAPE 1" : undefined,
+          status,
+          receiptNumber,
+          note: rec?.note,
+          cashboxTransactionId: rec?.cashboxTransactionId,
+          daysOverdue,
+        });
+      }
+
+      cm++;
+      if (cm > 12) {
+        cm = 1;
+        cy++;
+      }
+    }
+  }
+
+  // Ordenar por fecha de vencimiento descendente (lo más reciente arriba)
+  return history.sort((a, b) => b.dueDate.localeCompare(a.dueDate) || a.clientName.localeCompare(b.clientName));
 }
