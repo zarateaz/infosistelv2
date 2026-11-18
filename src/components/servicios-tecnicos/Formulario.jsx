@@ -14,7 +14,7 @@ function vacio(cfg) {
     equipo: { tipo: 'Laptop', marca: '', modelo: '', serie: '', acc: [], accOtros: '', clave: '' },
     llegada: { enciende: 'si', checks: [], obs: '' },
     falla: '', diagnostico: '', solucion: '',
-    tecnico: cfg.tecnicos[0] || '',
+    tecnico: typeof cfg.tecnicos?.[0] === 'object' ? cfg.tecnicos[0].nombre || cfg.tecnicos[0].name || '' : cfg.tecnicos?.[0] || '',
     costo: { mo: '', rep: '' },
     fotos: { ingreso: [], entrega: [] },
     urgente: false,
@@ -188,7 +188,7 @@ export default function Formulario({ cfg, servicios, editId, acciones, ir, abrir
             <Campo label="Técnico asignado">
               <select value={f.tecnico} onChange={(e) => set('tecnico', e.target.value)}>
                 <option value="">Sin asignar</option>
-                {[...new Set([...cfg.tecnicos, ...(f.tecnico ? [f.tecnico] : [])])].map((x) => <option key={x} value={x}>{x}</option>)}
+                {[...new Set([...(cfg.tecnicos || []).map((t) => (typeof t === 'object' ? t.nombre || t.name || '' : String(t))), ...(f.tecnico ? [f.tecnico] : [])])].map((x) => <option key={x} value={x}>{x}</option>)}
               </select>
             </Campo>
           </div>

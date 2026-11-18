@@ -309,8 +309,8 @@ async function main() {
       next: Math.max(configMaxNext, serviciosFinales.length + 1),
       formato: "OS-{0000}",
       tecnicos: [
-        { id: "tec1", nombre: "CABALLERO PECHO EDGAR WENCESLAO", activo: true },
-        { id: "tec2", nombre: "ZARATE AZORZA ANGEL", activo: true },
+        "CABALLERO PECHO EDGAR WENCESLAO",
+        "ZARATE AZORZA ANGEL",
       ],
       tipos: ["Laptop", "PC / CPU", "Impresora", "All In One", "Monitor", "Otro"],
       accesorios: ["Cargador", "Cable de poder", "Batería", "Mouse", "Teclado", "Funda / maletín", "Cartuchos / tóner", "Cable USB"],

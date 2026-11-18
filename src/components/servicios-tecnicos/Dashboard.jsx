@@ -37,7 +37,7 @@ export default function Dashboard({ servicios, cfg, ir, abrir }) {
   const cajaEf = suma(caja.filter((x) => normalizarMetodo(x.p.metodo) === 'Efectivo').map((x) => x.p));
   const cajaYp1 = suma(caja.filter((x) => normalizarMetodo(x.p.metodo) === 'Yape 1').map((x) => x.p));
   const cajaYp2 = suma(caja.filter((x) => normalizarMetodo(x.p.metodo) === 'Yape 2').map((x) => x.p));
-  const tecs = [...cfg.tecnicos];
+  const tecs = (cfg.tecnicos || []).map((t) => (typeof t === 'object' ? t.nombre || t.name || '' : String(t)));
   if (servicios.some((s) => !s.tecnico && ACTIVAS.includes(s.etapa))) tecs.push('');
   const carga = tecs.map((t) => ({
     t,
@@ -129,9 +129,9 @@ export default function Dashboard({ servicios, cfg, ir, abrir }) {
           <div className="box-h"><h3>Carga por técnico</h3><span className="faint" style={{ fontSize: 13 }}>equipos en el taller</span></div>
           <div className="bars">
             {carga.map((c) => (
-              <div className="bar" key={c.t || '-'}>
+              <div className="bar" key={typeof c.t === 'object' ? c.t.nombre || c.t.id : c.t || '-'}>
                 <span style={{ lineHeight: 1.25, minWidth: 0 }}>
-                  <b style={{ display: 'block', overflowWrap: 'anywhere' }}>{c.t || 'Sin asignar'}</b>
+                  <b style={{ display: 'block', overflowWrap: 'anywhere' }}>{typeof c.t === 'object' ? c.t.nombre || c.t.name || 'Sin asignar' : c.t || 'Sin asignar'}</b>
                   <span className="faint" style={{ fontSize: 12 }}>{pl(c.lis, 'listo', 'listos')} · {pl(c.ent, 'entregado', 'entregados')} este mes</span>
                 </span>
                 <span className="tr"><i style={{ width: (c.act / maxC) * 100 + '%', background: 'var(--accent)' }} /></span>

@@ -126,7 +126,10 @@ export function Clientes({ servicios, cfg, abrir }) {
 
 /* ---------- Configuración ---------- */
 export function Config({ cfg, acciones, servicios, ocupado }) {
-  const [c, setC] = useState({ ...cfg, tecnicosTxt: cfg.tecnicos.join('\n') });
+  const [c, setC] = useState({
+    ...cfg,
+    tecnicosTxt: (cfg.tecnicos || []).map((t) => (typeof t === 'object' ? t.nombre || t.name || '' : String(t))).join('\n'),
+  });
   const set = (k, v) => setC((o) => ({ ...o, [k]: v }));
   const guardar = (e) => {
     e.preventDefault();

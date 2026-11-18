@@ -71,7 +71,11 @@ async function leer() {
       }
     }
 
-    return { cfg: { ...cfgPorDefecto(), ...(d.cfg || {}) }, servicios };
+    const rawCfg = { ...cfgPorDefecto(), ...(d.cfg || {}) };
+    const tecnicos = (rawCfg.tecnicos || []).map((t) => (typeof t === 'object' ? t.nombre || t.name || '' : String(t))).filter(Boolean);
+    const cfg = { ...rawCfg, tecnicos: tecnicos.length ? tecnicos : ['CABALLERO PECHO EDGAR WENCESLAO'] };
+
+    return { cfg, servicios };
   } catch (e) {
     if (e.code === 'ENOENT') {
       const backup = await buscarUltimoRespaldo();
