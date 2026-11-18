@@ -19,6 +19,7 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 3000,
         HOSTNAME: "0.0.0.0",
+        SERVICIOS_TECNICOS_DIR: "/home/zarate/infosistel-v2-data/servicios-tecnicos",
       },
     },
     {

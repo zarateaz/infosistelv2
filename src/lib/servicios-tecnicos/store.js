@@ -5,11 +5,38 @@
    solo hay que reemplazar leer() y escribir() de este archivo.
    ===================================================================== */
 import { promises as fs } from 'fs';
+import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { cfgPorDefecto } from './logic';
 
-const DIR = process.env.SERVICIOS_TECNICOS_DIR || path.join(process.cwd(), 'datos', 'servicios-tecnicos');
+function resolverDirectorio() {
+  if (process.env.SERVICIOS_TECNICOS_DIR) {
+    return process.env.SERVICIOS_TECNICOS_DIR;
+  }
+  const vpsDataDir = '/home/zarate/infosistel-v2-data/servicios-tecnicos';
+  try {
+    if (fsSync.existsSync(vpsDataDir)) {
+      return vpsDataDir;
+    }
+  } catch {}
+
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, 'datos', 'servicios-tecnicos'),
+    path.join(cwd, '..', 'datos', 'servicios-tecnicos'),
+    path.join(cwd, '..', '..', 'datos', 'servicios-tecnicos'),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fsSync.existsSync(c)) return c;
+    } catch {}
+  }
+
+  return path.join(cwd, 'datos', 'servicios-tecnicos');
+}
+
+const DIR = resolverDirectorio();
 const DB = path.join(DIR, 'db.json');
 const FOTOS = path.join(DIR, 'fotos');
 const RESPALDOS = path.join(DIR, 'respaldos');
@@ -22,12 +49,46 @@ function enCola(fn) {
   return p;
 }
 
+async function buscarUltimoRespaldo() {
+  const dirs = [RESPALDOS, '/home/zarate/infosistel-v2-data/servicios-tecnicos/respaldos'];
+  for (const rDir of dirs) {
+    try {
+      const files = (await fs.readdir(rDir)).filter((f) => f.startsWith('db-') && f.endsWith('.json')).sort().reverse();
+      for (const f of files) {
+        try {
+          const content = JSON.parse(await fs.readFile(path.join(rDir, f), 'utf8'));
+          if (content && Array.isArray(content.servicios) && content.servicios.length > 0) {
+            return content;
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+  return null;
+}
+
 async function leer() {
   try {
     const d = JSON.parse(await fs.readFile(DB, 'utf8'));
-    return { cfg: { ...cfgPorDefecto(), ...(d.cfg || {}) }, servicios: Array.isArray(d.servicios) ? d.servicios : [] };
+    let servicios = Array.isArray(d.servicios) ? d.servicios : [];
+
+    // Si por algún motivo db.json se inició vacío, restaurar automáticamente del último respaldo
+    if (servicios.length === 0) {
+      const backup = await buscarUltimoRespaldo();
+      if (backup && Array.isArray(backup.servicios) && backup.servicios.length > 0) {
+        servicios = backup.servicios;
+        // Restaurar en DB principal de forma asíncrona
+        fs.writeFile(DB, JSON.stringify({ ...d, servicios }, null, 2)).catch(() => {});
+      }
+    }
+
+    return { cfg: { ...cfgPorDefecto(), ...(d.cfg || {}) }, servicios };
   } catch (e) {
-    if (e.code === 'ENOENT') return { cfg: cfgPorDefecto(), servicios: [] };
+    if (e.code === 'ENOENT') {
+      const backup = await buscarUltimoRespaldo();
+      if (backup) return backup;
+      return { cfg: cfgPorDefecto(), servicios: [] };
+    }
     throw e;
   }
 }

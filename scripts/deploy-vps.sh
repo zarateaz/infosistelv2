@@ -86,6 +86,9 @@ echo "=== Sembrando y verificando obligaciones de Deudas (0 margen de error) ===
 node --env-file=.env ./node_modules/.bin/tsx scripts/seed-deudas.ts || true
 node --env-file=.env ./node_modules/.bin/tsx scripts/seed-pagos-historicos.ts || true
 
+echo "=== Restaurando y asegurando datos de Servicios Técnicos (0 margen de error) ==="
+node --env-file=.env ./node_modules/.bin/tsx scripts/restaurar-servicios-tecnicos.ts || true
+
 echo "=== Build de producción (si esto falla, NO sigas a PM2) ==="
 NODE_ENV=production npm run build
 
@@ -126,6 +129,10 @@ mkdir -p "$DATA_DIR/servicios-tecnicos"
 mkdir -p "$APP_DIR/datos"
 rm -rf "$APP_DIR/datos/servicios-tecnicos"
 ln -s "$DATA_DIR/servicios-tecnicos" "$APP_DIR/datos/servicios-tecnicos"
+
+mkdir -p "$APP_DIR/.next/standalone/datos"
+rm -rf "$APP_DIR/.next/standalone/datos/servicios-tecnicos"
+ln -s "$DATA_DIR/servicios-tecnicos" "$APP_DIR/.next/standalone/datos/servicios-tecnicos"
 
 echo "=== PM2 ==="
 npx pm2 delete infosistel-v2 2>/dev/null || true
