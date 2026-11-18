@@ -30,11 +30,23 @@ export async function runAutomatedInternetReminders(options?: {
   includeDueToday?: boolean;
   dryRun?: boolean;
   gatewayUrl?: string;
+  targetPhone?: string;
+  force?: boolean;
 }): Promise<ReminderRunResult> {
   const gatewayUrl = options?.gatewayUrl || process.env.WHATSAPP_GATEWAY_URL || "http://127.0.0.1:3005";
-  const todayStr = todayInputValue();
+  
+  // Fecha actual en hora oficial de Perú (America/Lima) con formato "YYYY-MM-DD"
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  
   const [ty, tm, td] = todayStr.split("-").map(Number);
-  const now = new Date(Date.UTC(ty, tm - 1, td));
+  const nowUtc = Date.UTC(ty, tm - 1, td);
+
+  const cleanTargetPhone = options?.targetPhone ? options.targetPhone.replace(/\D/g, "") : null;
 
   const clients = await prisma.internetClient.findMany({
     orderBy: { nextPaymentDate: "asc" },
@@ -53,13 +65,23 @@ export async function runAutomatedInternetReminders(options?: {
   for (const client of clients) {
     const nextPayStr = dateToInputValue(client.nextPaymentDate);
     const startStr = dateToInputValue(client.startDate);
-    const diff = daysUntil(nextPayStr, now);
+
+    // Si se filtró por un teléfono específico
+    const clientPhoneDigits = client.whatsapp.replace(/\D/g, "");
+    if (cleanTargetPhone && !clientPhoneDigits.includes(cleanTargetPhone)) {
+      continue;
+    }
+
+    const [py, pm, pd] = nextPayStr.split("-").map(Number);
+    const targetUtc = Date.UTC(py, pm - 1, pd);
+    const diff = Math.round((targetUtc - nowUtc) / 86_400_000);
 
     // ¿Vence mañana (diff === 1)? ¿O vence hoy si se solicita (diff === 0)?
     const isDueTomorrow = diff === 1;
-    const isDueToday = Boolean(options?.includeDueToday && diff === 0);
+    const isDueToday = diff === 0;
+    const isOverdue = diff < 0;
 
-    if (!isDueTomorrow && !isDueToday) {
+    if (!options?.force && !isDueTomorrow && !(options?.includeDueToday && isDueToday)) {
       continue;
     }
 
@@ -74,7 +96,7 @@ export async function runAutomatedInternetReminders(options?: {
 
     // Verificar si el mes correspondiente a esa fecha ya está pagado
     const targetMonthKey = nextPayStr.slice(0, 7);
-    if (map[targetMonthKey]?.status === "paid") {
+    if (!options?.force && map[targetMonthKey]?.status === "paid") {
       result.skippedPaid++;
       result.details.push({
         clientName: client.clientName,
@@ -95,7 +117,7 @@ export async function runAutomatedInternetReminders(options?: {
       parsedJson = {};
     }
 
-    if (parsedJson?._lastReminderDate === todayStr && parsedJson?._lastReminderMonthKey === targetMonthKey) {
+    if (!options?.force && parsedJson?._lastReminderDate === todayStr && parsedJson?._lastReminderMonthKey === targetMonthKey) {
       result.skippedAlreadySent++;
       result.details.push({
         clientName: client.clientName,
@@ -133,6 +155,7 @@ export async function runAutomatedInternetReminders(options?: {
       dueDate: nextPayStr,
       isDueTomorrow,
       isDueToday,
+      isOverdue,
       daysDiff: diff,
     });
 

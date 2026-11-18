@@ -17,6 +17,13 @@ import { runAutomatedInternetReminders } from "../src/lib/whatsappAutoNotifier";
 
 async function main() {
   const isDryRun = process.argv.includes("--dry-run");
+  const force = process.argv.includes("--force");
+  const phoneArg =
+    process.argv.find((a) => a.startsWith("--phone="))?.split("=")[1] ||
+    (process.argv.includes("--phone")
+      ? process.argv[process.argv.indexOf("--phone") + 1]
+      : undefined);
+
   const now = new Intl.DateTimeFormat("es-PE", {
     timeZone: "America/Lima",
     dateStyle: "full",
@@ -27,12 +34,16 @@ async function main() {
   console.log(`[INFOSISTEL] Recordatorios Automáticos de Internet`);
   console.log(`Fecha/Hora Perú: ${now}`);
   console.log(`Modo: ${isDryRun ? "SIMULACIÓN (--dry-run)" : "ENVÍO REAL"}`);
+  if (phoneArg) console.log(`Filtro por teléfono: ${phoneArg}`);
+  if (force) console.log(`Forzar envío (--force): SÍ (ignora si ya se avisó hoy o fecha no coincidente)`);
   console.log(`======================================================\n`);
 
   try {
     const res = await runAutomatedInternetReminders({
       dryRun: isDryRun,
       includeDueToday: true,
+      targetPhone: phoneArg,
+      force,
     });
 
     console.log(`Clientes totales revisados: ${res.totalClientsChecked}`);
