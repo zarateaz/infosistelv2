@@ -46,17 +46,29 @@ async function main() {
       force,
     });
 
-    console.log(`Clientes totales revisados: ${res.totalClientsChecked}`);
-    console.log(`Clientes elegibles (vencen mañana/hoy): ${res.eligibleTomorrow}`);
+    console.log(`Clientes totales en base de datos: ${res.totalClientsChecked}`);
+    console.log(`Clientes con deuda o vencimiento (elegibles): ${res.eligibleTotal}`);
+    console.log(`  - Deudores (vencidos): ${res.eligibleOverdue}`);
+    console.log(`  - Vencen hoy o mañana: ${res.eligibleTodayOrTomorrow}`);
     console.log(`Mensajes enviados exitosamente: ${res.sentCount}`);
-    console.log(`Omitidos (ya pagaron): ${res.skippedPaid}`);
+    console.log(`Omitidos (ya pagaron / al día): ${res.skippedPaid}`);
     console.log(`Omitidos (ya se les avisó hoy): ${res.skippedAlreadySent}`);
     console.log(`Fallos / Gateway offline: ${res.failedCount}`);
 
     if (res.details.length > 0) {
       console.log(`\nDetalle por cliente:`);
       for (const d of res.details) {
-        console.log(` - [${d.status}] ${d.clientName} (${d.whatsapp}) | Vence: ${d.dueDate} (${d.daysDiff === 1 ? "Mañana" : d.daysDiff === 0 ? "Hoy" : `${d.daysDiff} días`}) ${d.error ? `-> Error: ${d.error}` : ""}`);
+        const timeLabel =
+          d.daysDiff === 1
+            ? "Vence mañana"
+            : d.daysDiff === 0
+              ? "Vence HOY"
+              : d.daysDiff < 0
+                ? `Vencido hace ${Math.abs(d.daysDiff)} días`
+                : `Vence en ${d.daysDiff} días`;
+        console.log(
+          ` - [${d.status}] ${d.clientName} (${d.whatsapp}) | ${d.unpaidMonthsCount} mes(es) | Deuda: S/. ${d.totalDebt.toFixed(2)} | ${timeLabel} ${d.error ? `-> Error: ${d.error}` : ""}`
+        );
       }
     }
 

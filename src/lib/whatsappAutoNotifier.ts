@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { daysUntil, parsePaidMonths, type PaidMonthsMap } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
-import { dateToInputValue, todayInputValue } from "@/app/taller-control/(panel)/caja/month";
+import { parsePaidMonths, type PaidMonthsMap } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
+import { dateToInputValue } from "@/app/taller-control/(panel)/caja/month";
 import { generateReminderMessage } from "@/lib/deepseek";
 
 export interface ReminderRunResult {
   totalClientsChecked: number;
-  eligibleTomorrow: number;
+  eligibleTotal: number;
+  eligibleOverdue: number;
+  eligibleTodayOrTomorrow: number;
   sentCount: number;
   skippedAlreadySent: number;
   skippedPaid: number;
@@ -16,15 +18,23 @@ export interface ReminderRunResult {
     whatsapp: string;
     dueDate: string;
     daysDiff: number;
+    unpaidMonthsCount: number;
+    totalDebt: number;
     status: "SENT" | "ALREADY_SENT_TODAY" | "ALREADY_PAID" | "GATEWAY_OFFLINE" | "ERROR";
     error?: string;
   }>;
 }
 
 /**
- * Revisa todos los clientes de internet y envía automáticamente por WhatsApp
- * el recordatorio preventivo a aquellos cuya fecha de pago vence MAÑANA (o hoy).
- * Incluye un retardo de seguridad (5 seg) entre envíos para no saturar la cuenta.
+ * Revisa todos los clientes de internet en la base de datos y envía por WhatsApp
+ * un mensaje formal de cobranza a:
+ *  1. Clientes con deuda vencida (1, 2 o más meses vencidos).
+ *  2. Clientes cuya fecha de pago vence HOY o MAÑANA.
+ *
+ * Reglas de seguridad:
+ *  - 1 solo mensaje por día por cliente (_lastReminderDate === todayStr).
+ *  - Pausa de 5 segundos entre envíos para proteger la línea de WhatsApp.
+ *  - Cuentas oficiales de pago: Yape 1, Yape 2 y Pago físico en Huancayo.
  */
 export async function runAutomatedInternetReminders(options?: {
   includeDueToday?: boolean;
@@ -34,15 +44,16 @@ export async function runAutomatedInternetReminders(options?: {
   force?: boolean;
 }): Promise<ReminderRunResult> {
   const gatewayUrl = options?.gatewayUrl || process.env.WHATSAPP_GATEWAY_URL || "http://127.0.0.1:3005";
-  
-  // Fecha actual en hora oficial de Perú (America/Lima) con formato "YYYY-MM-DD"
+
+  // Fecha actual oficial en Perú (America/Lima) "YYYY-MM-DD"
   const todayStr = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Lima",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  
+
+  const currentMonthKey = todayStr.slice(0, 7);
   const [ty, tm, td] = todayStr.split("-").map(Number);
   const nowUtc = Date.UTC(ty, tm - 1, td);
 
@@ -54,7 +65,9 @@ export async function runAutomatedInternetReminders(options?: {
 
   const result: ReminderRunResult = {
     totalClientsChecked: clients.length,
-    eligibleTomorrow: 0,
+    eligibleTotal: 0,
+    eligibleOverdue: 0,
+    eligibleTodayOrTomorrow: 0,
     sentCount: 0,
     skippedAlreadySent: 0,
     skippedPaid: 0,
@@ -66,7 +79,7 @@ export async function runAutomatedInternetReminders(options?: {
     const nextPayStr = dateToInputValue(client.nextPaymentDate);
     const startStr = dateToInputValue(client.startDate);
 
-    // Si se filtró por un teléfono específico
+    // Filtrar por teléfono específico si se solicitó en el comando
     const clientPhoneDigits = client.whatsapp.replace(/\D/g, "");
     if (cleanTargetPhone && !clientPhoneDigits.includes(cleanTargetPhone)) {
       continue;
@@ -76,17 +89,7 @@ export async function runAutomatedInternetReminders(options?: {
     const targetUtc = Date.UTC(py, pm - 1, pd);
     const diff = Math.round((targetUtc - nowUtc) / 86_400_000);
 
-    // ¿Vence mañana (diff === 1)? ¿O vence hoy si se solicita (diff === 0)?
-    const isDueTomorrow = diff === 1;
-    const isDueToday = diff === 0;
-    const isOverdue = diff < 0;
-
-    if (!options?.force && !isDueTomorrow && !(options?.includeDueToday && isDueToday)) {
-      continue;
-    }
-
-    result.eligibleTomorrow++;
-
+    // Mapeo de meses pagados
     const map: PaidMonthsMap = parsePaidMonths(
       client.paidMonths,
       startStr,
@@ -94,22 +97,48 @@ export async function runAutomatedInternetReminders(options?: {
       client.amount
     );
 
-    // Verificar si el mes correspondiente a esa fecha ya está pagado
-    const targetMonthKey = nextPayStr.slice(0, 7);
-    if (!options?.force && map[targetMonthKey]?.status === "paid") {
+    // Calcular meses impagos desde inicio hasta el mes actual
+    const [sy, sm] = startStr.split("-").map(Number);
+    let cy = sy;
+    let cm = sm;
+    const unpaidMonths: string[] = [];
+
+    while (true) {
+      const k = `${cy}-${String(cm).padStart(2, "0")}`;
+      if (k > currentMonthKey) break;
+      if (map[k]?.status !== "paid") {
+        unpaidMonths.push(k);
+      }
+      cm++;
+      if (cm > 12) {
+        cm = 1;
+        cy++;
+      }
+      if (cy > ty + 2) break;
+    }
+
+    const isDueTomorrow = diff === 1;
+    const isDueToday = diff === 0;
+    const isOverdue = diff < 0 || (unpaidMonths.length > 0 && unpaidMonths[0] < currentMonthKey);
+
+    // Si no tiene deuda y no vence hoy/mañana, y no se especificó --force, está al día
+    if (!options?.force && !isOverdue && !isDueToday && !isDueTomorrow) {
       result.skippedPaid++;
-      result.details.push({
-        clientName: client.clientName,
-        clientCode: client.clientCode,
-        whatsapp: client.whatsapp,
-        dueDate: nextPayStr,
-        daysDiff: diff,
-        status: "ALREADY_PAID",
-      });
       continue;
     }
 
-    // Verificar si ya se le envió aviso hoy (evita duplicados si el cron corre más de una vez)
+    // Calcular meses y monto de deuda
+    const unpaidMonthsCount = Math.max(
+      unpaidMonths.length,
+      isDueToday || isDueTomorrow || isOverdue ? 1 : 0
+    );
+    const totalDebt = unpaidMonthsCount * client.amount;
+
+    result.eligibleTotal++;
+    if (isOverdue) result.eligibleOverdue++;
+    if (isDueToday || isDueTomorrow) result.eligibleTodayOrTomorrow++;
+
+    // Verificar si ya se le envió aviso hoy (regla estricta: 1 mensaje al día por cliente)
     let parsedJson: any = {};
     try {
       parsedJson = client.paidMonths ? JSON.parse(client.paidMonths) : {};
@@ -117,7 +146,7 @@ export async function runAutomatedInternetReminders(options?: {
       parsedJson = {};
     }
 
-    if (!options?.force && parsedJson?._lastReminderDate === todayStr && parsedJson?._lastReminderMonthKey === targetMonthKey) {
+    if (!options?.force && parsedJson?._lastReminderDate === todayStr) {
       result.skippedAlreadySent++;
       result.details.push({
         clientName: client.clientName,
@@ -125,12 +154,14 @@ export async function runAutomatedInternetReminders(options?: {
         whatsapp: client.whatsapp,
         dueDate: nextPayStr,
         daysDiff: diff,
+        unpaidMonthsCount,
+        totalDebt,
         status: "ALREADY_SENT_TODAY",
       });
       continue;
     }
 
-    // Si es dry run (modo prueba sin enviar)
+    // Modo simulación (--dry-run)
     if (options?.dryRun) {
       result.sentCount++;
       result.details.push({
@@ -139,6 +170,8 @@ export async function runAutomatedInternetReminders(options?: {
         whatsapp: client.whatsapp,
         dueDate: nextPayStr,
         daysDiff: diff,
+        unpaidMonthsCount,
+        totalDebt,
         status: "SENT",
       });
       continue;
@@ -152,6 +185,8 @@ export async function runAutomatedInternetReminders(options?: {
       router: client.router,
       portNumber: client.portNumber,
       amount: client.amount,
+      totalDebt,
+      unpaidMonthsCount,
       dueDate: nextPayStr,
       isDueTomorrow,
       isDueToday,
@@ -159,7 +194,7 @@ export async function runAutomatedInternetReminders(options?: {
       daysDiff: diff,
     });
 
-    // Enviar a través del gateway de WhatsApp local
+    // Enviar a través del gateway de WhatsApp local (Baileys)
     try {
       const cleanPhone = client.whatsapp.replace(/\D/g, "");
       const fullPhone = cleanPhone.length === 9 ? `51${cleanPhone}` : cleanPhone;
@@ -182,15 +217,17 @@ export async function runAutomatedInternetReminders(options?: {
           whatsapp: client.whatsapp,
           dueDate: nextPayStr,
           daysDiff: diff,
+          unpaidMonthsCount,
+          totalDebt,
           status: response.status === 503 ? "GATEWAY_OFFLINE" : "ERROR",
           error: errText || `Error HTTP ${response.status}`,
         });
         continue;
       }
 
-      // Marcar recordatorio como enviado hoy
+      // Marcar recordatorio como enviado hoy en la base de datos
       parsedJson._lastReminderDate = todayStr;
-      parsedJson._lastReminderMonthKey = targetMonthKey;
+      parsedJson._lastReminderMonthKey = currentMonthKey;
       await prisma.internetClient.update({
         where: { id: client.id },
         data: { paidMonths: JSON.stringify(parsedJson) },
@@ -203,10 +240,12 @@ export async function runAutomatedInternetReminders(options?: {
         whatsapp: client.whatsapp,
         dueDate: nextPayStr,
         daysDiff: diff,
+        unpaidMonthsCount,
+        totalDebt,
         status: "SENT",
       });
 
-      // Pausa de cortesía de 5 segundos entre clientes para proteger la línea
+      // Pausa preventiva de 5 segundos entre clientes para proteger la línea contra bloqueos
       await new Promise((resolve) => setTimeout(resolve, 5000));
     } catch (sendErr: any) {
       result.failedCount++;
@@ -216,6 +255,8 @@ export async function runAutomatedInternetReminders(options?: {
         whatsapp: client.whatsapp,
         dueDate: nextPayStr,
         daysDiff: diff,
+        unpaidMonthsCount,
+        totalDebt,
         status: "ERROR",
         error: sendErr?.message || "No se pudo conectar al Gateway de WhatsApp",
       });
@@ -224,4 +265,3 @@ export async function runAutomatedInternetReminders(options?: {
 
   return result;
 }
-
