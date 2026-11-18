@@ -226,3 +226,4 @@ main().catch((err) => {
   console.error("Error al restaurar servicios técnicos:", err);
   process.exit(1);
 });
+

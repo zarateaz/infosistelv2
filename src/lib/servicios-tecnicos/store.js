@@ -21,19 +21,7 @@ function resolverDirectorio() {
     }
   } catch {}
 
-  const cwd = process.cwd();
-  const candidates = [
-    path.join(cwd, 'datos', 'servicios-tecnicos'),
-    path.join(cwd, '..', 'datos', 'servicios-tecnicos'),
-    path.join(cwd, '..', '..', 'datos', 'servicios-tecnicos'),
-  ];
-  for (const c of candidates) {
-    try {
-      if (fsSync.existsSync(c)) return c;
-    } catch {}
-  }
-
-  return path.join(cwd, 'datos', 'servicios-tecnicos');
+  return path.resolve(process.env.TMPDIR || '/tmp', 'infosistel-servicios-tecnicos');
 }
 
 const DIR = resolverDirectorio();
@@ -53,10 +41,11 @@ async function buscarUltimoRespaldo() {
   const dirs = [RESPALDOS, '/home/zarate/infosistel-v2-data/servicios-tecnicos/respaldos'];
   for (const rDir of dirs) {
     try {
-      const files = (await fs.readdir(rDir)).filter((f) => f.startsWith('db-') && f.endsWith('.json')).sort().reverse();
+      if (!fsSync.existsSync(/*turbopackIgnore: true*/ rDir)) continue;
+      const files = (await fs.readdir(/*turbopackIgnore: true*/ rDir)).filter((f) => f.startsWith('db-') && f.endsWith('.json')).sort().reverse();
       for (const f of files) {
         try {
-          const content = JSON.parse(await fs.readFile(path.join(rDir, f), 'utf8'));
+          const content = JSON.parse(await fs.readFile(/*turbopackIgnore: true*/ path.join(rDir, f), 'utf8'));
           if (content && Array.isArray(content.servicios) && content.servicios.length > 0) {
             return content;
           }
@@ -69,7 +58,7 @@ async function buscarUltimoRespaldo() {
 
 async function leer() {
   try {
-    const d = JSON.parse(await fs.readFile(DB, 'utf8'));
+    const d = JSON.parse(await fs.readFile(/*turbopackIgnore: true*/ DB, 'utf8'));
     let servicios = Array.isArray(d.servicios) ? d.servicios : [];
 
     // Si por algún motivo db.json se inició vacío, restaurar automáticamente del último respaldo
@@ -78,7 +67,7 @@ async function leer() {
       if (backup && Array.isArray(backup.servicios) && backup.servicios.length > 0) {
         servicios = backup.servicios;
         // Restaurar en DB principal de forma asíncrona
-        fs.writeFile(DB, JSON.stringify({ ...d, servicios }, null, 2)).catch(() => {});
+        fs.writeFile(/*turbopackIgnore: true*/ DB, JSON.stringify({ ...d, servicios }, null, 2)).catch(() => {});
       }
     }
 

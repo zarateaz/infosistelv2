@@ -41,6 +41,9 @@ echo "=== Preparando directorio de datos persistentes ==="
 mkdir -p "$DATA_DIR/backups" "$DATA_DIR/uploads/products" "$DATA_DIR/uploads/servicios" "$DATA_DIR/uploads/cotizaciones" "$DATA_DIR/servicios-tecnicos" "$DATA_DIR/whatsapp-auth"
 chmod 755 "$HOME" 2>/dev/null || true
 chmod -R 755 "$DATA_DIR" 2>/dev/null || true
+
+# Limpiar symlinks antiguos dentro del repositorio para que Turbopack no falle
+rm -rf "$APP_DIR/datos" "$APP_DIR/.next/standalone/datos"
 DB_PATH="${DATABASE_URL#file:}"
 if [ -f "$DB_PATH" ]; then
   STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -89,6 +92,9 @@ node --env-file=.env ./node_modules/.bin/tsx scripts/seed-pagos-historicos.ts ||
 echo "=== Restaurando y asegurando datos de Servicios Técnicos (0 margen de error) ==="
 node --env-file=.env ./node_modules/.bin/tsx scripts/restaurar-servicios-tecnicos.ts || true
 
+# Eliminar cualquier carpeta o symlink 'datos' dentro del repo para que Turbopack no falle
+rm -rf "$APP_DIR/datos" "$APP_DIR/.next/standalone/datos"
+
 echo "=== Build de producción (si esto falla, NO sigas a PM2) ==="
 NODE_ENV=production npm run build
 
@@ -124,15 +130,9 @@ echo "=== Enlazando fotos de cotizaciones persistentes ==="
 rm -rf .next/standalone/public/img/cotizaciones
 ln -s "$DATA_DIR/uploads/cotizaciones" .next/standalone/public/img/cotizaciones
 
-echo "=== Enlazando datos persistentes del módulo Servicios Técnicos ==="
+echo "=== Verificando datos persistentes del módulo Servicios Técnicos ==="
 mkdir -p "$DATA_DIR/servicios-tecnicos"
-mkdir -p "$APP_DIR/datos"
-rm -rf "$APP_DIR/datos/servicios-tecnicos"
-ln -s "$DATA_DIR/servicios-tecnicos" "$APP_DIR/datos/servicios-tecnicos"
-
-mkdir -p "$APP_DIR/.next/standalone/datos"
-rm -rf "$APP_DIR/.next/standalone/datos/servicios-tecnicos"
-ln -s "$DATA_DIR/servicios-tecnicos" "$APP_DIR/.next/standalone/datos/servicios-tecnicos"
+rm -rf "$APP_DIR/datos" "$APP_DIR/.next/standalone/datos"
 
 echo "=== PM2 ==="
 npx pm2 delete infosistel-v2 2>/dev/null || true
