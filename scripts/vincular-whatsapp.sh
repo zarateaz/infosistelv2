@@ -10,13 +10,28 @@ echo "=========================================================="
 echo "Comprobando estado del servicio..."
 
 STATUS=$(curl -s http://127.0.0.1:3005/status 2>/dev/null)
-echo "$STATUS"
+
+if echo "$STATUS" | grep -q '"connected":true'; then
+  PHONE=$(echo "$STATUS" | grep -o '"phone":"[^"]*"' | cut -d'"' -f4)
+  echo ""
+  echo "✅ ¡WHATSAPP YA ESTÁ CONECTADO Y FUNCIONANDO!"
+  echo "Número vinculado: +$PHONE"
+  echo "El bot y los recordatorios automáticos están activos."
+  echo "=========================================================="
+  exit 0
+fi
 
 echo ""
-echo "Si ves el código QR abajo, abre tu WhatsApp en el celular:"
-echo "Menú (3 puntos) > Dispositivos vinculados > Vincular un dispositivo"
+echo "Generando código QR fresco..."
+npx pm2 restart infosistel-whatsapp >/dev/null 2>&1
+sleep 2
+
+echo ""
+echo "Abre WhatsApp en tu celular:"
+echo "👉 Menú (3 puntos) > Dispositivos vinculados > Vincular un dispositivo"
+echo "👉 Apunta la cámara al código QR que aparecerá abajo:"
 echo "=========================================================="
 echo ""
 
-npx pm2 logs infosistel-whatsapp --lines 50 --nostream
+npx pm2 logs infosistel-whatsapp --lines 40
 
