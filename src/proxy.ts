@@ -33,18 +33,16 @@ export async function proxy(request: NextRequest) {
     const token = request.cookies.get(SESSION_COOKIE)?.value;
     const session = token ? await verifySessionToken(token) : null;
 
+    const proto = request.headers.get("x-forwarded-proto") || "https";
+    const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "infosistel.com.pe";
+    const base = `${proto}://${host}`;
+
     if (pathname === "/taller-control/login") {
       if (session) {
-        const dest = request.nextUrl.clone();
-        dest.pathname = "/taller-control";
-        dest.search = "";
-        return NextResponse.redirect(dest);
+        return NextResponse.redirect(new URL("/taller-control", base));
       }
     } else if (!session) {
-      const dest = request.nextUrl.clone();
-      dest.pathname = "/taller-control/login";
-      dest.search = "";
-      return NextResponse.redirect(dest);
+      return NextResponse.redirect(new URL("/taller-control/login", base));
     }
   }
 
