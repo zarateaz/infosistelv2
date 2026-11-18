@@ -14,6 +14,7 @@ import {
   type InternetClientRow,
   type PaidMonthsMap,
 } from "./cobranza";
+import { sendInternetPaymentThankYou } from "@/lib/whatsappAutoNotifier";
 
 const PATH = "/taller-control/cobranza-internet";
 
@@ -295,6 +296,19 @@ export async function markInternetPaid(
     });
   });
 
+  // Enviar automáticamente agradecimiento y confirmación oficial por WhatsApp
+  sendInternetPaymentThankYou({
+    clientName: row.clientName,
+    clientCode: row.clientCode,
+    whatsapp: row.whatsapp,
+    galeria: row.galeria,
+    amount: payAmount,
+    monthKey: formatMonthKeyLabel(key),
+    receiptNumber: finalReceiptNumber,
+    nextPaymentDate: newNextPaymentDateStr,
+    paymentMethod: payMethod,
+  }).catch((e) => console.error("[WhatsApp] Error al enviar agradecimiento:", e));
+
   revalidateAllRelatedPaths();
   return { ok: true, newNextPaymentDate: newNextPaymentDateStr, receiptNumber: finalReceiptNumber };
 }
@@ -529,6 +543,22 @@ export async function toggleInternetClientMonth(
   });
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+
+  // Si se marcó como pagado, enviar automáticamente el agradecimiento por WhatsApp
+  if (shouldBePaid) {
+    sendInternetPaymentThankYou({
+      clientName: row.clientName,
+      clientCode: row.clientCode,
+      whatsapp: row.whatsapp,
+      galeria: row.galeria,
+      amount: payAmount,
+      monthKey: formatMonthKeyLabel(yearMonth),
+      receiptNumber: assignedReceiptNumber,
+      nextPaymentDate: finalNextPaymentDateStr,
+      paymentMethod: payMethod,
+    }).catch((e) => console.error("[WhatsApp] Error al enviar agradecimiento:", e));
+  }
+
   revalidateAllRelatedPaths();
   return { ok: true, newNextPaymentDate: finalNextPaymentDateStr, receiptNumber: assignedReceiptNumber };
 }
@@ -641,6 +671,22 @@ export async function payAdvanceInternetMonths(
   });
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+
+  // Si se registraron adelantos, enviar agradecimiento oficial por WhatsApp
+  if (paidSoFar > 0) {
+    sendInternetPaymentThankYou({
+      clientName: row.clientName,
+      clientCode: row.clientCode,
+      whatsapp: row.whatsapp,
+      galeria: row.galeria,
+      amount: round2(amountPerMonth * paidSoFar),
+      monthKey: `${paidSoFar} mes(es) adelantados (${keysToPay.join(", ")})`,
+      receiptNumber: generatedReceipts[0] || undefined,
+      nextPaymentDate: finalNextPaymentDateStr,
+      paymentMethod: payMethod,
+    }).catch((e) => console.error("[WhatsApp] Error al enviar agradecimiento:", e));
+  }
+
   revalidateAllRelatedPaths();
   return { ok: true, countPaid: paidSoFar, newNextPaymentDate: finalNextPaymentDateStr, receiptNumbers: generatedReceipts };
 }
@@ -751,6 +797,22 @@ export async function updateInternetMonthDetails(
   });
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+
+  // Si se marcó como pagado, enviar automáticamente el agradecimiento por WhatsApp
+  if (details.status === "paid") {
+    sendInternetPaymentThankYou({
+      clientName: row.clientName,
+      clientCode: row.clientCode,
+      whatsapp: row.whatsapp,
+      galeria: row.galeria,
+      amount: payAmount,
+      monthKey: formatMonthKeyLabel(yearMonth),
+      receiptNumber: assignedReceiptNumber,
+      nextPaymentDate: finalNextPaymentDateStr,
+      paymentMethod: payMethod,
+    }).catch((e) => console.error("[WhatsApp] Error al enviar agradecimiento:", e));
+  }
+
   revalidateAllRelatedPaths();
   return { ok: true, newNextPaymentDate: finalNextPaymentDateStr, receiptNumber: assignedReceiptNumber };
 }

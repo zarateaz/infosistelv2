@@ -265,3 +265,70 @@ export async function runAutomatedInternetReminders(options?: {
 
   return result;
 }
+
+/**
+ * Envía un mensaje formal, cálido y hermoso de agradecimiento por WhatsApp al
+ * registrar el pago de un cliente de internet.
+ * Incluye comprobante oficial, fecha del próximo vencimiento y ubicación del taller.
+ */
+export async function sendInternetPaymentThankYou(params: {
+  clientName: string;
+  clientCode?: string | null;
+  whatsapp: string;
+  galeria?: string | null;
+  amount: number;
+  monthKey: string;
+  receiptNumber?: string | null;
+  nextPaymentDate?: string;
+  paymentMethod?: string;
+  gatewayUrl?: string;
+}): Promise<boolean> {
+  const gatewayUrl = params.gatewayUrl || process.env.WHATSAPP_GATEWAY_URL || "http://127.0.0.1:3005";
+  const cleanPhone = params.whatsapp.replace(/\D/g, "");
+  if (!cleanPhone) return false;
+
+  const fullPhone = cleanPhone.length === 9 ? `51${cleanPhone}` : cleanPhone;
+  const codeTxt = params.clientCode ? ` (${params.clientCode})` : "";
+  const ubicationTxt = params.galeria ? ` · ${params.galeria}` : "";
+  const receiptTxt = params.receiptNumber ? `#${params.receiptNumber}` : "Generado en sistema";
+  const amountTxt = `S/. ${params.amount.toFixed(2)}`;
+  const methodTxt = params.paymentMethod || "Yape / Efectivo";
+  const nextDateTxt = params.nextPaymentDate || "Próximo mes";
+
+  const message =
+    `✨ *¡PAGO CONFIRMADO CON ÉXITO! — INFOSISTEL INTERNET* ✨\n\n` +
+    `Estimado(a) *${params.clientName}*${codeTxt}${ubicationTxt}, te saludamos con gran aprecio del equipo de *INFOSISTEL*.\n\n` +
+    `Queremos darte las *¡GRACIAS INFINITAS POR TU PAGO Y PUNTUALIDAD!* 🌟🙌 Tu confianza nos impulsa a brindarte siempre la mejor señal y atención.\n\n` +
+    `📋 *Detalle de tu comprobante oficial:*\n` +
+    `• 🧾 *Recibo Oficial:* ${receiptTxt}\n` +
+    `• 📅 *Mes cancelado:* ${params.monthKey}\n` +
+    `• 💰 *Monto recibido:* ${amountTxt}\n` +
+    `• 💳 *Medio de pago:* ${methodTxt}\n` +
+    `• 📌 *Próximo vencimiento:* ${nextDateTxt}\n\n` +
+    `Tu servicio se encuentra *100% activo y sin interrupciones*. 🚀\n\n` +
+    `_¡Es un honor tenerte como parte de la familia INFOSISTEL! Estamos a tu servicio siempre._ 💙\n\n` +
+    `🏢 *INFOSISTEL · Huancayo*\n` +
+    `📍 Av. Giráldez 274, 1er Nivel Stand B-10`;
+
+  try {
+    const res = await fetch(`${gatewayUrl}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: fullPhone,
+        message,
+      }),
+    });
+
+    if (res.ok) {
+      console.log(`[WhatsApp] Agradecimiento de pago enviado exitosamente a ${params.clientName} (${fullPhone})`);
+      return true;
+    } else {
+      console.warn(`[WhatsApp] No se pudo enviar agradecimiento a ${fullPhone}: HTTP ${res.status}`);
+      return false;
+    }
+  } catch (err: any) {
+    console.warn(`[WhatsApp] Gateway no disponible para enviar agradecimiento:`, err?.message);
+    return false;
+  }
+}
