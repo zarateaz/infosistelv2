@@ -12,9 +12,13 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 
 export async function requireSession() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySessionToken(token) : null;
-  if (!session) redirect("/taller-control/login");
+  if (!session) {
+    cookieStore.delete(SESSION_COOKIE);
+    redirect("/taller-control/login");
+  }
 
   // Brecha V3.3.1/V3.3.3: Invalidación del lado del servidor
   const admin = await prisma.admin.findUnique({
@@ -23,6 +27,7 @@ export async function requireSession() {
   });
 
   if (!admin || admin.tokenVersion !== session.v) {
+    cookieStore.delete(SESSION_COOKIE);
     redirect("/taller-control/login");
   }
 

@@ -1,5 +1,7 @@
 import ServiciosTecnicos from "@/components/servicios-tecnicos/ServiciosTecnicos";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Servicios técnicos | Infosistel",
 };

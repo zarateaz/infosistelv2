@@ -30,19 +30,20 @@ export async function proxy(request: NextRequest) {
   // itself requires a valid session JWT. Uses `jose` (WebCrypto), not
   // Node's `crypto` — this function runs in the Edge runtime.
   if (pathname.startsWith("/taller-control")) {
-    const token = request.cookies.get(SESSION_COOKIE)?.value;
-    const session = token ? await verifySessionToken(token) : null;
-
-    const proto = request.headers.get("x-forwarded-proto") || "https";
-    const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "infosistel.com.pe";
-    const base = `${proto}://${host}`;
-
     if (pathname === "/taller-control/login") {
-      if (session) {
-        return NextResponse.redirect(new URL("/taller-control", base));
+      // Siempre permitir ver la pantalla de login sin ningún bucle de redirección
+    } else {
+      const token = request.cookies.get(SESSION_COOKIE)?.value;
+      const session = token ? await verifySessionToken(token) : null;
+
+      if (!session) {
+        const proto = request.headers.get("x-forwarded-proto") || "https";
+        const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "infosistel.com.pe";
+        const base = `${proto}://${host}`;
+        const res = NextResponse.redirect(new URL("/taller-control/login", base));
+        res.cookies.delete(SESSION_COOKIE);
+        return res;
       }
-    } else if (!session) {
-      return NextResponse.redirect(new URL("/taller-control/login", base));
     }
   }
 
