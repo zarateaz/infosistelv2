@@ -34,9 +34,17 @@ export async function proxy(request: NextRequest) {
     const session = token ? await verifySessionToken(token) : null;
 
     if (pathname === "/taller-control/login") {
-      if (session) return NextResponse.redirect(new URL("/taller-control", request.url));
+      if (session) {
+        const dest = request.nextUrl.clone();
+        dest.pathname = "/taller-control";
+        dest.search = "";
+        return NextResponse.redirect(dest);
+      }
     } else if (!session) {
-      return NextResponse.redirect(new URL("/taller-control/login", request.url));
+      const dest = request.nextUrl.clone();
+      dest.pathname = "/taller-control/login";
+      dest.search = "";
+      return NextResponse.redirect(dest);
     }
   }
 

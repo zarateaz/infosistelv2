@@ -186,6 +186,121 @@ async function main() {
     console.warn(`[Caja] Advertencia al consultar Prisma: ${dbErr?.message}`);
   }
 
+  // 2.5 Recuperar desde la tabla Service de Prisma (cero margen de error)
+  try {
+    const prismaServices = await prisma.service.findMany({
+      include: {
+        technician: true,
+        equipmentType: true,
+        photos: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    console.log(`[Prisma Service] Servicios encontrados en la base de datos: ${prismaServices.length}`);
+
+    for (const ps of prismaServices) {
+      if (serviciosMap.has(ps.id)) continue;
+
+      const num = configMaxNext++;
+      const etapaMap: Record<string, string> = {
+        RECIBIDO: "recibido",
+        REPARANDO: "reparacion",
+        LISTO: "listo",
+        ENTREGADO: "entregado",
+      };
+
+      const pagos: any[] = [];
+      const montoTotal = Number(ps.amount) || 0;
+      const metodoPago = ps.paymentMethod === "YAPE" ? "Yape 1" : "Efectivo";
+
+      if (ps.paymentStatus === "PAGADO" && montoTotal > 0) {
+        pagos.push({
+          id: `pago_${ps.id}`,
+          monto: montoTotal,
+          metodo: metodoPago,
+          fecha: ps.serviceDate ? ps.serviceDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          nota: "Pago registrado",
+        });
+      } else if (ps.paymentStatus === "PARCIAL" && ps.advanceAmount && ps.advanceAmount > 0) {
+        pagos.push({
+          id: `pago_${ps.id}`,
+          monto: Number(ps.advanceAmount) || 0,
+          metodo: ps.advancePaymentMethod === "YAPE" ? "Yape 1" : "Efectivo",
+          fecha: ps.serviceDate ? ps.serviceDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          nota: "Adelanto",
+        });
+      }
+
+      // Normalizar técnico asignado
+      let tecName = "CABALLERO PECHO EDGAR WENCESLAO";
+      const rawTec = (ps.technician?.name || "").toLowerCase();
+      if (rawTec.includes("zarate") || rawTec.includes("angel")) {
+        tecName = "ZARATE AZORZA ANGEL";
+      }
+
+      // Normalizar tipo de equipo
+      let tipoEquipo = ps.equipmentType?.name || "Laptop";
+      const tiposPermitidos = ["Laptop", "PC / CPU", "Impresora", "All In One", "Monitor", "Otro"];
+      if (!tiposPermitidos.includes(tipoEquipo)) {
+        if (/laptop|portatil/i.test(tipoEquipo)) tipoEquipo = "Laptop";
+        else if (/pc|cpu|computadora/i.test(tipoEquipo)) tipoEquipo = "PC / CPU";
+        else if (/impresora/i.test(tipoEquipo)) tipoEquipo = "Impresora";
+        else tipoEquipo = "Otro";
+      }
+
+      const s = {
+        id: ps.id,
+        num,
+        fecha: ps.serviceDate ? ps.serviceDate.toISOString() : ps.createdAt.toISOString(),
+        cliente: {
+          nombre: (ps.clientName || "CLIENTE").trim().toUpperCase(),
+          dni: "",
+          ruc: "",
+          cel: String(ps.clientPhone || "").replace(/\D/g, "").slice(0, 9),
+        },
+        equipo: {
+          tipo: tipoEquipo,
+          marca: (ps.equipmentBrand || "GENÉRICO").trim().toUpperCase(),
+          modelo: ps.equipmentModel || "",
+          serie: "",
+          clave: "",
+          cargador: false,
+          accs: [],
+          obs: ps.description || "",
+          fotos: (ps.photos || []).map((p) => p.path),
+        },
+        falla: (ps.title || "Servicio técnico").trim(),
+        diagnostico: ps.diagnosis || "",
+        solucion: ps.solution || "",
+        costo: {
+          mo: montoTotal,
+          rep: 0,
+        },
+        tecnico: tecName,
+        etapa: etapaMap[ps.equipmentStage] || "recibido",
+        pagos,
+        hist: [
+          {
+            e: etapaMap[ps.equipmentStage] || "recibido",
+            t: ps.serviceDate ? ps.serviceDate.toISOString() : new Date().toISOString(),
+          },
+        ],
+        notas: [],
+        avisos: [],
+        entrega: null,
+        fListo: ps.equipmentStage === "LISTO" || ps.equipmentStage === "ENTREGADO" ? (ps.deliveryDate || ps.updatedAt).toISOString() : null,
+        fEntregado: ps.equipmentStage === "ENTREGADO" ? (ps.deliveryDate || ps.updatedAt).toISOString() : null,
+        creado: ps.createdAt.toISOString(),
+      };
+
+      serviciosMap.set(s.id, s);
+      console.log(`[Prisma Service] Recuperado con éxito: OS-${String(num).padStart(4, "0")} — ${s.cliente.nombre} (${s.falla})`);
+    }
+  } catch (err: any) {
+    console.warn(`[Prisma Service] Error al consultar tabla Service: ${err?.message}`);
+  }
+
   // 3. Consolidar el archivo final
   const serviciosFinales = Array.from(serviciosMap.values()).sort((a, b) => b.num - a.num);
 
