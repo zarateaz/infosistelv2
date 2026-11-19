@@ -18,6 +18,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    if (process.env.WHATSAPP_AUTO_REMINDER_ENABLED !== "true") {
+      return NextResponse.json({
+        ok: true,
+        message: "Recordatorios automáticos suspendidos temporalmente (WHATSAPP_AUTO_REMINDER_ENABLED != 'true').",
+        suspended: true,
+      });
+    }
+
     const searchParams = req.nextUrl.searchParams;
     const dryRun = searchParams.get("dryRun") === "true";
     const includeDueToday = searchParams.get("includeDueToday") !== "false";

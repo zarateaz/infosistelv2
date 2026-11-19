@@ -306,6 +306,16 @@ const server = http.createServer(async (req, res) => {
 let lastTriggerDate = "";
 
 function startDailyCron() {
+  const isEnabled = process.env.WHATSAPP_AUTO_REMINDER_ENABLED === "true";
+  if (!isEnabled) {
+    console.log("==================================================");
+    console.log("[Auto-Reminder] ⏸️ RECORDATORIOS AUTOMÁTICOS SUSPENDIDOS");
+    console.log("[Auto-Reminder] No se enviarán mensajes automáticos a las 9:00 AM.");
+    console.log("[Auto-Reminder] Para reactivarlos en el futuro: WHATSAPP_AUTO_REMINDER_ENABLED=true en .env");
+    console.log("==================================================");
+    return;
+  }
+
   setInterval(async () => {
     try {
       const formatter = new Intl.DateTimeFormat("en-CA", {
