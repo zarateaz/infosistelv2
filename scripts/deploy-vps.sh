@@ -89,8 +89,10 @@ echo "=== Sembrando y verificando obligaciones de Deudas (0 margen de error) ===
 node --env-file=.env ./node_modules/.bin/tsx scripts/seed-deudas.ts || true
 node --env-file=.env ./node_modules/.bin/tsx scripts/seed-pagos-historicos.ts || true
 
-echo "=== Restaurando y asegurando datos de Servicios Técnicos (0 margen de error) ==="
-node --env-file=.env ./node_modules/.bin/tsx scripts/restaurar-servicios-tecnicos.ts || true
+# La restauración de Servicios Técnicos YA NO se ejecuta en cada deploy: reescribía
+# db.json con copias viejas de los respaldos y provocaba ingresos duplicados en Caja.
+# Si alguna vez se necesita, ejecutarla manualmente:
+#   node --env-file=.env ./node_modules/.bin/tsx scripts/restaurar-servicios-tecnicos.ts
 
 # Eliminar cualquier carpeta o symlink 'datos' dentro del repo para que Turbopack no falle
 rm -rf "$APP_DIR/datos" "$APP_DIR/.next/standalone/datos"

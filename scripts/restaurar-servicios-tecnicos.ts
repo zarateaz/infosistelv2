@@ -36,6 +36,22 @@ const CANDIDATE_DIRS = [
   "/data/servicios-tecnicos",
 ];
 
+function marcaTiempo(s: any): number {
+  const t = Date.parse(s?.actualizado || s?.creado || "");
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** true si `a` es una versión más nueva/completa del mismo servicio que `b`. */
+function esMasReciente(a: any, b: any): boolean {
+  const ta = marcaTiempo(a);
+  const tb = marcaTiempo(b);
+  if (ta !== tb) return ta > tb;
+  const pa = Array.isArray(a?.pagos) ? a.pagos : [];
+  const pb = Array.isArray(b?.pagos) ? b.pagos : [];
+  if (pa.length !== pb.length) return pa.length > pb.length;
+  return pa.filter((p: any) => p?.cajaId).length > pb.filter((p: any) => p?.cajaId).length;
+}
+
 async function main() {
   console.log("==========================================================");
   console.log("🛠️  RESTAURACIÓN Y RECUPERACIÓN DE SERVICIOS TÉCNICOS");
@@ -73,7 +89,10 @@ async function main() {
             if (Array.isArray(parsed.servicios)) {
               for (const s of parsed.servicios) {
                 if (s && s.id) {
-                  serviciosMap.set(s.id, s);
+                  // No pisar una versión más reciente con una copia vieja de un respaldo:
+                  // eso borraba los `cajaId` y los pagos nuevos (bug del 18/11/2026).
+                  const prev = serviciosMap.get(s.id);
+                  if (!prev || esMasReciente(s, prev)) serviciosMap.set(s.id, s);
                   if (Number(s.num) >= configMaxNext) {
                     configMaxNext = Number(s.num) + 1;
                   }
@@ -221,6 +240,7 @@ async function main() {
           metodo: metodoPago,
           fecha: ps.serviceDate ? ps.serviceDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
           nota: "Pago registrado",
+          legado: true, // Pago histórico: ya estaba contabilizado, NO va a Caja
         });
       } else if (ps.paymentStatus === "PARCIAL" && ps.advanceAmount && ps.advanceAmount > 0) {
         pagos.push({
@@ -229,6 +249,7 @@ async function main() {
           metodo: ps.advancePaymentMethod === "YAPE" ? "Yape 1" : "Efectivo",
           fecha: ps.serviceDate ? ps.serviceDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
           nota: "Adelanto",
+          legado: true, // Pago histórico: ya estaba contabilizado, NO va a Caja
         });
       }
 

@@ -129,24 +129,5 @@ export async function eliminarIngresosDeServicio(servicio: any): Promise<void> {
   }
 }
 
-/**
- * Sincroniza pagos históricos o existentes que aún no tengan ID de Caja asignado.
- */
-export async function sincronizarPagosFaltantes(
-  servicios: any[],
-  cfg: any
-): Promise<number> {
-  let sincronizados = 0;
-  for (const s of servicios || []) {
-    for (const p of s.pagos || []) {
-      if (!p.cajaId && Number(p.monto) > 0) {
-        const id = await sincronizarIngresoCaja({ servicio: s, pago: p, cfg });
-        if (id) {
-          p.cajaId = id;
-          sincronizados++;
-        }
-      }
-    }
-  }
-  return sincronizados;
-}
+// NOTA: se eliminó `sincronizarPagosFaltantes`. Re-sincronizar pagos históricos
+// sin `cajaId` creaba ingresos duplicados en Caja (bug del 18/11/2026).

@@ -235,6 +235,10 @@ export async function markInternetPaid(
 
   const [ny, nm] = nextPayStr.split("-").map(Number);
   const key = `${ny}-${String(nm).padStart(2, "0")}`;
+  if (map[key]?.status === "paid") {
+    // Evita doble registro (doble clic / dos pestañas): el mes ya figura pagado.
+    return { ok: false, error: `El mes ${formatMonthKeyLabel(key)} ya está registrado como pagado.` };
+  }
   const todayStr = todayInputValue();
   const paidAtStr = options?.paidAt || todayStr;
   const paidDate = parseDateInput(paidAtStr) ?? parseDateInput(todayStr)!;
@@ -544,8 +548,8 @@ export async function toggleInternetClientMonth(
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
 
-  // Si se marcó como pagado, enviar automáticamente el agradecimiento por WhatsApp
-  if (shouldBePaid) {
+  // Si se marcó como pagado (y antes no lo estaba), enviar el agradecimiento por WhatsApp
+  if (shouldBePaid && !currentlyPaid) {
     sendInternetPaymentThankYou({
       clientName: row.clientName,
       clientCode: row.clientCode,
@@ -715,6 +719,7 @@ export async function updateInternetMonthDetails(
   const nextPayStr = dateToInputValue(row.nextPaymentDate);
   const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
   const existingTxId = map[yearMonth]?.cashboxTransactionId;
+  const wasPaid = map[yearMonth]?.status === "paid";
   const payAmount = round2(details.amount);
   const payMethod = normalizeInternetPaymentMethod(details.method);
   const todayStr = todayInputValue();
@@ -754,8 +759,10 @@ export async function updateInternetMonthDetails(
             notes: buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`),
           },
         });
-      } else if (syncToCashbox && payAmount > 0) {
-        // Crear nuevo movimiento si no tenía
+      } else if (!wasPaid && syncToCashbox && payAmount > 0) {
+        // Crear nuevo movimiento solo si el mes pasa de "no pagado" a "pagado".
+        // Si ya estaba pagado sin movimiento enlazado (pago histórico registrado a mano
+        // en Caja), editar sus detalles NO debe generar un ingreso duplicado.
         const monthLabel = formatMonthKeyLabel(yearMonth);
         const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
         const notes = buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
@@ -798,8 +805,8 @@ export async function updateInternetMonthDetails(
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
 
-  // Si se marcó como pagado, enviar automáticamente el agradecimiento por WhatsApp
-  if (details.status === "paid") {
+  // Solo enviar agradecimiento si el mes pasó a pagado (no al editar uno ya pagado)
+  if (details.status === "paid" && !wasPaid) {
     sendInternetPaymentThankYou({
       clientName: row.clientName,
       clientCode: row.clientCode,

@@ -893,6 +893,7 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
               receiptNumber: payment.receiptNumber,
               syncToCashbox: payment.syncToCashbox,
             });
+            if (!res.ok) throw new Error(res.error || "No se pudo registrar el pago.");
             return { receiptNumber: res.receiptNumber };
           }}
         />

@@ -514,6 +514,7 @@ export function ClientYearlyMonthsView({
               receiptNumber: payment.receiptNumber,
               syncToCashbox: payment.syncToCashbox,
             });
+            if (!res.ok) throw new Error(res.error || "No se pudo registrar el pago.");
             if (res.ok) {
               showToast(
                 `✓ ${payingMonthInfo.monthName} marcado como PAGADO e ingresado a Caja (${payment.method})`
@@ -545,6 +546,7 @@ export function ClientYearlyMonthsView({
               note: payment.note,
               syncToCashbox: payment.syncToCashbox,
             });
+            if (!res.ok) throw new Error(res.error || "No se pudo registrar el pago.");
             if (res.ok) {
               showToast(
                 `🎉 ¡${res.countPaid ?? count} mes(es) pagados por adelantado e ingresados a Caja (${payment.method})!`

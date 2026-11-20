@@ -2,23 +2,18 @@
 import { obtenerTodo, modificar } from '../../../lib/servicios-tecnicos/store';
 import { tieneAcceso, sinAcceso } from '../../../lib/servicios-tecnicos/acceso';
 import { validarDatos, limpiarDatos, limpiarPago, uid, code } from '../../../lib/servicios-tecnicos/logic';
-import { sincronizarIngresoCaja, sincronizarPagosFaltantes } from '../../../lib/servicios-tecnicos/cajaSync';
+import { sincronizarIngresoCaja } from '../../../lib/servicios-tecnicos/cajaSync';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
   if (!(await tieneAcceso(req))) return sinAcceso();
-  const todo = await obtenerTodo();
-  // Sincroniza a Caja cualquier pago existente que aún no tenga ID de transacción
-  const hayFaltantes = (todo.servicios || []).some((s) => (s.pagos || []).some((p) => !p.cajaId && +p.monto > 0));
-  if (hayFaltantes) {
-    await modificar(async (d) => {
-      await sincronizarPagosFaltantes(d.servicios, d.cfg);
-    });
-    return Response.json(await obtenerTodo());
-  }
-  return Response.json(todo);
+  // IMPORTANTE: aquí NO se sincroniza nada con Caja. Antes, cada GET creaba un
+  // ingreso en Caja por cada pago sin `cajaId`; tras la restauración de servicios
+  // antiguos (18/11/2026) eso duplicó ingresos en EFECTIVO / YAPE 1 / YAPE 2.
+  // Los pagos se registran en Caja solo en el momento en que se cobran (POST / PATCH).
+  return Response.json(await obtenerTodo());
 }
 
 export async function POST(req) {
