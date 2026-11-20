@@ -38,6 +38,21 @@ async function main() {
     orderBy: { createdAt: "asc" },
   });
 
+  if (process.argv.includes("--listar")) {
+    console.log("Todos los movimientos activos creados desde esa fecha (para comparar con el Yape real):\n");
+    for (const tx of recientes) {
+      console.log(
+        `${tx.paymentMethod.padEnd(9)} fecha ${utcDay(tx.date)} creado ${limaDay(tx.createdAt)} ${tx.createdAt.toISOString().slice(11, 19)}Z  ${tx.type === "INCOME" ? "+" : "-"}${money(tx.amount).padEnd(12)} ${tx.description}`
+      );
+    }
+    const activos = await prisma.cashboxTransaction.findMany({ where: { deletedAt: null } });
+    const saldo: Record<string, number> = {};
+    for (const t of activos) saldo[t.paymentMethod] = (saldo[t.paymentMethod] || 0) + (t.type === "INCOME" ? t.amount : -t.amount);
+    console.log("\nSaldo histórico total por cuenta:");
+    for (const [m, v] of Object.entries(saldo)) console.log(`  ${m.padEnd(9)} ${money(v)}`);
+    console.log("");
+  }
+
   const sospechosos = new Map<string, { tx: (typeof recientes)[number]; motivo: string }>();
 
   // A) Auto-sync retroactivo de Servicios Técnicos
