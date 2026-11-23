@@ -51,6 +51,8 @@ async function startWhatsApp() {
     printQRInTerminal: false,
     generateHighQualityLinkPreview: true,
     browser: ["Infosistel Web", "Chrome", "1.0.0"],
+    // No mostrar el número como "en línea" a los contactos: el gateway solo envía avisos.
+    markOnlineOnConnect: false,
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -93,6 +95,8 @@ async function startWhatsApp() {
       }
     } else if (connection === "open") {
       isConnected = true;
+      // Asegurar estado "no disponible" (sin "en línea" ni "última vez" activo por el gateway)
+      sock?.sendPresenceUpdate("unavailable").catch(() => {});
       currentQR = null;
       userPhone = sock?.user?.id?.split(":")[0] || sock?.user?.id || null;
       console.log("\n==================================================");
@@ -127,6 +131,7 @@ async function startWhatsApp() {
           const aiReply = await answerCustomerQuery(text, msg.pushName || undefined);
           if (aiReply && sock) {
             await sock.sendMessage(sender, { text: aiReply });
+            sock.sendPresenceUpdate("unavailable").catch(() => {});
             console.log(`[WhatsApp Gateway] Respuesta enviada vía DeepSeek a ${sender}`);
           }
         }
@@ -263,6 +268,7 @@ const server = http.createServer(async (req, res) => {
         const formattedJid = `${cleanPhone}@s.whatsapp.net`;
 
         const sent = await sock!.sendMessage(formattedJid, { text: String(message) });
+        sock!.sendPresenceUpdate("unavailable").catch(() => {});
 
         console.log(`[WhatsApp Gateway] Mensaje enviado a ${cleanPhone} (ID: ${sent?.key?.id})`);
 
