@@ -16,7 +16,7 @@ import {
   Maximize2,
   Minimize2,
 } from "lucide-react";
-import { lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
+import { findProductPhotos, lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
 import { decodeBarcodeFromFile } from "./barcodeFromImage";
@@ -25,22 +25,36 @@ import type { ProductSummary } from "@/lib/duplicateDetection";
 const previewUrl = (url: string) =>
   url.startsWith("/") ? url : `/api/image-proxy?url=${encodeURIComponent(url)}`;
 
-async function resizeImageForRecognition(file: File, maxDim = 1600, quality = 0.85): Promise<string> {
+/**
+ * Reduce la foto hasta que su data URL quepa en `maxChars` (base64). Los proxys
+ * (Nginx) rechazan por defecto peticiones de más de 1 MB, y una foto de celular
+ * de 1600px con mucho detalle lo supera: por eso se ajusta calidad y tamaño
+ * hasta entrar en el presupuesto, manteniendo el texto impreso legible.
+ */
+async function resizeImageForRecognition(file: File, maxChars = 800_000): Promise<string> {
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas 2d context unavailable");
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
-
-    return canvas.toDataURL("image/jpeg", quality);
+    try {
+      let best = "";
+      for (const maxDim of [1600, 1400, 1200, 1000, 850, 700]) {
+        const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("canvas 2d context unavailable");
+        ctx.drawImage(bitmap, 0, 0, width, height);
+        for (const quality of [0.85, 0.75, 0.65]) {
+          best = canvas.toDataURL("image/jpeg", quality);
+          if (best.length <= maxChars) return best;
+        }
+      }
+      return best;
+    } finally {
+      bitmap.close();
+    }
   } catch {
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -49,6 +63,17 @@ async function resizeImageForRecognition(file: File, maxDim = 1600, quality = 0.
       reader.readAsDataURL(file);
     });
   }
+}
+
+/** Total base64 budget for all photos of one recognition request (stays under a 1 MB proxy limit). */
+const PHOTO_BUDGET_CHARS = 880_000;
+
+function friendlyActionError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  if (/server action|failed to find|deployment/i.test(msg)) {
+    return "La página quedó desactualizada después de una actualización del sistema. Recárgala (desliza hacia abajo o F5) e intenta de nuevo.";
+  }
+  return "No se pudo conectar con el servidor. Revisa tu internet; si sigue fallando, recarga la página e intenta con 1 sola foto.";
 }
 
 export interface ScanFill {
@@ -122,6 +147,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const [lastRefTokens, setLastRefTokens] = useState<string[] | undefined>();
   const [photoBarcode, setPhotoBarcode] = useState<string | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [photoSearchFailed, setPhotoSearchFailed] = useState(false);
 
   const [isEnlargedPicker, setIsEnlargedPicker] = useState(true);
   const [zoomModalUrl, setZoomModalUrl] = useState<string | null>(null);
@@ -287,6 +314,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     setMatchReason(null);
     setPhotoBarcode(null);
     setPhotoCount(files.length);
+    setPhotoSearchFailed(false);
     setLastRefTokens(undefined);
     setBarcodeStatus({ kind: "idle" });
     setImageOptions([]);
@@ -295,6 +323,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
 
     try {
       // 1) Código de barras leído EXACTO desde la(s) foto(s), sin IA
+      const perPhoto = Math.floor(PHOTO_BUDGET_CHARS / files.length);
       const [decoded, dataUrls] = await Promise.all([
         (async () => {
           for (const f of files) {
@@ -303,7 +332,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           }
           return null;
         })(),
-        Promise.all(files.map((f) => resizeImageForRecognition(f))),
+        Promise.all(files.map((f) => resizeImageForRecognition(f, perPhoto))),
       ]);
       if (decoded) {
         setPhotoBarcode(decoded);
@@ -311,7 +340,17 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       }
 
       // 2) IA: lectura del texto impreso + comparación contra el catálogo
-      const result = await recognizeProductImage(dataUrls, decoded ?? undefined);
+      let result: Awaited<ReturnType<typeof recognizeProductImage>>;
+      try {
+        result = await recognizeProductImage(dataUrls, decoded ?? undefined);
+      } catch (firstErr) {
+        if (/server action|failed to find|deployment/i.test(String((firstErr as Error)?.message ?? ""))) throw firstErr;
+        // Reintento automático con fotos más livianas (red lenta / límite de tamaño)
+        const lighter = await Promise.all(
+          files.map((f) => resizeImageForRecognition(f, Math.floor(perPhoto / 2.5)))
+        );
+        result = await recognizeProductImage(lighter, decoded ?? undefined);
+      }
       if (result.error) {
         setImageStatus({ kind: "error", message: result.error });
         return;
@@ -347,20 +386,39 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       setImageStatus({ kind: "done" });
       if (result.name) setManualSearchQuery(result.name);
 
-      if (result.appliedLocalImages && result.appliedLocalImages.length > 0) {
-        setImageOptions(result.appliedLocalImages);
-        setSelectedUrls(result.appliedLocalImages.slice(0, MAX_PICKS));
-        setPicksApplied(true);
-      } else if (result.imageOptions && result.imageOptions.length > 0) {
-        const initialPicks = result.imageOptions.slice(0, MAX_PICKS);
-        setImageOptions(result.imageOptions);
-        setSelectedUrls(initialPicks);
-        await handleConfirmSelection(initialPicks);
+      // 3) Las 4 fotos del producto se buscan en una llamada aparte (respuesta rápida arriba)
+      setPhotosLoading(true);
+      try {
+        const photos = await findProductPhotos({
+          name: result.name ?? "",
+          category: result.category,
+          queries: result.photoSearch?.queries,
+          negativeKeywords: result.photoSearch?.negativeKeywords,
+          fallbackRefToken: result.refTokens?.[0],
+        });
+        if (photos.appliedLocalImages.length > 0) {
+          const [cover, ...gallery] = photos.appliedLocalImages;
+          onFill({ image: cover, images: gallery });
+          const extra = photos.imageOptions.filter((u) => !photos.appliedLocalImages.includes(u));
+          setImageOptions([...photos.appliedLocalImages, ...extra]);
+          setSelectedUrls(photos.appliedLocalImages.slice(0, MAX_PICKS));
+          setPicksApplied(true);
+        } else if (photos.imageOptions.length > 0) {
+          const initialPicks = photos.imageOptions.slice(0, MAX_PICKS);
+          setImageOptions(photos.imageOptions);
+          setSelectedUrls(initialPicks);
+          await handleConfirmSelection(initialPicks);
+        }
+      } catch {
+        // Las fotos son opcionales: el producto ya está reconocido; se pueden buscar a mano abajo.
+        setPhotoSearchFailed(true);
+      } finally {
+        setPhotosLoading(false);
       }
-    } catch {
+    } catch (err) {
       setImageStatus({
         kind: "error",
-        message: "No se pudo procesar la imagen. Revisa tu conexión e intenta de nuevo.",
+        message: friendlyActionError(err),
       });
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -572,10 +630,23 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         </div>
       )}
 
-      {imageStatus.kind === "done" && (
+      {imageStatus.kind === "done" && photosLoading && (
+        <p className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-accent">
+          <Loader2 size={16} className="animate-spin" />
+          Producto reconocido. Buscando las 4 mejores fotos del producto…
+        </p>
+      )}
+      {imageStatus.kind === "done" && !photosLoading && (
         <p className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
           <CheckCircle2 size={16} />
-          ¡Campos y {selectedUrls.length} fotos rellenados con éxito! Ya están listos para guardar.
+          {selectedUrls.length > 0
+            ? `¡Campos y ${selectedUrls.length} foto${selectedUrls.length === 1 ? "" : "s"} listos! Revisa el precio y guarda.`
+            : "¡Campos listos! Revisa el precio y guarda."}
+        </p>
+      )}
+      {imageStatus.kind === "done" && !photosLoading && photoSearchFailed && (
+        <p className="mt-1 text-xs font-medium text-amber-700">
+          No se pudieron traer fotos de internet en este momento. Puedes subir una foto manualmente abajo.
         </p>
       )}
       {imageStatus.kind === "error" && (
@@ -588,7 +659,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
             <div>
               <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg">
                 <ImageIcon size={14} className="text-accent" />
-                4 fotos del producto generadas ({selectedUrls.length} de {MAX_PICKS} activas)
+                Fotos del producto ({selectedUrls.length} de {MAX_PICKS} elegidas)
               </p>
               <p className="text-[11px] text-fg-muted mt-0.5">
                 La foto #1 es la portada principal; las otras 3 quedan en la galería del producto.

@@ -6,7 +6,7 @@ import { deepseek } from "@ai-sdk/deepseek";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { loadProductThumb } from "@/lib/productThumbs";
-import { loadRefThumbs, savePendingRefPhoto } from "@/lib/productRefPhotos";
+import { loadRefThumbs, readPendingRefPhoto, savePendingRefPhoto } from "@/lib/productRefPhotos";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
 import {
@@ -20,7 +20,8 @@ import {
   type RankedCandidate,
 } from "@/lib/duplicateDetection";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
-import { downloadTopProductImages } from "./upload-actions";
+import { deleteProductImageIfManaged, downloadTopProductImages, uploadProductImage } from "./upload-actions";
+import sharp from "sharp";
 
 export interface BarcodeLookupResult {
   existingProductId?: string;
@@ -295,6 +296,8 @@ export interface RecognizeImageResult {
   possibleMatches?: ProductSummary[];
   /** Tokens of the admin's photos, saved as pending reference photos until confirmed */
   refTokens?: string[];
+  /** New product: queries for the follow-up findProductPhotos() call */
+  photoSearch?: { queries: string[]; negativeKeywords?: string[] };
   error?: string;
 }
 
@@ -390,12 +393,16 @@ ${listText}
   });
 
   const attempts = withRefs.length > textOnly.length ? [withRefs, textOnly] : [textOnly];
+  // Un solo presupuesto de tiempo para ambos intentos (nunca exceder el límite del proxy)
+  const verifySignal = AbortSignal.timeout(20_000);
   for (const content of attempts) {
+    if (verifySignal.aborted) break;
     try {
       const { object } = await generateObject({
         model: deepseek(VISION_MODEL),
         schema,
         messages: [{ role: "user", content }],
+        abortSignal: verifySignal,
       });
       const index = object.matchNumber >= 1 ? object.matchNumber - 1 : -1;
       return {
@@ -502,6 +509,7 @@ export async function recognizeProductImage(
 
     const { object } = await generateObject({
       model: deepseek(VISION_MODEL),
+      abortSignal: AbortSignal.timeout(28_000),
       schema: z.object({
         brand: z
           .string()
@@ -699,30 +707,12 @@ Las fotos las toma el administrador con el celular: producto en la mano, dentro 
       possibleMatches = ordered.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true))).slice(0, 4);
     }
 
-    // ── PASO 5: producto nuevo → buscar y descargar 4 fotos ──────────────
-    const queries = [
-      ...(object.searchQueries ?? []),
-      `${cleanName} product`,
-      cleanName,
-    ].filter(Boolean);
-
-    const candidateUrls = await searchProductImages({
-      queries,
-      negativeKeywords: object.negativeKeywords,
-      productName: cleanName,
-      category: categoryInSpanish,
-      max: 10,
-    }).catch((err) => {
-      console.error("[scan-actions] searchProductImages threw unexpectedly:", err);
-      return [];
-    });
-
-    // Pre-download top 4 valid images through sharp right away (with the admin's first photo as fallback)
-    const downloaded = await downloadTopProductImages(
-      candidateUrls,
-      4,
-      `data:${photos[0].mime};base64,${photos[0].base64}`
-    );
+    // ── PASO 5: producto nuevo → las 4 fotos se buscan en una llamada aparte
+    //    (findProductPhotos) para que esta respuesta sea rápida y nunca exceda
+    //    el tiempo límite del proxy.
+    const queries = Array.from(
+      new Set([...(object.searchQueries ?? []), `${cleanName} product`, cleanName].filter(Boolean))
+    ).slice(0, 6);
 
     return {
       name: cleanName,
@@ -733,16 +723,149 @@ Las fotos las toma el administrador con el celular: producto en la mano, dentro 
       price: 0,
       costPrice: 0,
       stock: object.detectedStock ?? 1,
-      image: downloaded.cover,
-      images: downloaded.gallery,
-      appliedLocalImages: downloaded.allPaths,
-      imageOptions: candidateUrls.length > 0 ? candidateUrls : undefined,
       possibleMatches: possibleMatches.length > 0 ? possibleMatches : undefined,
       refTokens,
+      photoSearch: { queries, negativeKeywords: object.negativeKeywords },
     };
   } catch (err) {
     console.error("[scan-actions] recognizeProductImage failed:", err);
     return { error: "No se pudo procesar la imagen. Intenta con otra foto más clara." };
+  }
+}
+
+export interface ProductPhotosResult {
+  /** Local paths [cover, ...gallery] already downloaded and re-encoded */
+  appliedLocalImages: string[];
+  /** All candidate URLs found (to let the admin pick others) */
+  imageOptions: string[];
+}
+
+/**
+ * Busca y descarga las 4 mejores fotos de catálogo para un producto NUEVO.
+ * Si internet no da 4 fotos válidas, completa con la foto que tomó el admin
+ * (por su token de foto pendiente), para que el producto nunca quede sin foto.
+ */
+export async function findProductPhotos(input: {
+  name: string;
+  category?: string;
+  queries?: string[];
+  negativeKeywords?: string[];
+  fallbackRefToken?: string;
+}): Promise<ProductPhotosResult> {
+  const name = String(input.name ?? "").trim().slice(0, 160);
+  if (!name) return { appliedLocalImages: [], imageOptions: [] };
+
+  let ip = "127.0.0.1";
+  try {
+    ip = getClientIP(await headers());
+  } catch {}
+  const rateCheck = checkRateLimit(rateLimitKey("product-photos", ip), 40, 5 * 60 * 1000);
+  if (!rateCheck.allowed) return { appliedLocalImages: [], imageOptions: [] };
+
+  const queries = (Array.isArray(input.queries) ? input.queries : [])
+    .filter((q): q is string => typeof q === "string")
+    .map((q) => q.slice(0, 160))
+    .slice(0, 6);
+  const candidateUrls = await searchProductImages({
+    queries: queries.length > 0 ? queries : [name, `${name} product`],
+    negativeKeywords: Array.isArray(input.negativeKeywords)
+      ? input.negativeKeywords.filter((k): k is string => typeof k === "string").slice(0, 20)
+      : undefined,
+    productName: name,
+    category: typeof input.category === "string" ? input.category : undefined,
+    max: 12,
+  }).catch((err) => {
+    console.error("[scan-actions] findProductPhotos search failed:", err);
+    return [] as string[];
+  });
+
+  const adminPhoto = input.fallbackRefToken ? await readPendingRefPhoto(input.fallbackRefToken) : null;
+  const fallbackDataUrl = adminPhoto ? `data:image/webp;base64,${adminPhoto.toString("base64")}` : undefined;
+
+  // Descarga hasta 8 candidatas y deja que la IA elija SOLO las del mismo producto y variante
+  const pool = await downloadTopProductImages(candidateUrls, 6);
+  const approved = await pickMatchingPhotos(name, pool.allPaths, adminPhoto);
+
+  let finalPaths: string[];
+  if (approved) {
+    finalPaths = approved.slice(0, 4);
+  } else {
+    // IA no disponible → orden del buscador de texto
+    finalPaths = pool.allPaths.slice(0, 4);
+  }
+  // Borrar del disco las descargadas que no se usan
+  await Promise.all(pool.allPaths.filter((p) => !finalPaths.includes(p)).map((p) => deleteProductImageIfManaged(p)));
+
+  if (finalPaths.length < 4 && fallbackDataUrl) {
+    const own = await uploadProductImage(fallbackDataUrl);
+    if (own.path) finalPaths.push(own.path);
+  }
+
+  const used = new Set(pool.validSourceUrls);
+  return {
+    appliedLocalImages: finalPaths,
+    imageOptions: candidateUrls.filter((u) => !used.has(u)),
+  };
+}
+
+/**
+ * La IA compara las fotos descargadas de internet con la foto del admin (o con el
+ * nombre si no hay foto) y devuelve, en orden (mejor portada primero), solo las que
+ * muestran EXACTAMENTE el mismo producto y variante (color, aroma, capacidad, W...).
+ * null = la IA no respondió.
+ */
+async function pickMatchingPhotos(
+  name: string,
+  paths: string[],
+  adminPhoto: Buffer | null
+): Promise<string[] | null> {
+  if (paths.length === 0) return [];
+  if (!process.env.DEEPSEEK_API_KEY) return null;
+  const thumbs = await Promise.all(paths.map((p) => loadProductThumb(p, 256)));
+  const usable = paths.map((p, i) => ({ path: p, thumb: thumbs[i] })).filter((x): x is { path: string; thumb: string } => !!x.thumb);
+  if (usable.length === 0) return [];
+
+  let adminJpg: string | null = null;
+  if (adminPhoto) {
+    try {
+      adminJpg = (await sharp(adminPhoto).resize(512, 512, { fit: "inside" }).jpeg({ quality: 72 }).toBuffer()).toString("base64");
+    } catch {}
+  }
+
+  const content: Part[] = [
+    {
+      type: "text",
+      text: `Producto: "${name}".
+${adminJpg ? "La PRIMERA imagen es la foto real del producto tomada en la tienda." : ""}
+Después vienen ${usable.length} fotos candidatas descargadas de internet, numeradas.
+Elige SOLO las candidatas que muestran EXACTAMENTE este mismo producto y la misma variante: misma marca, mismo modelo, mismo color/aroma/sabor, misma capacidad/potencia/medida. Descarta otras variantes de la misma marca (otro color, otro aroma, otra potencia), otros productos, logos, banners, collages, capturas de tiendas con texto encima o fotos borrosas.
+Ordénalas de mejor a peor: primero la mejor para portada (producto completo, de frente, fondo limpio).`,
+    },
+  ];
+  if (adminJpg) content.push({ type: "file", data: adminJpg, mediaType: "image/jpeg" });
+  usable.forEach((u, i) => {
+    content.push({ type: "text", text: `Candidata ${i + 1}:` });
+    content.push({ type: "file", data: u.thumb, mediaType: "image/jpeg" });
+  });
+
+  try {
+    const { object } = await generateObject({
+      model: deepseek(VISION_MODEL),
+      schema: z.object({
+        approved: z
+          .array(z.number().int())
+          .describe("Números de las candidatas correctas, de mejor a peor. Vacío si ninguna es correcta."),
+      }),
+      messages: [{ role: "user", content }],
+      abortSignal: AbortSignal.timeout(22_000),
+    });
+    const seen = new Set<number>();
+    return object.approved
+      .filter((n) => n >= 1 && n <= usable.length && !seen.has(n) && (seen.add(n), true))
+      .map((n) => usable[n - 1].path);
+  } catch (err) {
+    console.error("[scan-actions] pickMatchingPhotos failed:", err);
+    return null;
   }
 }
 

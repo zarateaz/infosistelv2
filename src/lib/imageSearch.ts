@@ -389,7 +389,8 @@ export function evaluateCandidateWithLinearAlgebra(
   candidate: { title: string; url: string },
   targetVector: Map<string, number>,
   negativeRegex: RegExp | null,
-  additionalNegativeTerms?: string[]
+  additionalNegativeTerms?: string[],
+  productAnchors?: Set<string>
 ): { accepted: boolean; cosine: number; reason?: string } {
   const fullText = `${candidate.title} ${candidate.url}`;
   const tokens = tokenizeForVectorSpace(fullText);
@@ -421,7 +422,11 @@ export function evaluateCandidateWithLinearAlgebra(
   // 3. Invariante Estricto de Dominio Físico de Hardware:
   // Todo producto tecnológico DEBE contener al menos un término ancla del dominio físico.
   const hasHardwareAnchor = tokens.some((t) => HARDWARE_DOMAIN_ANCHORS.has(t));
-  if (!hasHardwareAnchor) {
+  // La tienda también vende productos que no son de cómputo (limpieza, útiles, etc.):
+  // se acepta si la imagen menciona al menos 2 palabras distintivas del propio producto
+  // (marca, tipo, variante), p.ej. "dkasa" + "limpiatodo".
+  const productAnchorHits = productAnchors ? new Set(tokens.filter((t) => productAnchors.has(t))).size : 0;
+  if (!hasHardwareAnchor && productAnchorHits < 2) {
     return { accepted: false, cosine, reason: "sin_ancla_de_hardware" };
   }
 
@@ -442,6 +447,11 @@ function buildNegativeRegex(negativeKeywords?: string[]): RegExp | null {
   if (valid.length === 0) return null;
   return new RegExp(`\\b(${valid.join("|")})\\b`, "i");
 }
+
+const PRODUCT_ANCHOR_STOPWORDS = new Set([
+  "para", "con", "producto", "product", "nuevo", "original", "color", "tipo", "unidad", "pack",
+  "negro", "blanco", "azul", "rojo", "verde", "gris", "black", "white", "blue", "with", "from",
+]);
 
 export interface InternalImageCandidate {
   url: string;
@@ -827,6 +837,13 @@ export async function searchProductImages(
   // Construir el vector objetivo del producto en R^D
   const targetVector = buildProductTargetVector(baseTargetName, category, sanitizedQueries);
   const negRegex = buildNegativeRegex(negKeywords);
+  const productAnchors = new Set(
+    tokenizeForVectorSpace(baseTargetName).filter(
+      (t) => t.length >= 4 && !/^\d+$/.test(t) && !PRODUCT_ANCHOR_STOPWORDS.has(t)
+    )
+  );
+  // Presupuesto total de tiempo: la búsqueda nunca debe colgar el reconocimiento
+  const deadline = Date.now() + 22_000;
 
   const rawCandidates: InternalImageCandidate[] = [];
   const candidateUrlsSeen = new Set<string>();
@@ -848,7 +865,7 @@ export async function searchProductImages(
   // Pass 2: Si aún hay pocos candidatos, expandir con consultas adicionales
   if (rawCandidates.length < limit * 2 && sanitizedQueries.length > 3) {
     for (const q of sanitizedQueries.slice(3)) {
-      if (rawCandidates.length >= limit * 3) break;
+      if (rawCandidates.length >= limit * 3 || Date.now() > deadline) break;
       const list = await searchCandidatesForQuery(q, limit);
       for (const c of list) {
         if (!candidateUrlsSeen.has(c.url)) {
@@ -863,7 +880,7 @@ export async function searchProductImages(
   if (rawCandidates.length < limit * 2 && sanitizedQueries[0]) {
     const expansions = deriveBroaderQueries(sanitizedQueries[0]);
     for (const expQ of expansions) {
-      if (rawCandidates.length >= limit * 3) break;
+      if (rawCandidates.length >= limit * 3 || Date.now() > deadline) break;
       const list = await searchCandidatesForQuery(expQ, limit);
       for (const c of list) {
         if (!candidateUrlsSeen.has(c.url)) {
@@ -882,7 +899,8 @@ export async function searchProductImages(
       cand,
       targetVector,
       negRegex,
-      negKeywords
+      negKeywords,
+      productAnchors
     );
     if (evaluation.accepted) {
       verifiedCandidates.push({

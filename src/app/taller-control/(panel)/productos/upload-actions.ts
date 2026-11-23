@@ -173,8 +173,13 @@ export async function downloadTopProductImages(
   const validSourceUrls: string[] = [];
 
   // Process candidates in batches of 5 in parallel for speed without overwhelming bandwidth
-  const batchSize = 5;
-  for (let i = 0; i < candidateUrls.length && allPaths.length < targetCount; i += batchSize) {
+  const batchSize = 6;
+  const deadline = Date.now() + 25_000;
+  for (
+    let i = 0;
+    i < candidateUrls.length && allPaths.length < targetCount && Date.now() < deadline;
+    i += batchSize
+  ) {
     const batch = candidateUrls.slice(i, i + batchSize);
     const results = await Promise.all(
       batch.map(async (url) => {

@@ -174,3 +174,13 @@ export async function deleteRefPhotos(productId: string): Promise<void> {
     await rm(await productDir(productId), { recursive: true, force: true });
   } catch {}
 }
+
+/** Reads a pending (not yet confirmed) photo, e.g. to use it as a product photo fallback. */
+export async function readPendingRefPhoto(token: string): Promise<Buffer | null> {
+  if (!TOKEN_RE.test(token)) return null;
+  try {
+    return await readFile(path.join(/*turbopackIgnore: true*/ await pendingDir(), `${token}.webp`));
+  } catch {
+    return null;
+  }
+}
