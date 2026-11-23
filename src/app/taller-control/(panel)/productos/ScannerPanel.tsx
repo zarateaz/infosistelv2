@@ -19,6 +19,7 @@ import {
 import { lookupBarcode, recognizeProductImage, searchImagesManually } from "./scan-actions";
 import { downloadProductImageFromUrl } from "./upload-actions";
 import { CameraScanner } from "./CameraScanner";
+import { decodeBarcodeFromFile } from "./barcodeFromImage";
 import type { ProductSummary } from "@/lib/duplicateDetection";
 
 const previewUrl = (url: string) =>
@@ -65,6 +66,8 @@ export interface ScanFill {
   ignoreIds?: string[];
   /** true while similar products are shown and the admin hasn't decided yet */
   pendingReview?: boolean;
+  /** Admin's photos saved as pending reference photos; attached to the product on save */
+  refTokens?: string[];
 }
 
 function parseGallery(images: ProductSummary["images"]): string[] | undefined {
@@ -77,7 +80,7 @@ function parseGallery(images: ProductSummary["images"]): string[] | undefined {
   }
 }
 
-function existingFill(product: ProductSummary, scannedBarcode?: string): ScanFill {
+function existingFill(product: ProductSummary, scannedBarcode?: string, refTokens?: string[]): ScanFill {
   return {
     name: product.name,
     category: product.category ?? undefined,
@@ -90,6 +93,7 @@ function existingFill(product: ProductSummary, scannedBarcode?: string): ScanFil
     images: parseGallery(product.images),
     existingProduct: product,
     pendingReview: false,
+    refTokens,
   };
 }
 
@@ -115,6 +119,9 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   const [possibleMatches, setPossibleMatches] = useState<ProductSummary[]>([]);
   const [scannedBarcodeForMatch, setScannedBarcodeForMatch] = useState<string | undefined>();
   const [matchReason, setMatchReason] = useState<string | null>(null);
+  const [lastRefTokens, setLastRefTokens] = useState<string[] | undefined>();
+  const [photoBarcode, setPhotoBarcode] = useState<string | null>(null);
+  const [photoCount, setPhotoCount] = useState(0);
 
   const [isEnlargedPicker, setIsEnlargedPicker] = useState(true);
   const [zoomModalUrl, setZoomModalUrl] = useState<string | null>(null);
@@ -147,8 +154,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   }, [imageStatus.kind]);
 
   const RECOGNIZE_STAGES = [
-    { at: 0, label: "Analizando la imagen con IA…" },
-    { at: 20, label: "Verificando catálogo para evitar duplicados…" },
+    { at: 0, label: "Leyendo código de barras y texto impreso…" },
+    { at: 20, label: "Comparando con tus fotos reales del catálogo…" },
     { at: 45, label: "Extrayendo categoría, descripción y precios…" },
     { at: 68, label: "Buscando y descargando las 4 mejores fotos…" },
     { at: 88, label: "Aplicando datos y fotos al formulario…" },
@@ -172,6 +179,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
 
     setBarcode(clean);
     setBarcodeStatus({ kind: "loading" });
+    setLastRefTokens(undefined);
+    setPhotoBarcode(null);
     setImageStatus({ kind: "idle" });
     setImageOptions([]);
     setSelectedUrls([]);
@@ -270,30 +279,51 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     runBarcodeLookup(code);
   }
 
-  async function processImageFile(file: File) {
+  async function processImageFiles(input: File[]) {
+    const files = input.filter((f) => f.type.startsWith("image/")).slice(0, 3);
+    if (files.length === 0) return;
     setImageStatus({ kind: "loading" });
     setPossibleMatches([]);
     setMatchReason(null);
+    setPhotoBarcode(null);
+    setPhotoCount(files.length);
+    setLastRefTokens(undefined);
     setBarcodeStatus({ kind: "idle" });
     setImageOptions([]);
     setSelectedUrls([]);
     setPicksApplied(false);
 
     try {
-      const dataUrl = await resizeImageForRecognition(file);
+      // 1) Código de barras leído EXACTO desde la(s) foto(s), sin IA
+      const [decoded, dataUrls] = await Promise.all([
+        (async () => {
+          for (const f of files) {
+            const code = await decodeBarcodeFromFile(f);
+            if (code) return code;
+          }
+          return null;
+        })(),
+        Promise.all(files.map((f) => resizeImageForRecognition(f))),
+      ]);
+      if (decoded) {
+        setPhotoBarcode(decoded);
+        setBarcode(decoded);
+      }
 
-      const result = await recognizeProductImage(dataUrl);
+      // 2) IA: lectura del texto impreso + comparación contra el catálogo
+      const result = await recognizeProductImage(dataUrls, decoded ?? undefined);
       if (result.error) {
         setImageStatus({ kind: "error", message: result.error });
         return;
       }
+      setLastRefTokens(result.refTokens);
       if (result.existingProduct) {
         setImageStatus({
           kind: "existing",
           product: result.existingProduct,
         });
         setMatchReason(result.matchReason ?? null);
-        onFill(existingFill(result.existingProduct, result.barcode));
+        onFill(existingFill(result.existingProduct, result.barcode, result.refTokens));
         return;
       }
 
@@ -310,6 +340,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         images: result.images,
         existingProduct: null,
         pendingReview: (result.possibleMatches?.length ?? 0) > 0,
+        refTokens: result.refTokens,
       });
       setPossibleMatches(result.possibleMatches ?? []);
       setScannedBarcodeForMatch(result.barcode);
@@ -337,8 +368,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) processImageFile(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) processImageFiles(files);
   }
 
   // Pegar con Ctrl + V directamente en el panel
@@ -350,15 +381,16 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       }
       const items = e.clipboardData?.items;
       if (!items) return;
+      const files: File[] = [];
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.startsWith("image/")) {
           const file = items[i].getAsFile();
-          if (file) {
-            e.preventDefault();
-            processImageFile(file);
-            break;
-          }
+          if (file) files.push(file);
         }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        processImageFiles(files);
       }
     }
     window.addEventListener("paste", handlePaste);
@@ -410,12 +442,25 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             accept="image/png,image/jpeg,image/webp"
             onChange={handleImageChange}
             className="hidden"
           />
         </label>
       </form>
+      <p className="mt-2 text-[11px] text-fg-muted">
+        Consejo: elige hasta <strong>3 fotos</strong> del mismo producto (frente + reverso con el código de barras).
+        Si se lee el código de barras, la identificación es exacta.
+      </p>
+      {photoBarcode && imageStatus.kind !== "idle" && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+          <Barcode size={14} /> Código de barras leído en la foto: {photoBarcode}
+        </p>
+      )}
+      {imageStatus.kind === "loading" && photoCount > 1 && (
+        <p className="mt-1 text-[11px] text-fg-muted">Analizando {photoCount} fotos del mismo producto…</p>
+      )}
 
       {(barcodeStatus.kind === "existing" || imageStatus.kind === "existing") && (
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-500/50 bg-amber-50 px-3.5 py-2.5 text-xs font-bold text-amber-900">
@@ -466,7 +511,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
                     setMatchReason("Confirmado por ti");
                     if (imageStatus.kind !== "idle") setImageStatus({ kind: "existing", product: p });
                     else setBarcodeStatus({ kind: "existing", product: p });
-                    onFill(existingFill(p, scannedBarcodeForMatch));
+                    onFill(existingFill(p, scannedBarcodeForMatch, lastRefTokens));
                   }}
                   className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700"
                 >

@@ -25,6 +25,8 @@ interface ExistingProductActionCardProps {
   onStockUpdated?: (newStock: number) => void;
   onPlannedStockChange?: (plannedTotalStock: number) => void;
   onDismissExisting?: () => void;
+  /** Admin's scan photos to attach as reference photos when stock is confirmed */
+  refTokens?: string[];
 }
 
 export function ExistingProductActionCard({
@@ -32,6 +34,7 @@ export function ExistingProductActionCard({
   onStockUpdated,
   onPlannedStockChange,
   onDismissExisting,
+  refTokens,
 }: ExistingProductActionCardProps) {
   const router = useRouter();
   const [currentStock, setCurrentStock] = useState<number>(product.stock ?? 0);
@@ -66,7 +69,7 @@ export function ExistingProductActionCard({
     setIsUpdating(true);
     setFeedback(null);
     try {
-      const res = await adjustProductStock(product.id, delta);
+      const res = await adjustProductStock(product.id, delta, delta > 0 ? refTokens : undefined);
       if (res.success && res.newStock !== undefined) {
         setCurrentStock(res.newStock);
         onStockUpdated?.(res.newStock);

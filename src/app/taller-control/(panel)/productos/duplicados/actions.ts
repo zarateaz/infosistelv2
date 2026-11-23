@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/requireSession";
 import { logAudit } from "@/lib/audit";
 import { loadProductThumb } from "@/lib/productThumbs";
 import { mergeProductsCore } from "@/lib/productMerge";
+import { moveRefPhotos, loadRefThumbs } from "@/lib/productRefPhotos";
 import { checkRateLimit, rateLimitKey } from "@/lib/rateLimit";
 
 export interface MergeResult {
@@ -34,6 +35,7 @@ export async function mergeProducts(keepId: string, removeIds: string[]): Promis
 
   try {
     const summary = await mergeProductsCore(prisma, keepId, ids);
+    await moveRefPhotos(ids, keepId);
 
     await logAudit({
       action: "PRODUCT_MERGE",
@@ -83,6 +85,7 @@ export async function askAiAboutGroup(productIds: string[]): Promise<AiGroupVerd
       type: "text",
       text: `Eres el auditor de inventario de INFOSISTEL (tienda de tecnología). ¿Estos productos del catálogo son EL MISMO artículo registrado varias veces, o son productos distintos?
 Reglas: mismo artículo = misma marca + mismo modelo + misma variante (capacidad, color, medida, potencia, voltaje). Si cualquiera difiere → 'distintos'. Si no hay datos suficientes para asegurarlo → 'dudoso'. Los nombres pueden estar redactados distinto.
+Una misma marca usa el MISMO diseño de empaque para muchos productos: decide por el texto impreso (potencia W, amperaje, conector, puertos, medida, modelo), no por el parecido del empaque.
 
 ${products
   .map(
@@ -92,12 +95,18 @@ ${products
   .join("\n")}`,
     },
   ];
-  const thumbs = await Promise.all(products.map((p) => loadProductThumb(p.image)));
-  thumbs.forEach((t, i) => {
-    if (!t) return;
-    content.push({ type: "text", text: `Foto del producto ${i + 1}:` });
+  for (let i = 0; i < products.length; i++) {
+    const real = await loadRefThumbs(products[i].id, 2);
+    if (real.length > 0) {
+      content.push({ type: "text", text: `Fotos REALES (tomadas en la tienda) del producto ${i + 1}:` });
+      for (const img of real) content.push({ type: "file", data: img, mediaType: "image/jpeg" });
+      continue;
+    }
+    const t = await loadProductThumb(products[i].image);
+    if (!t) continue;
+    content.push({ type: "text", text: `Foto de CATÁLOGO (internet) del producto ${i + 1}:` });
     content.push({ type: "file", data: t, mediaType: "image/jpeg" });
-  });
+  }
 
   const schema = z.object({
     verdict: z.enum(["mismo", "distintos", "dudoso"]),

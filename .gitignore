@@ -65,3 +65,6 @@ fotosinfositel/
 # de nmap/openssl/ZAP y reportes; nunca se versionan.
 evidencias/
 scripts/lab/**/evidencias/
+
+# fotos de referencia locales (dev)
+/.data/

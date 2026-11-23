@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { deleteProductImageIfManaged } from "./upload-actions";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
+import { attachRefPhotos, deleteRefPhotos } from "@/lib/productRefPhotos";
 import {
   findBestDuplicateMatch,
   type DuplicateDetectionResult,
@@ -134,10 +135,20 @@ function parseProductForm(formData: FormData) {
     } catch {}
   }
 
+  let scanRefTokens: string[] = [];
+  const tokensRaw = formData.get("scanRefTokens");
+  if (typeof tokensRaw === "string" && tokensRaw) {
+    try {
+      const decoded = JSON.parse(tokensRaw);
+      if (Array.isArray(decoded)) scanRefTokens = decoded.filter((v): v is string => typeof v === "string").slice(0, 6);
+    } catch {}
+  }
+
   return {
     data: { ...parsed.data, isFeatured, onSale, salePrice },
     existingProductId: existingProductId || undefined,
     ignoredExistingIds,
+    scanRefTokens,
   } as const;
 }
 
@@ -204,6 +215,8 @@ export async function createProduct(
         },
       });
 
+      await attachRefPhotos(existing.id, result.scanRefTokens);
+
       if (delta !== 0) {
         await prisma.stockMovement
           .create({
@@ -228,8 +241,9 @@ export async function createProduct(
     }
   }
 
-  const error = await insertProduct(result.data, result.ignoredExistingIds);
-  if (error) return { error };
+  const inserted = await insertProduct(result.data, result.ignoredExistingIds);
+  if ("error" in inserted) return { error: inserted.error };
+  await attachRefPhotos(inserted.id, result.scanRefTokens);
 
   revalidatePath("/taller-control/productos");
   revalidatePath("/taller-control/inventario");
@@ -296,9 +310,11 @@ export async function checkDuplicateProduct(
 /** Quick stock increment/decrement action for existing products */
 export async function adjustProductStock(
   productId: string,
-  delta: number
+  delta: number,
+  refTokens?: string[]
 ): Promise<{ success: boolean; newStock?: number; error?: string }> {
   try {
+    if (refTokens && refTokens.length > 0) await attachRefPhotos(productId, refTokens);
     const prod = await prisma.product.findUnique({
       where: { id: productId },
       select: { id: true, stock: true, name: true },
@@ -397,10 +413,10 @@ export async function updateExistingProductStockAndPrice(
 async function insertProduct(
   data: z.infer<typeof productSchema>,
   ignoredIds?: string[]
-): Promise<string | null> {
+): Promise<{ id: string } | { error: string }> {
   const dupCheck = await checkDuplicateProduct(data.name, data.barcode, undefined, data.description, ignoredIds);
   if (dupCheck.isDuplicate && dupCheck.message) {
-    return dupCheck.message;
+    return { error: dupCheck.message };
   }
 
   const category = await upsertCategory(data.category, data.name);
@@ -426,10 +442,10 @@ async function insertProduct(
         })
         .catch(() => {});
     }
-    return null;
+    return { id: created.id };
   } catch (err) {
     if (isUniqueConstraintError(err)) {
-      return "El producto ya se encuentra en el inventario con ese código de barras.";
+      return { error: "El producto ya se encuentra en el inventario con ese código de barras." };
     }
     throw err;
   }
@@ -451,8 +467,8 @@ export async function createProductQuick(input: {
     return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
-  const error = await insertProduct(parsed.data);
-  if (error) return { error };
+  const inserted = await insertProduct(parsed.data);
+  if ("error" in inserted) return { error: inserted.error };
 
   revalidatePath("/taller-control/productos");
   revalidatePath("/tienda");
@@ -523,6 +539,7 @@ export async function deleteProduct(id: string) {
     select: { image: true, images: true },
   });
   await prisma.product.delete({ where: { id } });
+  await deleteRefPhotos(id);
   const paths = [product?.image, ...parseExtraImages(product?.images ?? null)].filter(
     (v): v is string => !!v
   );

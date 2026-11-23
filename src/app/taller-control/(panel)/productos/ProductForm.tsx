@@ -50,6 +50,8 @@ export function ProductForm({
   /** Similar products found by the scanner that the admin hasn't confirmed or discarded yet */
   const [pendingReview, setPendingReview] = useState(false);
   const [reviewBlockedMsg, setReviewBlockedMsg] = useState(false);
+  /** Admin's scan photos, attached as reference photos to the product when saved */
+  const [refTokens, setRefTokens] = useState<string[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const allowSubmitRef = useRef(false);
 
@@ -113,6 +115,7 @@ export function ProductForm({
   }
 
   function handleScanFill(fill: ScanFill) {
+    if (fill.refTokens !== undefined) setRefTokens(fill.refTokens);
     if (fill.ignoreIds && fill.ignoreIds.length > 0) {
       setIgnoredExistingIds((prev) => new Set([...prev, ...fill.ignoreIds!]));
     }
@@ -182,6 +185,7 @@ export function ProductForm({
       >
         <input type="hidden" name="existingProductId" value={matchedProduct?.id ?? ""} />
         <input type="hidden" name="ignoredExistingIds" value={JSON.stringify([...ignoredExistingIds])} />
+        <input type="hidden" name="scanRefTokens" value={JSON.stringify(refTokens)} />
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -205,6 +209,7 @@ export function ProductForm({
             <div className="sm:col-span-2">
               <ExistingProductActionCard
                 product={matchedProduct}
+                refTokens={refTokens}
                 onFill={handleScanFill}
                 onStockUpdated={(newStock) => {
                   if (stockRef.current) stockRef.current.value = String(newStock);

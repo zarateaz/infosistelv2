@@ -259,6 +259,15 @@ export const KNOWN_BRANDS = [
   "american net",
   "american-net",
   "americannet",
+  // Marcas de accesorios vistas en la tienda
+  "redd",
+  "bossney",
+  "ukamed",
+  "satellite",
+  "lenyes",
+  "miray",
+  "xtech",
+  "maxell",
 ];
 
 // Marcas ordenadas de mayor a menor longitud para evitar que "wd" se coma a "wd purple" o "western digital"
@@ -622,6 +631,9 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
       lengths.add(`${num}m`);
     } else if (unit === "cm") {
       lengths.add(`${num}cm`);
+    } else if (unit === "mm" && num >= 6 && num <= 36) {
+      // anchos de cinta/etiqueta (12mm vs 18mm vs 24mm). 3.5mm (jack) se ignora.
+      lengths.add(`${num}mm`);
     }
   }
 
@@ -644,11 +656,11 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
   }
 
   // 7. Resolutions and refresh rates
-  const resRegex = /(?:^|[\s,;([/])(4k|8k|2k|1080p|720p|1440p|fhd|qhd|uhd)(?:$|[\s,;.)\]/])/gi;
+  const resRegex = /(?:^|[\s,;([/])(4k|8k|2k|1080p|720p|1440p|fhd|qhd|uhd)(?=$|[\s,;.)\]/]|\d+\s*hz)/gi;
   while ((match = resRegex.exec(raw)) !== null) {
     resolutions.add(match[1]);
   }
-  const hzRegex = /(?:^|[\s,;([/])(\d+)\s*hz(?:$|[\s,;.)\]/])/gi;
+  const hzRegex = /(?:^|[\s,;([/]|[48]k)(\d+)\s*hz(?:$|[\s,;.)\]/])/gi;
   while ((match = hzRegex.exec(raw)) !== null) {
     refreshRates.add(`${match[1]}hz`);
   }
@@ -681,6 +693,11 @@ export function extractTechnicalSpecs(text: string): TechnicalSpecs {
   // 10. Port counts
   const portRegex = /(?:^|[\s,;([/])(\d+)\s*(?:en\s*1|in\s*1|puertos|ports)(?:$|[\s,;.)\]/])/gi;
   while ((match = portRegex.exec(raw)) !== null) {
+    portCounts.add(`${match[1]}_ports`);
+  }
+
+  const splitRegex = /(?:^|[\s,;([/])1\s*[x×]\s*(\d{1,2})(?:$|[\s,;.)\]/])/gi;
+  while ((match = splitRegex.exec(raw)) !== null) {
     portCounts.add(`${match[1]}_ports`);
   }
 

@@ -6,6 +6,7 @@ import { deepseek } from "@ai-sdk/deepseek";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { loadProductThumb } from "@/lib/productThumbs";
+import { loadRefThumbs, savePendingRefPhoto } from "@/lib/productRefPhotos";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
 import {
@@ -14,6 +15,7 @@ import {
   normalizeText,
   extractBrand,
   extractProductBrand,
+  haveConflictingTechnicalSpecs,
   type ProductSummary,
   type RankedCandidate,
 } from "@/lib/duplicateDetection";
@@ -291,10 +293,19 @@ export interface RecognizeImageResult {
   matchReason?: string;
   /** Similar catalog products the admin must confirm or discard before creating a new one */
   possibleMatches?: ProductSummary[];
+  /** Tokens of the admin's photos, saved as pending reference photos until confirmed */
+  refTokens?: string[];
   error?: string;
 }
 
 const VISION_MODEL = "deepseek-v4-flash-vision-exp";
+const MAX_PHOTOS = 3;
+
+interface Photo {
+  base64: string;
+  mime: string;
+}
+
 interface VisualVerdict {
   /** index into the shortlist, or -1 */
   index: number;
@@ -302,17 +313,29 @@ interface VisualVerdict {
   reason: string;
 }
 
+type Part = { type: "text"; text: string } | { type: "file"; data: string; mediaType: string };
+
 /**
- * Second AI pass: the model looks at the admin's photo AND the shortlisted catalog
- * products (name, code, and their own photo when available) and says which one it is.
+ * Second AI pass: the model looks at the admin's photo(s) AND the shortlisted catalog
+ * products. For each candidate it receives the admin's OWN earlier photos of that product
+ * (same conditions: in hand, store light, price sticker) when they exist, otherwise the
+ * catalog cover. Returns which candidate it is.
  */
 async function verifyAgainstCatalog(
-  photoBase64: string,
-  photoMime: string,
-  recognized: { name: string; brand?: string; model?: string; visibleText?: string[] },
+  photos: Photo[],
+  recognized: { name: string; brand?: string; model?: string; keySpecs: string[]; visibleText: string[] },
   shortlist: ProductSummary[]
 ): Promise<VisualVerdict | null> {
   if (shortlist.length === 0) return null;
+
+  const visual = await Promise.all(
+    shortlist.slice(0, 6).map(async (p) => {
+      const refs = await loadRefThumbs(p.id, 2);
+      if (refs.length > 0) return { kind: "real" as const, images: refs };
+      const cover = await loadProductThumb(p.image);
+      return cover ? { kind: "catalogo" as const, images: [cover] } : { kind: "none" as const, images: [] as string[] };
+    })
+  );
 
   const listText = shortlist
     .map((p, i) => {
@@ -320,6 +343,8 @@ async function verifyAgainstCatalog(
       if (p.barcode) parts.push(`código: ${p.barcode}`);
       if (p.category) parts.push(`categoría: ${p.category}`);
       if (p.description) parts.push(`desc: ${p.description.slice(0, 140)}`);
+      const v = visual[i];
+      if (v?.kind === "real") parts.push("(tiene fotos REALES tomadas en la tienda)");
       return parts.join(" | ");
     })
     .join("\n");
@@ -334,40 +359,37 @@ async function verifyAgainstCatalog(
     confidence: z
       .enum(["exacto", "probable", "ninguno"])
       .describe(
-        "'exacto' = misma marca, mismo modelo y misma variante (capacidad, color, medida, potencia) sin duda. 'probable' = parece el mismo pero la foto no permite confirmar la variante o el modelo. 'ninguno' = no está en la lista."
+        "'exacto' = misma marca, mismo modelo y misma variante sin ninguna duda. 'probable' = parece el mismo pero no se puede confirmar la variante. 'ninguno' = no está en la lista."
       ),
-    reason: z.string().describe("Explicación breve en español (máx. 1 frase)."),
+    reason: z.string().describe("Explicación breve en español (máx. 1 frase) citando el texto impreso que decidió."),
   });
 
-  const intro = `Eres el verificador de inventario de INFOSISTEL. La PRIMERA imagen es la foto que acaba de tomar el administrador.
-Lectura previa de la foto: nombre="${recognized.name}"${recognized.brand ? `, marca="${recognized.brand}"` : ""}${recognized.model ? `, modelo="${recognized.model}"` : ""}${recognized.visibleText?.length ? `, texto visible="${recognized.visibleText.slice(0, 15).join(" / ")}"` : ""}.
+  const intro = `Eres el verificador de inventario de INFOSISTEL (tienda de accesorios de cómputo y celulares en Huancayo).
+Las primeras ${photos.length} imagen(es) son las fotos que el administrador acaba de tomar con el celular: el producto en la mano, dentro de su empaque/blíster, a veces movidas, con reflejos y con una etiqueta de precio pegada.
+Lectura previa: nombre="${recognized.name}"${recognized.brand ? `, marca="${recognized.brand}"` : ""}${recognized.model ? `, modelo="${recognized.model}"` : ""}${recognized.keySpecs.length ? `, especificaciones impresas="${recognized.keySpecs.join(", ")}"` : ""}${recognized.visibleText.length ? `, texto visible="${recognized.visibleText.slice(0, 15).join(" / ")}"` : ""}.
 
-Estos productos YA EXISTEN en la tienda (los nombres fueron escritos a mano o por otra IA, así que pueden estar redactados distinto):
+Estos productos YA EXISTEN en la tienda:
 ${listText}
 
-Decide si la foto corresponde a UNO de esos productos. Reglas estrictas:
-- Mismo producto = misma marca + mismo modelo + misma variante (capacidad GB/TB, color, longitud, potencia W, voltaje/amperaje, versión). Si cualquiera difiere, NO es el mismo.
-- El nombre puede estar escrito distinto (orden, sinónimos, español/inglés): fíjate en lo que es, no en cómo está escrito.
-- Si aparece un código de modelo/SKU en la foto y en el catálogo, deben coincidir.
-- Si dudas entre dos variantes o la foto no deja ver el detalle, responde 'probable', nunca 'exacto'.`;
+¿La foto es UNO de esos productos? Reglas estrictas:
+1. Una misma marca usa el MISMO diseño de empaque para muchos productos (ej. REDD, BOSSNEY, UGREEN, TEROS, CABLETIME). El parecido del empaque NO prueba nada.
+2. Decide por el TEXTO IMPRESO GRANDE: potencia (65W, 70W, 100W, 120W), amperaje (6.2A), tipo de conector (Type-C, Lightning, Micro USB, HDMI, VGA), puertos (1x4, 1x8), medida (1M, 2M, 12mm, 18mm), capacidad, modelo. Si cualquiera difiere → NO es el mismo.
+3. Las fotos marcadas "REAL" son fotos anteriores del MISMO producto tomadas en la tienda: si coinciden empaque + texto impreso + forma, es fuerte evidencia. Las marcadas "CATÁLOGO" son de internet y pueden verse distintas (fondo blanco, sin empaque).
+4. Si un texto clave no se puede leer en la foto nueva o hay dos candidatos posibles → 'probable', NUNCA 'exacto'.`;
 
-  const thumbs = await Promise.all(shortlist.slice(0, 6).map((p) => loadProductThumb(p.image)));
-
-  type Part =
-    | { type: "text"; text: string }
-    | { type: "file"; data: string; mediaType: string };
-  const textOnly: Part[] = [
-    { type: "text", text: intro },
-    { type: "file", data: photoBase64, mediaType: photoMime },
-  ];
-  const withThumbs: Part[] = [...textOnly];
-  thumbs.forEach((t, i) => {
-    if (!t) return;
-    withThumbs.push({ type: "text", text: `Foto de catálogo del producto #${i + 1}:` });
-    withThumbs.push({ type: "file", data: t, mediaType: "image/jpeg" });
+  const userPhotos: Part[] = photos.map((ph) => ({ type: "file", data: ph.base64, mediaType: ph.mime }));
+  const textOnly: Part[] = [{ type: "text", text: intro }, ...userPhotos];
+  const withRefs: Part[] = [...textOnly];
+  visual.forEach((v, i) => {
+    if (v.kind === "none") return;
+    withRefs.push({
+      type: "text",
+      text: v.kind === "real" ? `Fotos REALES (tomadas en la tienda) del producto #${i + 1}:` : `Foto de CATÁLOGO (internet) del producto #${i + 1}:`,
+    });
+    for (const img of v.images) withRefs.push({ type: "file", data: img, mediaType: "image/jpeg" });
   });
 
-  const attempts = withThumbs.length > textOnly.length ? [withThumbs, textOnly] : [textOnly];
+  const attempts = withRefs.length > textOnly.length ? [withRefs, textOnly] : [textOnly];
   for (const content of attempts) {
     try {
       const { object } = await generateObject({
@@ -391,7 +413,8 @@ Decide si la foto corresponde a UNO de esos productos. Reglas estrictas:
 function existingResult(
   product: ProductSummary,
   reason: string,
-  fallback: { description: string; category: string; barcode?: string }
+  fallback: { description: string; category: string; barcode?: string },
+  refTokens: string[]
 ): RecognizeImageResult {
   return {
     name: product.name,
@@ -407,11 +430,30 @@ function existingResult(
     existingProductName: product.name,
     existingProduct: product,
     matchReason: reason,
+    refTokens,
   };
 }
 
+function parsePhotos(input: string | string[]): Photo[] | null {
+  const list = (Array.isArray(input) ? input : [input]).slice(0, MAX_PHOTOS);
+  const out: Photo[] = [];
+  for (const dataUrl of list) {
+    if (typeof dataUrl !== "string" || dataUrl.length > 12 * 1024 * 1024) return null;
+    const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
+    if (!m) return null;
+    out.push({ mime: m[1], base64: m[2] });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * Reconoce un producto a partir de 1 a 3 fotos tomadas por el admin.
+ * @param photosInput  data URLs (frente, reverso con código/modelo, lateral...)
+ * @param decodedBarcode código de barras leído EXACTO en el navegador (ZXing) — prueba definitiva
+ */
 export async function recognizeProductImage(
-  dataUrl: string
+  photosInput: string | string[],
+  decodedBarcode?: string
 ): Promise<RecognizeImageResult> {
   if (!process.env.DEEPSEEK_API_KEY) {
     return { error: "El reconocimiento por IA no está configurado (falta DEEPSEEK_API_KEY)." };
@@ -426,17 +468,35 @@ export async function recognizeProductImage(
     return { error: "Demasiadas fotos procesadas seguidas. Intenta de nuevo en unos minutos." };
   }
 
-  const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
-  if (!match) {
+  const photos = parsePhotos(photosInput);
+  if (!photos) {
     return { error: "Formato de imagen no válido." };
   }
-  const [, mimeType, base64] = match;
 
   try {
+    // The admin's own photos become pending reference photos (attached only when confirmed)
+    const refTokens = (
+      await Promise.all(photos.map((ph) => savePendingRefPhoto(Buffer.from(ph.base64, "base64"))))
+    ).filter((t): t is string => !!t);
+
     const [categoriesRows, existingProducts] = await Promise.all([
       prisma.category.findMany({ select: { name: true } }),
       prisma.product.findMany({ select: PRODUCT_SELECT, orderBy: { itemNumber: "asc" } }),
     ]);
+
+    // ── PASO 0: código de barras leído por ZXing en el navegador (exacto, sin IA) ─
+    const exactBc = normalizeBarcode(decodedBarcode);
+    if (exactBc.length >= 6) {
+      const byBarcode = existingProducts.find((p) => p.barcode && normalizeBarcode(p.barcode) === exactBc);
+      if (byBarcode) {
+        return existingResult(
+          byBarcode,
+          `Código de barras ${decodedBarcode} leído en la foto`,
+          { description: "", category: "", barcode: decodedBarcode },
+          refTokens
+        );
+      }
+    }
 
     const categories = categoriesRows.map((c) => c.name);
 
@@ -446,24 +506,28 @@ export async function recognizeProductImage(
         brand: z
           .string()
           .optional()
-          .describe("Marca EXACTA impresa en el producto o la caja (ej. 'LOGITECH', 'AMERICAN NET', 'UGREEN'). Vacío si no se ve."),
+          .describe("Marca EXACTA impresa en el producto o la caja (ej. 'REDD', 'BOSSNEY', 'UGREEN', 'TEROS', 'CABLETIME'). Vacío si no se ve."),
         model: z
           .string()
           .optional()
-          .describe("Código de modelo / SKU / número de parte EXACTO impreso (ej. 'G203', 'TL-WN725N', 'SDCS2/64GB'). Copia los caracteres tal cual. Vacío si no se ve; NO lo inventes."),
+          .describe("Código de modelo / SKU / número de parte EXACTO impreso (ej. 'TE-4064', 'CM0123'). Copia los caracteres tal cual. Vacío si no se ve; NO lo inventes."),
+        keySpecs: z
+          .array(z.string())
+          .optional()
+          .describe("Especificaciones clave IMPRESAS que diferencian este producto de sus variantes, copiadas tal cual: potencia (100W), amperaje (6.2A), conector (TYPE-C, LIGHTNING, MICRO USB), puertos (1X8), medida (1M, 18MM), capacidad (64GB), resolución (4K60HZ), color."),
         visibleText: z
           .array(z.string())
           .optional()
-          .describe("Textos impresos legibles en el producto/caja/etiqueta, copiados literalmente (máx. 20)."),
+          .describe("Otros textos impresos legibles en el producto/empaque/etiqueta, copiados literalmente (máx. 20)."),
         name: z
           .string()
           .describe(
-            "Nombre comercial exacto en español y en MAYÚSCULAS para catálogo (máx. 140 caracteres). Estructura obligatoria: TIPO DE PRODUCTO + MARCA + MODELO EXACTO + ESPECIFICACIONES CLAVE (medida/longitud si es cable, versión HDMI/USB/Cat, resolución/velocidad, capacidad GB/TB o color)."
+            "Nombre comercial exacto en español y en MAYÚSCULAS para catálogo (máx. 140 caracteres). Estructura obligatoria: TIPO DE PRODUCTO + MARCA + MODELO EXACTO + ESPECIFICACIONES CLAVE (potencia W, amperaje, conector, medida/longitud, versión HDMI/USB, puertos, capacidad, color)."
           ),
         description: z
           .string()
           .describe(
-            "Descripción comercial y técnica profesional en español y en MAYÚSCULAS (2 a 3 frases listas para publicar en la tienda). Incluye marca, modelo, características técnicas completas, puertos/conectores, medidas y compatibilidad. PROHIBIDO escribir frases como 'la imagen muestra', 'en la foto se observa' o 'no se aprecian etiquetas'."
+            "Descripción comercial y técnica profesional en español y en MAYÚSCULAS (2 a 3 frases listas para publicar en la tienda). Incluye marca, modelo, características técnicas completas, puertos/conectores, medidas y compatibilidad. PROHIBIDO escribir frases como 'la imagen muestra', 'en la foto se observa' o 'no se aprecian etiquetas'. No menciones la etiqueta de precio."
           ),
         category: z
           .string()
@@ -474,7 +538,7 @@ export async function recognizeProductImage(
           .string()
           .optional()
           .describe(
-            "Si en la foto aparece impreso un código de barras (EAN-13, UPC o SKU numérico legible), extrae solo los dígitos exactos. Si no hay código de barras legible, déjalo vacío."
+            "Si se leen con claridad los números impresos BAJO un código de barras (EAN-13, UPC), extrae solo esos dígitos exactos. Si no se leen todos con claridad, déjalo vacío."
           ),
         detectedStock: z
           .number()
@@ -501,20 +565,22 @@ export async function recognizeProductImage(
             {
               type: "text",
               text: `Eres el sistema experto de catalogación e inventario con IA de INFOSISTEL (Huancayo, Perú).
-Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa todos los datos:
+${photos.length > 1 ? `Recibes ${photos.length} fotos del MISMO producto (frente, reverso, detalle): combina lo que se lee en todas.` : "Recibes una foto del producto."}
+Las fotos las toma el administrador con el celular: producto en la mano, dentro de blíster/empaque, a veces movidas o con reflejos, con una etiqueta de precio pegada (IGNORA la etiqueta de precio).
 
 0. LECTURA LITERAL (lo más importante, se usa para no duplicar productos):
-- 'brand', 'model', 'visibleText' y 'barcode': copia EXACTAMENTE lo que está impreso. Si no se lee, déjalo vacío. NUNCA inventes un modelo ni un código.
+- 'brand', 'model', 'keySpecs', 'visibleText' y 'barcode': copia EXACTAMENTE lo que está impreso. Si no se lee, déjalo vacío. NUNCA inventes un modelo, especificación ni código.
+- En productos de la misma marca con empaque parecido (cargadores REDD 70W/100W, BOSSNEY 65W/120W, cables 6.2A, adaptadores UGREEN) lo que los diferencia es el texto grande impreso: léelo con mucho cuidado y ponlo en 'keySpecs' Y en 'name'.
 
-1. PRECISIÓN DE RECONOCIMIENTO (0 MARGEN DE ERROR):
-- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo exacto + Medida/Capacidad/Color/Versión). Ejemplos: "MOUSE LOGITECH G203 LIGHTSYNC RGB NEGRO", "CABLE UGREEN USB-C A USB-C 100W 1M", "ADAPTADOR DE CORRIENTE AMERICAN NET 5V 2.5A".
-  REGLA DE MARCA CRÍTICA: Si la marca en el producto o caja es 'American NET', escribe siempre 'AMERICAN NET' completo (NUNCA solo 'American', para no confundir con aerolíneas u otros rubros).
+1. DATOS DEL CATÁLOGO:
+- 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo exacto + especificaciones clave). Ejemplos: "CARGADOR REDD 100W PD TYPE-C", "CABLE REDD 6.2A USB A TYPE-C", "SPLITTER HDMI CABLETIME 1X8 4K", "ADAPTADOR DE CORRIENTE AMERICAN NET 5V 2.5A".
+  REGLA DE MARCA CRÍTICA: Si la marca es 'American NET', escribe siempre 'AMERICAN NET' completo.
 - 'category': Categoría exacta en español ${categories.length > 0 ? `(elige entre: ${categories.join(", ")})` : "('LAPTOPS', 'ACCESORIOS', 'ALMACENAMIENTO', 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC')"}.
-- 'description': Redacción comercial y técnica impecable en español para la ficha del producto. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
-- 'searchQueries': 3 búsquedas precisas combinando tipo de producto de hardware y marca completa (ej: "American NET adaptador corriente 5V 2.5A", "American NET 5V 2.5A power adapter", etc.). PROHIBIDO escribir solo 'American' o términos genéricos sin producto tecnológico.
-- 'negativeKeywords': Incluye términos que deben filtrarse (ej: 'avion', 'aviones', 'airplane', 'airline', 'airlines', 'boeing', 'flight', 'vuelo', 'aerolinea', 'aeropuerto', 'ropa', 'deporte').`,
+- 'description': Redacción comercial y técnica impecable en español. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
+- 'searchQueries': 3 búsquedas precisas combinando tipo de producto y marca completa. PROHIBIDO términos genéricos sin producto tecnológico.
+- 'negativeKeywords': términos que deben filtrarse (ej: 'avion', 'airline', 'ropa', 'deporte').`,
             },
-            { type: "file", data: base64, mediaType: mimeType },
+            ...photos.map((ph) => ({ type: "file" as const, data: ph.base64, mediaType: ph.mime })),
           ],
         },
       ],
@@ -522,58 +588,65 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
 
     const cleanName = object.name.trim().toUpperCase();
     const cleanDescription = object.description.trim().toUpperCase();
-    const cleanBarcode = object.barcode?.replace(/[^0-9A-Za-z-]/g, "").trim() || undefined;
+    const aiBarcode = object.barcode?.replace(/[^0-9]/g, "") || "";
+    // ZXing reading is exact; the AI reading is only trusted when it has a full EAN/UPC length
+    const cleanBarcode =
+      exactBc.length >= 6 ? decodedBarcode!.trim() : [8, 12, 13, 14].includes(aiBarcode.length) ? aiBarcode : undefined;
     const cleanBrand = object.brand?.trim() || undefined;
     const cleanModel = object.model?.trim() || undefined;
+    const keySpecs = (object.keySpecs ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 12);
     const visibleText = (object.visibleText ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 20);
     const categoryInSpanish = translateCategoryToSpanish(object.category, cleanName);
     const fallback = { description: cleanDescription, category: categoryInSpanish, barcode: cleanBarcode };
 
-    // ── PASO 1: código de barras leído en la foto (100% certero) ──────────
+    // ── PASO 1: código de barras leído por la IA ──────────────────────────
     const targetBc = normalizeBarcode(cleanBarcode);
     if (targetBc.length >= 6) {
       const byBarcode = existingProducts.find((p) => p.barcode && normalizeBarcode(p.barcode) === targetBc);
-      if (byBarcode) return existingResult(byBarcode, "Mismo código de barras", fallback);
+      if (byBarcode) return existingResult(byBarcode, "Mismo código de barras", fallback, refTokens);
     }
 
-    // A product that already has a DIFFERENT barcode than the one printed on the box is another product.
-    const pool =
-      targetBc.length >= 6 ? existingProducts.filter((p) => !p.barcode) : existingProducts;
+    // ── FILTRO DURO: lo que contradice la foto queda descartado (la IA no puede elegirlo) ─
+    //  - un producto con OTRO código de barras es otro producto
+    //  - otra marca impresa
+    //  - otra especificación impresa (100W vs 70W, 1x8 vs 1x4, 18mm vs 12mm, 64GB vs 128GB...)
+    const photoSpecText = [cleanName, ...keySpecs].join(" ");
+    const brandFromPhoto = cleanBrand ? extractBrand(cleanBrand) ?? normalizeText(cleanBrand) : extractBrand(cleanName);
+    const pool = existingProducts.filter((p) => {
+      if (targetBc.length >= 6 && p.barcode) return false;
+      const pb = extractProductBrand(p.name);
+      if (brandFromPhoto && pb && pb !== brandFromPhoto) return false;
+      if (haveConflictingTechnicalSpecs(photoSpecText, p.name)) return false;
+      return true;
+    });
 
-    // ── PASO 2: código de modelo impreso que aparece en UN solo producto del catálogo ─
-    const brandFromPhoto = cleanBrand ? extractBrand(cleanBrand) ?? normalizeText(cleanBrand) : null;
+    // ── PASO 2: código de modelo impreso que aparece en el catálogo ───────
     const modelKey = cleanModel ? normalizeText(cleanModel).replace(/ /g, "") : "";
     let modelHits: ProductSummary[] = [];
-    if (modelKey.length >= 4 && /[0-9]/.test(modelKey)) {
-      modelHits = pool.filter((p) => {
-        const hay = normalizeText(`${p.name} ${p.description ?? ""}`).replace(/ /g, "");
-        if (!hay.includes(modelKey)) return false;
-        const pb = extractProductBrand(p.name, p.description);
-        return !brandFromPhoto || !pb || pb === brandFromPhoto;
-      });
+    if (modelKey.length >= 4 && /[0-9]/.test(modelKey) && /[a-z]/.test(modelKey)) {
+      modelHits = pool.filter((p) =>
+        normalizeText(`${p.name} ${p.description ?? ""}`).replace(/ /g, "").includes(modelKey)
+      );
     }
 
     // ── PASO 3: coincidencia determinística por nombre ────────────────────
-    const deterministic = findBestDuplicateMatch(
-      { name: cleanName, description: cleanDescription },
-      pool
-    );
+    const deterministic = findBestDuplicateMatch({ name: cleanName, description: cleanDescription }, pool);
     if (
       deterministic.isDuplicate &&
       deterministic.existingProduct &&
       (deterministic.reason === "exact_name" || deterministic.reason === "normalized_name")
     ) {
-      return existingResult(deterministic.existingProduct, "Mismo nombre en el catálogo", fallback);
+      return existingResult(deterministic.existingProduct, "Mismo nombre en el catálogo", fallback, refTokens);
     }
 
-    // ── PASO 4: lista corta de parecidos + verificación VISUAL con IA ────
+    // ── PASO 4: lista corta + verificación VISUAL contra tus fotos reales ─
     const ranked: RankedCandidate[] = rankSimilarProducts(
       {
         name: cleanName,
         description: cleanDescription,
         brand: cleanBrand,
         model: cleanModel,
-        extraText: visibleText.join(" "),
+        extraText: [...keySpecs, ...visibleText].join(" "),
       },
       pool,
       10
@@ -582,7 +655,7 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
     for (const p of modelHits.slice(0, 4)) shortlistMap.set(p.id, p);
     if (deterministic.existingProduct) shortlistMap.set(deterministic.existingProduct.id, deterministic.existingProduct);
     for (const r of ranked) {
-      if (shortlistMap.size >= 10) break;
+      if (shortlistMap.size >= 8) break;
       shortlistMap.set(r.product.id, r.product);
     }
     const shortlist = Array.from(shortlistMap.values());
@@ -590,24 +663,28 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
     let possibleMatches: ProductSummary[] = [];
     if (shortlist.length > 0) {
       const verdict = await verifyAgainstCatalog(
-        base64,
-        mimeType,
-        { name: cleanName, brand: cleanBrand, model: cleanModel, visibleText },
+        photos,
+        { name: cleanName, brand: cleanBrand, model: cleanModel, keySpecs, visibleText },
         shortlist
       );
       const chosen = verdict && verdict.index >= 0 ? shortlist[verdict.index] : undefined;
 
       if (chosen && verdict?.confidence === "exacto") {
-        return existingResult(chosen, verdict.reason || "Verificado visualmente por IA", fallback);
+        return existingResult(chosen, verdict.reason || "Verificado visualmente por IA", fallback, refTokens);
       }
 
       if (!verdict) {
         // Verificación no disponible: solo se acepta una señal fuerte e inequívoca.
         if (modelHits.length === 1) {
-          return existingResult(modelHits[0], `Mismo modelo (${cleanModel})`, fallback);
+          return existingResult(modelHits[0], `Mismo modelo (${cleanModel})`, fallback, refTokens);
         }
         if (deterministic.isDuplicate && deterministic.existingProduct) {
-          return existingResult(deterministic.existingProduct, deterministic.message ?? "Coincidencia en catálogo", fallback);
+          return existingResult(
+            deterministic.existingProduct,
+            deterministic.message ?? "Coincidencia en catálogo",
+            fallback,
+            refTokens
+          );
         }
       }
 
@@ -640,8 +717,12 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
       return [];
     });
 
-    // Pre-download top 4 valid images through sharp right away (with uploaded photo as fallback)
-    const downloaded = await downloadTopProductImages(candidateUrls, 4, dataUrl);
+    // Pre-download top 4 valid images through sharp right away (with the admin's first photo as fallback)
+    const downloaded = await downloadTopProductImages(
+      candidateUrls,
+      4,
+      `data:${photos[0].mime};base64,${photos[0].base64}`
+    );
 
     return {
       name: cleanName,
@@ -657,6 +738,7 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
       appliedLocalImages: downloaded.allPaths,
       imageOptions: candidateUrls.length > 0 ? candidateUrls : undefined,
       possibleMatches: possibleMatches.length > 0 ? possibleMatches : undefined,
+      refTokens,
     };
   } catch (err) {
     console.error("[scan-actions] recognizeProductImage failed:", err);
