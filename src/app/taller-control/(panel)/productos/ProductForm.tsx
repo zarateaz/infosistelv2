@@ -47,6 +47,9 @@ export function ProductForm({
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateDetectionResult | null>(null);
   const [ignoredExistingIds, setIgnoredExistingIds] = useState<Set<string>>(new Set());
   const [confirmModify, setConfirmModify] = useState(false);
+  /** Similar products found by the scanner that the admin hasn't confirmed or discarded yet */
+  const [pendingReview, setPendingReview] = useState(false);
+  const [reviewBlockedMsg, setReviewBlockedMsg] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const allowSubmitRef = useRef(false);
 
@@ -88,11 +91,12 @@ export function ProductForm({
     }, 350);
   };
 
-  function applyExistingProductToForm(existing: ProductSummary) {
+  function applyExistingProductToForm(existing: ProductSummary, scannedBarcode?: string) {
     if (nameRef.current) nameRef.current.value = existing.name;
     if (existing.category && categoryRef.current) categoryRef.current.value = existing.category;
     if (existing.description && descriptionRef.current) descriptionRef.current.value = existing.description;
-    if (barcodeRef.current) barcodeRef.current.value = existing.barcode ?? "";
+    // Keep the barcode read by the scanner when the catalog product has none, so it gets saved
+    if (barcodeRef.current) barcodeRef.current.value = existing.barcode ?? scannedBarcode ?? "";
     if (existing.price !== undefined && priceRef.current) {
       priceRef.current.value = String(existing.price);
     }
@@ -109,6 +113,13 @@ export function ProductForm({
   }
 
   function handleScanFill(fill: ScanFill) {
+    if (fill.ignoreIds && fill.ignoreIds.length > 0) {
+      setIgnoredExistingIds((prev) => new Set([...prev, ...fill.ignoreIds!]));
+    }
+    if (fill.pendingReview !== undefined) {
+      setPendingReview(fill.pendingReview);
+      if (!fill.pendingReview) setReviewBlockedMsg(false);
+    }
     if (fill.existingProduct) {
       setDuplicateWarning({
         isDuplicate: true,
@@ -116,7 +127,7 @@ export function ProductForm({
         message: `El producto "${fill.existingProduct.name}" ya se encuentra en la tienda.`,
         existingProduct: fill.existingProduct,
       });
-      applyExistingProductToForm(fill.existingProduct);
+      applyExistingProductToForm(fill.existingProduct, fill.barcode);
       return;
     }
 
@@ -155,6 +166,11 @@ export function ProductForm({
         ref={formRef}
         action={formAction}
         onSubmit={(e) => {
+          if (pendingReview && !product) {
+            e.preventDefault();
+            setReviewBlockedMsg(true);
+            return;
+          }
           if (product && !allowSubmitRef.current) {
             e.preventDefault();
             setConfirmModify(true);
@@ -165,6 +181,7 @@ export function ProductForm({
         className="space-y-6"
       >
         <input type="hidden" name="existingProductId" value={matchedProduct?.id ?? ""} />
+        <input type="hidden" name="ignoredExistingIds" value={JSON.stringify([...ignoredExistingIds])} />
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -372,6 +389,13 @@ export function ProductForm({
             <AlertCircle className="mt-0.5 shrink-0 text-red-500" size={18} />
             <div>{state.error}</div>
           </div>
+        )}
+
+        {reviewBlockedMsg && pendingReview && !product && (
+          <p className="flex items-center gap-2 rounded-xl border border-amber-500/50 bg-amber-50 px-3.5 py-2.5 text-xs font-bold text-amber-900">
+            <AlertCircle size={15} className="shrink-0 text-amber-600" />
+            Antes de guardar, arriba en el escáner indica si el producto ya existe en la tienda o si es nuevo.
+          </p>
         )}
 
         <div className="flex flex-wrap items-center gap-3">

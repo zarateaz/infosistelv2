@@ -4,12 +4,20 @@ import { z } from "zod";
 import { generateObject } from "ai";
 import { deepseek } from "@ai-sdk/deepseek";
 import { headers } from "next/headers";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
 import {
-  evaluateDuplicateMatch,
+  findBestDuplicateMatch,
+  rankSimilarProducts,
+  normalizeText,
+  extractBrand,
+  extractProductBrand,
   type ProductSummary,
+  type RankedCandidate,
 } from "@/lib/duplicateDetection";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
 import { downloadTopProductImages } from "./upload-actions";
@@ -32,6 +40,25 @@ export interface BarcodeLookupResult {
   };
   source?: "local" | "external";
   notFound?: boolean;
+  /** Similar catalog products the admin must confirm or discard before creating a new one */
+  possibleMatches?: ProductSummary[];
+}
+
+const PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  barcode: true,
+  category: true,
+  price: true,
+  costPrice: true,
+  stock: true,
+  image: true,
+  images: true,
+  description: true,
+} as const;
+
+function normalizeBarcode(code: string | null | undefined): string {
+  return (code ?? "").replace(/[^0-9A-Za-z]/g, "").replace(/^0+/, "").toUpperCase();
 }
 
 /** Translates & matches barcode search keywords to standardized Spanish categories. */
@@ -209,28 +236,12 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
   const clean = barcode.trim();
   if (!clean) return { notFound: true };
 
-  // 1. Local DB lookup (handles exact and leading-zero normalized barcode)
-  const normBarcode = clean.replace(/^0+/, "");
-  const existing = await prisma.product.findFirst({
-    where: {
-      OR: [
-        { barcode: clean },
-        ...(normBarcode && normBarcode !== clean ? [{ barcode: normBarcode }] : []),
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      barcode: true,
-      category: true,
-      price: true,
-      costPrice: true,
-      stock: true,
-      image: true,
-      images: true,
-      description: true,
-    },
-  });
+  // 1. Local DB lookup (exact, leading zeros, spaces/guiones normalizados)
+  const allProducts: ProductSummary[] = await prisma.product.findMany({ select: PRODUCT_SELECT });
+  const target = normalizeBarcode(clean);
+  const existing = target
+    ? allProducts.find((p) => p.barcode && normalizeBarcode(p.barcode) === target)
+    : undefined;
   if (existing) {
     return {
       existingProductId: existing.id,
@@ -244,21 +255,28 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
   const categories = (await prisma.category.findMany({ select: { name: true } })).map((c) => c.name);
   const externalResult = await lookupExternalUPC(clean, categories);
 
-  // If external suggestion found, check if that item name already exists locally (0 margin of error)
+  // If external suggestion found, check if that item already exists locally (registered sin código)
   if (externalResult.suggestion?.name) {
-    const existingByName = await findExistingProductByName(
-      externalResult.suggestion.name,
-      externalResult.suggestion.description,
-      clean
+    const match = findBestDuplicateMatch(
+      { name: externalResult.suggestion.name, description: externalResult.suggestion.description },
+      allProducts
     );
-    if (existingByName) {
+    if (match.isDuplicate && match.existingProduct) {
       return {
-        existingProductId: existingByName.id,
-        existingProductName: existingByName.name,
-        existingProduct: existingByName,
+        existingProductId: match.existingProduct.id,
+        existingProductName: match.existingProduct.name,
+        existingProduct: match.existingProduct,
         source: "local",
       };
     }
+    const similar = rankSimilarProducts(
+      { name: externalResult.suggestion.name, description: externalResult.suggestion.description },
+      // A product that already has a DIFFERENT barcode is, by definition, another product
+      allProducts.filter((p) => !p.barcode),
+      3,
+      0.45
+    );
+    if (similar.length > 0) externalResult.possibleMatches = similar.map((r) => r.product);
   }
 
   return externalResult;
@@ -282,48 +300,148 @@ export interface RecognizeImageResult {
   existingProductId?: string;
   existingProductName?: string;
   existingProduct?: ProductSummary;
+  /** Why the existing product was chosen (shown to the admin) */
+  matchReason?: string;
+  /** Similar catalog products the admin must confirm or discard before creating a new one */
+  possibleMatches?: ProductSummary[];
   error?: string;
 }
 
-/** Comprehensive zero-margin-of-error duplicate match across catalog products */
-async function findExistingProductByName(
-  name: string,
-  description?: string,
-  barcode?: string,
-  preloadedCandidates?: ProductSummary[]
-): Promise<ProductSummary | null> {
-  const cleanName = name.trim();
-  const cleanBarcode = barcode?.trim();
-  if (!cleanName && !cleanBarcode) return null;
+const VISION_MODEL = "deepseek-v4-flash-vision-exp";
+const UPLOAD_DIR = process.env.PRODUCT_IMAGES_DIR || path.join(process.cwd(), "public", "img", "products");
 
-  const candidates: ProductSummary[] =
-    preloadedCandidates ??
-    (await prisma.product.findMany({
-      select: {
-        id: true,
-        name: true,
-        barcode: true,
-        category: true,
-        price: true,
-        costPrice: true,
-        stock: true,
-        image: true,
-        images: true,
-        description: true,
-      },
-    }));
+/** Loads a catalog product's local cover photo as a small JPEG for visual comparison. */
+async function loadCandidateThumb(product: ProductSummary): Promise<string | null> {
+  const img = product.image;
+  if (!img || !img.startsWith("/img/products/")) return null;
+  const file = path.basename(img);
+  if (!/^[\w-]+\.(webp|jpe?g|png)$/i.test(file)) return null;
+  try {
+    const buf = await readFile(/*turbopackIgnore: true*/ path.join(UPLOAD_DIR, file));
+    const jpg = await sharp(buf)
+      .resize(384, 384, { fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+    return jpg.toString("base64");
+  } catch {
+    return null;
+  }
+}
 
-  for (const cand of candidates) {
-    const match = evaluateDuplicateMatch(
-      { name: cleanName, description, barcode: cleanBarcode },
-      cand
-    );
-    if (match.isDuplicate && match.existingProduct) {
-      return match.existingProduct;
+interface VisualVerdict {
+  /** index into the shortlist, or -1 */
+  index: number;
+  confidence: "exacto" | "probable" | "ninguno";
+  reason: string;
+}
+
+/**
+ * Second AI pass: the model looks at the admin's photo AND the shortlisted catalog
+ * products (name, code, and their own photo when available) and says which one it is.
+ */
+async function verifyAgainstCatalog(
+  photoBase64: string,
+  photoMime: string,
+  recognized: { name: string; brand?: string; model?: string; visibleText?: string[] },
+  shortlist: ProductSummary[]
+): Promise<VisualVerdict | null> {
+  if (shortlist.length === 0) return null;
+
+  const listText = shortlist
+    .map((p, i) => {
+      const parts = [`#${i + 1}: ${p.name}`];
+      if (p.barcode) parts.push(`código: ${p.barcode}`);
+      if (p.category) parts.push(`categoría: ${p.category}`);
+      if (p.description) parts.push(`desc: ${p.description.slice(0, 140)}`);
+      return parts.join(" | ");
+    })
+    .join("\n");
+
+  const schema = z.object({
+    matchNumber: z
+      .number()
+      .int()
+      .min(0)
+      .max(shortlist.length)
+      .describe("Número del producto del catálogo que es EXACTAMENTE el de la foto, o 0 si ninguno lo es."),
+    confidence: z
+      .enum(["exacto", "probable", "ninguno"])
+      .describe(
+        "'exacto' = misma marca, mismo modelo y misma variante (capacidad, color, medida, potencia) sin duda. 'probable' = parece el mismo pero la foto no permite confirmar la variante o el modelo. 'ninguno' = no está en la lista."
+      ),
+    reason: z.string().describe("Explicación breve en español (máx. 1 frase)."),
+  });
+
+  const intro = `Eres el verificador de inventario de INFOSISTEL. La PRIMERA imagen es la foto que acaba de tomar el administrador.
+Lectura previa de la foto: nombre="${recognized.name}"${recognized.brand ? `, marca="${recognized.brand}"` : ""}${recognized.model ? `, modelo="${recognized.model}"` : ""}${recognized.visibleText?.length ? `, texto visible="${recognized.visibleText.slice(0, 15).join(" / ")}"` : ""}.
+
+Estos productos YA EXISTEN en la tienda (los nombres fueron escritos a mano o por otra IA, así que pueden estar redactados distinto):
+${listText}
+
+Decide si la foto corresponde a UNO de esos productos. Reglas estrictas:
+- Mismo producto = misma marca + mismo modelo + misma variante (capacidad GB/TB, color, longitud, potencia W, voltaje/amperaje, versión). Si cualquiera difiere, NO es el mismo.
+- El nombre puede estar escrito distinto (orden, sinónimos, español/inglés): fíjate en lo que es, no en cómo está escrito.
+- Si aparece un código de modelo/SKU en la foto y en el catálogo, deben coincidir.
+- Si dudas entre dos variantes o la foto no deja ver el detalle, responde 'probable', nunca 'exacto'.`;
+
+  const thumbs = await Promise.all(shortlist.slice(0, 6).map(loadCandidateThumb));
+
+  type Part =
+    | { type: "text"; text: string }
+    | { type: "file"; data: string; mediaType: string };
+  const textOnly: Part[] = [
+    { type: "text", text: intro },
+    { type: "file", data: photoBase64, mediaType: photoMime },
+  ];
+  const withThumbs: Part[] = [...textOnly];
+  thumbs.forEach((t, i) => {
+    if (!t) return;
+    withThumbs.push({ type: "text", text: `Foto de catálogo del producto #${i + 1}:` });
+    withThumbs.push({ type: "file", data: t, mediaType: "image/jpeg" });
+  });
+
+  const attempts = withThumbs.length > textOnly.length ? [withThumbs, textOnly] : [textOnly];
+  for (const content of attempts) {
+    try {
+      const { object } = await generateObject({
+        model: deepseek(VISION_MODEL),
+        schema,
+        messages: [{ role: "user", content }],
+      });
+      const index = object.matchNumber >= 1 ? object.matchNumber - 1 : -1;
+      return {
+        index,
+        confidence: index === -1 ? "ninguno" : object.confidence,
+        reason: object.reason,
+      };
+    } catch (err) {
+      console.error("[scan-actions] verifyAgainstCatalog attempt failed:", err);
     }
   }
-
   return null;
+}
+
+function existingResult(
+  product: ProductSummary,
+  reason: string,
+  fallback: { description: string; category: string; barcode?: string }
+): RecognizeImageResult {
+  return {
+    name: product.name,
+    description: product.description ?? fallback.description,
+    category: product.category ?? fallback.category,
+    // If the catalog product had no barcode, keep the one read from the photo so the
+    // next scan is an exact barcode hit.
+    barcode: product.barcode ?? fallback.barcode,
+    price: product.price,
+    costPrice: product.costPrice ?? 0,
+    stock: product.stock ?? 0,
+    existingProductId: product.id,
+    existingProductName: product.name,
+    existingProduct: product,
+    matchReason: reason,
+  };
 }
 
 export async function recognizeProductImage(
@@ -351,28 +469,26 @@ export async function recognizeProductImage(
   try {
     const [categoriesRows, existingProducts] = await Promise.all([
       prisma.category.findMany({ select: { name: true } }),
-      prisma.product.findMany({
-        select: {
-          id: true,
-          name: true,
-          barcode: true,
-          category: true,
-          price: true,
-          costPrice: true,
-          stock: true,
-          image: true,
-          images: true,
-          description: true,
-        },
-        orderBy: { itemNumber: "asc" },
-      }),
+      prisma.product.findMany({ select: PRODUCT_SELECT, orderBy: { itemNumber: "asc" } }),
     ]);
 
     const categories = categoriesRows.map((c) => c.name);
 
     const { object } = await generateObject({
-      model: deepseek("deepseek-v4-flash-vision-exp"),
+      model: deepseek(VISION_MODEL),
       schema: z.object({
+        brand: z
+          .string()
+          .optional()
+          .describe("Marca EXACTA impresa en el producto o la caja (ej. 'LOGITECH', 'AMERICAN NET', 'UGREEN'). Vacío si no se ve."),
+        model: z
+          .string()
+          .optional()
+          .describe("Código de modelo / SKU / número de parte EXACTO impreso (ej. 'G203', 'TL-WN725N', 'SDCS2/64GB'). Copia los caracteres tal cual. Vacío si no se ve; NO lo inventes."),
+        visibleText: z
+          .array(z.string())
+          .optional()
+          .describe("Textos impresos legibles en el producto/caja/etiqueta, copiados literalmente (máx. 20)."),
         name: z
           .string()
           .describe(
@@ -433,13 +549,15 @@ export async function recognizeProductImage(
               text: `Eres el sistema experto de catalogación e inventario con IA de INFOSISTEL (Huancayo, Perú).
 Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa todos los datos:
 
+0. LECTURA LITERAL (lo más importante, se usa para no duplicar productos):
+- 'brand', 'model', 'visibleText' y 'barcode': copia EXACTAMENTE lo que está impreso. Si no se lee, déjalo vacío. NUNCA inventes un modelo ni un código.
+
 1. PRECISIÓN DE RECONOCIMIENTO (0 MARGEN DE ERROR):
 - 'name': Nombre comercial claro en español y en MAYÚSCULAS (Tipo de producto + Marca + Modelo exacto + Medida/Capacidad/Color/Versión). Ejemplos: "MOUSE LOGITECH G203 LIGHTSYNC RGB NEGRO", "CABLE UGREEN USB-C A USB-C 100W 1M", "ADAPTADOR DE CORRIENTE AMERICAN NET 5V 2.5A".
   REGLA DE MARCA CRÍTICA: Si la marca en el producto o caja es 'American NET', escribe siempre 'AMERICAN NET' completo (NUNCA solo 'American', para no confundir con aerolíneas u otros rubros).
 - 'category': Categoría exacta en español ${categories.length > 0 ? `(elige entre: ${categories.join(", ")})` : "('LAPTOPS', 'ACCESORIOS', 'ALMACENAMIENTO', 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC')"}.
 - 'description': Redacción comercial y técnica impecable en español para la ficha del producto. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
 - 'suggestedPrice' y 'suggestedCostPrice': Precios reales en Soles (S/.) para el mercado peruano.
-- 'barcode': Si se ven los números bajo un código de barras, extráelos exactamente.
 - 'searchQueries': 3 búsquedas precisas combinando tipo de producto de hardware y marca completa (ej: "American NET adaptador corriente 5V 2.5A", "American NET 5V 2.5A power adapter", etc.). PROHIBIDO escribir solo 'American' o términos genéricos sin producto tecnológico.
 - 'negativeKeywords': Incluye términos que deben filtrarse (ej: 'avion', 'aviones', 'airplane', 'airline', 'airlines', 'boeing', 'flight', 'vuelo', 'aerolinea', 'aeropuerto', 'ropa', 'deporte').`,
             },
@@ -452,33 +570,106 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
     const cleanName = object.name.trim().toUpperCase();
     const cleanDescription = object.description.trim().toUpperCase();
     const cleanBarcode = object.barcode?.replace(/[^0-9A-Za-z-]/g, "").trim() || undefined;
+    const cleanBrand = object.brand?.trim() || undefined;
+    const cleanModel = object.model?.trim() || undefined;
+    const visibleText = (object.visibleText ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 20);
     const categoryInSpanish = translateCategoryToSpanish(object.category, cleanName);
+    const fallback = { description: cleanDescription, category: categoryInSpanish, barcode: cleanBarcode };
 
-    // Verificación determinística de duplicados con 0 margen de error:
-    // Solo marca duplicado si coincide el código de barras exacto, el nombre exacto/normalizado o el modelo exacto en el título.
-    const matchedExisting = await findExistingProductByName(
-      cleanName,
-      cleanDescription,
-      cleanBarcode,
-      existingProducts
-    );
-
-    if (matchedExisting) {
-      return {
-        name: matchedExisting.name,
-        description: matchedExisting.description ?? cleanDescription,
-        category: matchedExisting.category ?? categoryInSpanish,
-        barcode: matchedExisting.barcode ?? cleanBarcode,
-        price: matchedExisting.price,
-        costPrice: matchedExisting.costPrice ?? 0,
-        stock: matchedExisting.stock ?? 0,
-        existingProductId: matchedExisting.id,
-        existingProductName: matchedExisting.name,
-        existingProduct: matchedExisting,
-      };
+    // ── PASO 1: código de barras leído en la foto (100% certero) ──────────
+    const targetBc = normalizeBarcode(cleanBarcode);
+    if (targetBc.length >= 6) {
+      const byBarcode = existingProducts.find((p) => p.barcode && normalizeBarcode(p.barcode) === targetBc);
+      if (byBarcode) return existingResult(byBarcode, "Mismo código de barras", fallback);
     }
 
-    // 3. New product: Search and automatically download 4 valid crisp product images!
+    // A product that already has a DIFFERENT barcode than the one printed on the box is another product.
+    const pool =
+      targetBc.length >= 6 ? existingProducts.filter((p) => !p.barcode) : existingProducts;
+
+    // ── PASO 2: código de modelo impreso que aparece en UN solo producto del catálogo ─
+    const brandFromPhoto = cleanBrand ? extractBrand(cleanBrand) ?? normalizeText(cleanBrand) : null;
+    const modelKey = cleanModel ? normalizeText(cleanModel).replace(/ /g, "") : "";
+    let modelHits: ProductSummary[] = [];
+    if (modelKey.length >= 4 && /[0-9]/.test(modelKey)) {
+      modelHits = pool.filter((p) => {
+        const hay = normalizeText(`${p.name} ${p.description ?? ""}`).replace(/ /g, "");
+        if (!hay.includes(modelKey)) return false;
+        const pb = extractProductBrand(p.name, p.description);
+        return !brandFromPhoto || !pb || pb === brandFromPhoto;
+      });
+    }
+
+    // ── PASO 3: coincidencia determinística por nombre ────────────────────
+    const deterministic = findBestDuplicateMatch(
+      { name: cleanName, description: cleanDescription },
+      pool
+    );
+    if (
+      deterministic.isDuplicate &&
+      deterministic.existingProduct &&
+      (deterministic.reason === "exact_name" || deterministic.reason === "normalized_name")
+    ) {
+      return existingResult(deterministic.existingProduct, "Mismo nombre en el catálogo", fallback);
+    }
+
+    // ── PASO 4: lista corta de parecidos + verificación VISUAL con IA ────
+    const ranked: RankedCandidate[] = rankSimilarProducts(
+      {
+        name: cleanName,
+        description: cleanDescription,
+        brand: cleanBrand,
+        model: cleanModel,
+        extraText: visibleText.join(" "),
+      },
+      pool,
+      10
+    );
+    const shortlistMap = new Map<string, ProductSummary>();
+    for (const p of modelHits.slice(0, 4)) shortlistMap.set(p.id, p);
+    if (deterministic.existingProduct) shortlistMap.set(deterministic.existingProduct.id, deterministic.existingProduct);
+    for (const r of ranked) {
+      if (shortlistMap.size >= 10) break;
+      shortlistMap.set(r.product.id, r.product);
+    }
+    const shortlist = Array.from(shortlistMap.values());
+
+    let possibleMatches: ProductSummary[] = [];
+    if (shortlist.length > 0) {
+      const verdict = await verifyAgainstCatalog(
+        base64,
+        mimeType,
+        { name: cleanName, brand: cleanBrand, model: cleanModel, visibleText },
+        shortlist
+      );
+      const chosen = verdict && verdict.index >= 0 ? shortlist[verdict.index] : undefined;
+
+      if (chosen && verdict?.confidence === "exacto") {
+        return existingResult(chosen, verdict.reason || "Verificado visualmente por IA", fallback);
+      }
+
+      if (!verdict) {
+        // Verificación no disponible: solo se acepta una señal fuerte e inequívoca.
+        if (modelHits.length === 1) {
+          return existingResult(modelHits[0], `Mismo modelo (${cleanModel})`, fallback);
+        }
+        if (deterministic.isDuplicate && deterministic.existingProduct) {
+          return existingResult(deterministic.existingProduct, deterministic.message ?? "Coincidencia en catálogo", fallback);
+        }
+      }
+
+      // Dudoso → el administrador decide. El sugerido por la IA va primero.
+      const ordered = [
+        ...(chosen ? [chosen] : []),
+        ...modelHits,
+        ...(deterministic.existingProduct ? [deterministic.existingProduct] : []),
+        ...ranked.filter((r) => r.score >= 0.45).map((r) => r.product),
+      ];
+      const seen = new Set<string>();
+      possibleMatches = ordered.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true))).slice(0, 4);
+    }
+
+    // ── PASO 5: producto nuevo → buscar y descargar 4 fotos ──────────────
     const queries = [
       ...(object.searchQueries ?? []),
       `${cleanName} product`,
@@ -520,6 +711,7 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
       images: downloaded.gallery,
       appliedLocalImages: downloaded.allPaths,
       imageOptions: candidateUrls.length > 0 ? candidateUrls : undefined,
+      possibleMatches: possibleMatches.length > 0 ? possibleMatches : undefined,
     };
   } catch (err) {
     console.error("[scan-actions] recognizeProductImage failed:", err);

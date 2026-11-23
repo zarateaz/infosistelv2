@@ -429,16 +429,41 @@ export function extractDistinctiveTokens(str: string): string[] {
 
 /**
  * Extracts a recognizable brand name from text if present.
+ * Returns the brand that appears EARLIEST in the text (ties → longest name), so
+ * "CABLE UGREEN ... COMPATIBLE CON APPLE" → "ugreen", not "apple".
  */
 export function extractBrand(str: string): string | null {
   const norm = ` ${normalizeText(str)} `;
+  let best: { brand: string; pos: number } | null = null;
   for (const b of SORTED_BRANDS) {
     const brandNorm = normalizeText(b);
-    if (norm.includes(` ${brandNorm} `)) {
-      return brandNorm;
-    }
+    const pos = norm.indexOf(` ${brandNorm} `);
+    if (pos === -1) continue;
+    if (!best || pos < best.pos) best = { brand: brandNorm, pos };
   }
-  return null;
+  if (!best) return null;
+  // Alias canónicos para que "american-net" / "americannet" / "tp link" coincidan
+  const aliases: Record<string, string> = {
+    "american net": "americannet",
+    americannet: "americannet",
+    tplink: "tp link",
+    dlink: "d link",
+    tdagger: "t dagger",
+    "western digital": "wd",
+    "wd purple": "wd",
+    "wd blue": "wd",
+    "wd black": "wd",
+    "wd green": "wd",
+  };
+  return aliases[best.brand] ?? best.brand;
+}
+
+/**
+ * Brand of a product: taken from the NAME first (the name is the product's identity).
+ * Only if the name has no known brand do we look at the description.
+ */
+export function extractProductBrand(name: string, description?: string | null): string | null {
+  return extractBrand(name) ?? (description ? extractBrand(description) : null);
 }
 
 /**
@@ -810,13 +835,10 @@ export function evaluateDuplicateMatch(
     return { isDuplicate: false };
   }
 
-  // Texto completo combinado para análisis técnico profundo
-  const inputFull = `${rawInputName} ${input.description ?? ""}`;
-  const candFull = `${rawCandName} ${candidate.description ?? ""}`;
-
-  // 2. Comprobación algebraica de ortogonalidad por especificaciones técnicas:
-  // Si difieren en capacidad (ej: 32GB vs 64GB), velocidad, serie o clase, NO son duplicados
-  if (haveConflictingTechnicalSpecs(inputFull, candFull)) {
+  // 2. Ortogonalidad por especificaciones técnicas SOLO sobre los nombres.
+  // Las descripciones las redacta la IA y varían en cada foto (mencionan colores de luces,
+  // "compatible con USB 2.0/3.0", etc.), por eso NO se usan para descartar coincidencias.
+  if (haveConflictingTechnicalSpecs(rawInputName, rawCandName)) {
     return { isDuplicate: false };
   }
 
@@ -843,18 +865,13 @@ export function evaluateDuplicateMatch(
     };
   }
 
-  // 5. Restricción dura de marcas (Subespacio de Marca):
-  // Si una es Kingston y la otra es Hiksemi, Biwin o WD, son ortogonales => JAMÁS coinciden
-  const brandInput = extractBrand(inputFull);
-  const brandCand = extractBrand(candFull);
+  // 5. Restricción dura de marcas: Kingston vs Hiksemi vs WD JAMÁS coinciden.
+  const brandInput = extractProductBrand(rawInputName, input.description);
+  const brandCand = extractProductBrand(rawCandName, candidate.description);
   if (brandInput && brandCand && brandInput !== brandCand) {
     return { isDuplicate: false };
   }
-  // Si uno tiene marca identificada y el otro tiene una marca completamente distinta no listada
-  if ((brandInput && !brandCand) || (!brandInput && brandCand)) {
-    // Si uno tiene marca y el otro no, no asociar
-    return { isDuplicate: false };
-  }
+  const oneSidedBrand = (brandInput && !brandCand) || (!brandInput && brandCand);
 
   const tokensInput = extractDistinctiveTokens(rawInputName);
   const tokensCand = extractDistinctiveTokens(rawCandName);
@@ -886,8 +903,8 @@ export function evaluateDuplicateMatch(
       return { isDuplicate: false };
     }
 
-    // Si comparten el código de modelo exacto y misma marca:
-    if (sharedModels.length > 0 && (!brandInput || !brandCand || brandInput === brandCand)) {
+    // Si comparten el código de modelo exacto (y la marca no se contradice):
+    if (sharedModels.length > 0) {
       return {
         isDuplicate: true,
         reason: "model_code",
@@ -906,7 +923,14 @@ export function evaluateDuplicateMatch(
 
   // Dos productos solo son duplicados si su similitud vectorial es casi idéntica (>= 94%)
   // Productos parecidos (como tarjetas de memoria de distinta marca o modelo) suelen tener cosenos < 0.70
-  if (cosine >= 0.94 && jaccard >= 0.88) {
+  // Si solo uno de los dos nombres tiene marca, no se decide por similitud (lo resuelve la IA / el usuario)
+  // Palabras que sobran en un nombre pero son solo genéricas ("MEMORIA", "TARJETA", "KIT"...)
+  const setIn = new Set(tokensInput);
+  const setCand = new Set(tokensCand);
+  const onlyGenericDiff = [...tokensInput.filter((t) => !setCand.has(t)), ...tokensCand.filter((t) => !setIn.has(t))].every(
+    (t) => t in GENERIC_WEIGHTS
+  );
+  if (!oneSidedBrand && cosine >= 0.94 && (jaccard >= 0.88 || onlyGenericDiff)) {
     return {
       isDuplicate: true,
       reason: "high_similarity",
@@ -922,4 +946,95 @@ export function evaluateDuplicateMatch(
     cosineSimilarity: cosine,
     jaccardSimilarity: jaccard,
   };
+}
+
+const REASON_PRIORITY: Record<NonNullable<DuplicateDetectionResult["reason"]>, number> = {
+  barcode: 0,
+  exact_name: 1,
+  normalized_name: 2,
+  model_code: 3,
+  word_permutation: 4,
+  high_similarity: 5,
+};
+
+/**
+ * Evaluates the input against EVERY candidate and returns the strongest match
+ * (barcode > exact name > normalized > model code > permutation > similarity),
+ * instead of the first one found in database order.
+ */
+export function findBestDuplicateMatch(
+  input: { name: string; barcode?: string | null; description?: string | null },
+  candidates: ProductSummary[]
+): DuplicateDetectionResult {
+  let best: DuplicateDetectionResult | null = null;
+  for (const cand of candidates) {
+    const match = evaluateDuplicateMatch(input, cand);
+    if (!match.isDuplicate || !match.reason) continue;
+    if (!best || REASON_PRIORITY[match.reason] < REASON_PRIORITY[best.reason!]) {
+      best = match;
+      if (match.reason === "barcode") break;
+    }
+  }
+  return best ?? { isDuplicate: false };
+}
+
+export interface RankedCandidate {
+  product: ProductSummary;
+  /** 0..~1.6 — higher means more similar */
+  score: number;
+}
+
+/**
+ * Ranks catalog products by how similar they are to a recognized product, to build a
+ * shortlist that the vision model (or the user) confirms. It never decides on its own.
+ */
+export function rankSimilarProducts(
+  input: {
+    name: string;
+    description?: string | null;
+    brand?: string | null;
+    model?: string | null;
+    extraText?: string | null;
+  },
+  candidates: ProductSummary[],
+  limit = 12,
+  minScore = 0.2
+): RankedCandidate[] {
+  const inputText = [input.name, input.brand, input.model, input.extraText].filter(Boolean).join(" ");
+  const tokensInput = extractDistinctiveTokens(inputText);
+  if (tokensInput.length === 0) return [];
+  const vecInput = buildFeatureVector(tokensInput);
+  const brandInput =
+    (input.brand ? extractBrand(input.brand) ?? normalizeText(input.brand) : null) ??
+    extractProductBrand(input.name, input.description);
+  const modelsInput = new Set(
+    [...extractModelCodes(inputText), ...(input.model ? [normalizeText(input.model).replace(/ /g, "")] : [])].filter(
+      (m) => m.length >= 3
+    )
+  );
+
+  const ranked: RankedCandidate[] = [];
+  for (const cand of candidates) {
+    if (!cand.name) continue;
+    const tokensCand = extractDistinctiveTokens(cand.name);
+    let score = computeCosineSimilarity(vecInput, buildFeatureVector(tokensCand));
+
+    const candHay = normalizeText(`${cand.name} ${cand.barcode ?? ""} ${cand.description ?? ""}`).replace(/ /g, "");
+    const candModels = new Set(extractModelCodes(`${cand.name} ${cand.description ?? ""}`));
+    for (const m of modelsInput) {
+      if (candModels.has(m) || (m.length >= 4 && candHay.includes(m))) {
+        score += 0.5;
+        break;
+      }
+    }
+
+    const brandCand = extractProductBrand(cand.name, cand.description);
+    if (brandInput && brandCand) {
+      score = brandInput === brandCand ? score + 0.15 : score * 0.3;
+    }
+    if (haveConflictingTechnicalSpecs(input.name, cand.name)) score *= 0.5;
+
+    if (score >= minScore) ranked.push({ product: cand, score });
+  }
+  return ranked.sort((a, b) => b.score - a.score).slice(0, limit);
 }

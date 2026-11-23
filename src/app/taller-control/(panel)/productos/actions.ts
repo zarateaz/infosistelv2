@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { deleteProductImageIfManaged } from "./upload-actions";
 import { translateCategoryToSpanish } from "@/lib/categoryUtils";
 import {
-  evaluateDuplicateMatch,
+  findBestDuplicateMatch,
   type DuplicateDetectionResult,
   type ProductSummary,
 } from "@/lib/duplicateDetection";
@@ -122,9 +122,22 @@ function parseProductForm(formData: FormData) {
       ? (formData.get("existingProductId") as string).trim()
       : "";
 
+  // IDs that the admin explicitly marked as "no es este producto" in the form
+  let ignoredExistingIds: string[] = [];
+  const ignoredRaw = formData.get("ignoredExistingIds");
+  if (typeof ignoredRaw === "string" && ignoredRaw) {
+    try {
+      const decoded = JSON.parse(ignoredRaw);
+      if (Array.isArray(decoded)) {
+        ignoredExistingIds = decoded.filter((v): v is string => typeof v === "string").slice(0, 50);
+      }
+    } catch {}
+  }
+
   return {
     data: { ...parsed.data, isFeatured, onSale, salePrice },
     existingProductId: existingProductId || undefined,
+    ignoredExistingIds,
   } as const;
 }
 
@@ -151,9 +164,14 @@ export async function createProduct(
       result.data.name,
       result.data.barcode,
       undefined,
-      result.data.description
+      result.data.description,
+      result.ignoredExistingIds
     );
     if (dupCheck.isDuplicate && dupCheck.existingProduct) {
+      // The admin said "no es este" but it has the same barcode/name → don't merge, don't duplicate.
+      if (result.ignoredExistingIds.includes(dupCheck.existingProduct.id)) {
+        return { error: dupCheck.message };
+      }
       targetExistingId = dupCheck.existingProduct.id;
     }
   }
@@ -210,7 +228,7 @@ export async function createProduct(
     }
   }
 
-  const error = await insertProduct(result.data);
+  const error = await insertProduct(result.data, result.ignoredExistingIds);
   if (error) return { error };
 
   revalidatePath("/taller-control/productos");
@@ -225,7 +243,8 @@ export async function checkDuplicateProduct(
   name: string,
   barcode?: string | null,
   excludeId?: string,
-  description?: string | null
+  description?: string | null,
+  ignoredIds?: string[]
 ): Promise<DuplicateDetectionResult> {
   const cleanBarcode = barcode?.trim();
   const cleanName = name?.trim();
@@ -234,37 +253,6 @@ export async function checkDuplicateProduct(
     return { isDuplicate: false };
   }
 
-  // 1. Direct barcode lookup if present
-  if (cleanBarcode) {
-    const existingByBarcode = await prisma.product.findFirst({
-      where: {
-        barcode: cleanBarcode,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-      select: {
-        id: true,
-        name: true,
-        barcode: true,
-        category: true,
-        price: true,
-        costPrice: true,
-        stock: true,
-        image: true,
-        images: true,
-        description: true,
-      },
-    });
-    if (existingByBarcode) {
-      return {
-        isDuplicate: true,
-        reason: "barcode",
-        message: `El producto ya se encuentra en la tienda con este código de barras ("${existingByBarcode.name}").`,
-        existingProduct: existingByBarcode,
-      };
-    }
-  }
-
-  // 2. Comprehensive multi-criteria scan over existing products
   const candidates: ProductSummary[] = await prisma.product.findMany({
     where: excludeId ? { id: { not: excludeId } } : undefined,
     select: {
@@ -281,17 +269,28 @@ export async function checkDuplicateProduct(
     },
   });
 
-  for (const cand of candidates) {
-    const match = evaluateDuplicateMatch(
-      { name: cleanName, barcode: cleanBarcode, description: description ?? undefined },
-      cand
-    );
-    if (match.isDuplicate) {
-      return match;
-    }
+  const ignored = new Set(ignoredIds ?? []);
+  const input = { name: cleanName, barcode: cleanBarcode, description: description ?? undefined };
+
+  // Same barcode / identical name can never coexist, even if the admin dismissed the match.
+  const hardMatch = findBestDuplicateMatch(input, candidates.filter((c) => ignored.has(c.id)));
+  if (
+    hardMatch.isDuplicate &&
+    (hardMatch.reason === "barcode" || hardMatch.reason === "exact_name" || hardMatch.reason === "normalized_name")
+  ) {
+    return {
+      ...hardMatch,
+      message:
+        hardMatch.reason === "barcode"
+          ? `Ese código de barras ya pertenece a "${hardMatch.existingProduct?.name}". Si es otro producto, corrige el código.`
+          : `Ya existe un producto con ese mismo nombre ("${hardMatch.existingProduct?.name}"). Si es una variante distinta, cambia el nombre (ej. color, capacidad o medida).`,
+    };
   }
 
-  return { isDuplicate: false };
+  return findBestDuplicateMatch(
+    input,
+    candidates.filter((c) => !ignored.has(c.id))
+  );
 }
 
 /** Quick stock increment/decrement action for existing products */
@@ -395,8 +394,11 @@ export async function updateExistingProductStockAndPrice(
   }
 }
 
-async function insertProduct(data: z.infer<typeof productSchema>): Promise<string | null> {
-  const dupCheck = await checkDuplicateProduct(data.name, data.barcode, undefined, data.description);
+async function insertProduct(
+  data: z.infer<typeof productSchema>,
+  ignoredIds?: string[]
+): Promise<string | null> {
+  const dupCheck = await checkDuplicateProduct(data.name, data.barcode, undefined, data.description, ignoredIds);
   if (dupCheck.isDuplicate && dupCheck.message) {
     return dupCheck.message;
   }

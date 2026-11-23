@@ -61,6 +61,36 @@ export interface ScanFill {
   image?: string;
   images?: string[];
   existingProduct?: ProductSummary | null;
+  /** Catalog products the admin said are NOT this product */
+  ignoreIds?: string[];
+  /** true while similar products are shown and the admin hasn't decided yet */
+  pendingReview?: boolean;
+}
+
+function parseGallery(images: ProductSummary["images"]): string[] | undefined {
+  if (!images) return undefined;
+  try {
+    const parsed = typeof images === "string" ? JSON.parse(images) : images;
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function existingFill(product: ProductSummary, scannedBarcode?: string): ScanFill {
+  return {
+    name: product.name,
+    category: product.category ?? undefined,
+    description: product.description ?? undefined,
+    barcode: product.barcode ?? scannedBarcode,
+    price: product.price,
+    costPrice: product.costPrice ?? 0,
+    stock: (product.stock ?? 0) + 1,
+    image: product.image ?? undefined,
+    images: parseGallery(product.images),
+    existingProduct: product,
+    pendingReview: false,
+  };
 }
 
 export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
@@ -82,6 +112,9 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [possibleMatches, setPossibleMatches] = useState<ProductSummary[]>([]);
+  const [scannedBarcodeForMatch, setScannedBarcodeForMatch] = useState<string | undefined>();
+  const [matchReason, setMatchReason] = useState<string | null>(null);
 
   const [isEnlargedPicker, setIsEnlargedPicker] = useState(true);
   const [zoomModalUrl, setZoomModalUrl] = useState<string | null>(null);
@@ -143,6 +176,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
     setImageOptions([]);
     setSelectedUrls([]);
     setPicksApplied(false);
+    setPossibleMatches([]);
+    setMatchReason(null);
     const result = await lookupBarcode(clean);
 
     if (result.existingProduct) {
@@ -150,33 +185,16 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         kind: "existing",
         product: result.existingProduct,
       });
-      let parsedImages: string[] | undefined;
-      if (result.existingProduct.images) {
-        try {
-          parsedImages =
-            typeof result.existingProduct.images === "string"
-              ? JSON.parse(result.existingProduct.images)
-              : result.existingProduct.images;
-        } catch {}
-      }
-      onFill({
-        name: result.existingProduct.name,
-        category: result.existingProduct.category ?? undefined,
-        description: result.existingProduct.description ?? undefined,
-        barcode: result.existingProduct.barcode ?? clean,
-        price: result.existingProduct.price,
-        costPrice: result.existingProduct.costPrice ?? 0,
-        stock: (result.existingProduct.stock ?? 0) + 1,
-        image: result.existingProduct.image ?? undefined,
-        images: parsedImages,
-        existingProduct: result.existingProduct,
-      });
+      onFill(existingFill(result.existingProduct, clean));
       return;
     }
 
     const { imageUrl, imageOptions: candidates, image, images, ...suggestion } = result.suggestion ?? {};
     const localApplied = [image, ...(images ?? [])].filter((p): p is string => !!p);
 
+    const similar = result.possibleMatches ?? [];
+    setPossibleMatches(similar);
+    setScannedBarcodeForMatch(clean);
     onFill({
       barcode: clean,
       ...suggestion,
@@ -184,6 +202,7 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
       image,
       images,
       existingProduct: null,
+      pendingReview: similar.length > 0,
     });
     setBarcodeStatus(result.suggestion ? { kind: "found" } : { kind: "not-found" });
     if (suggestion.name) setManualSearchQuery(suggestion.name);
@@ -253,6 +272,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
 
   async function processImageFile(file: File) {
     setImageStatus({ kind: "loading" });
+    setPossibleMatches([]);
+    setMatchReason(null);
     setBarcodeStatus({ kind: "idle" });
     setImageOptions([]);
     setSelectedUrls([]);
@@ -271,27 +292,8 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           kind: "existing",
           product: result.existingProduct,
         });
-        let parsedImages: string[] | undefined;
-        if (result.existingProduct.images) {
-          try {
-            parsedImages =
-              typeof result.existingProduct.images === "string"
-                ? JSON.parse(result.existingProduct.images)
-                : result.existingProduct.images;
-          } catch {}
-        }
-        onFill({
-          name: result.existingProduct.name,
-          category: result.existingProduct.category ?? undefined,
-          description: result.existingProduct.description ?? undefined,
-          barcode: result.existingProduct.barcode ?? undefined,
-          price: result.existingProduct.price,
-          costPrice: result.existingProduct.costPrice ?? 0,
-          stock: (result.existingProduct.stock ?? 0) + 1,
-          image: result.existingProduct.image ?? undefined,
-          images: parsedImages,
-          existingProduct: result.existingProduct,
-        });
+        setMatchReason(result.matchReason ?? null);
+        onFill(existingFill(result.existingProduct, result.barcode));
         return;
       }
 
@@ -307,7 +309,10 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
         image: result.image,
         images: result.images,
         existingProduct: null,
+        pendingReview: (result.possibleMatches?.length ?? 0) > 0,
       });
+      setPossibleMatches(result.possibleMatches ?? []);
+      setScannedBarcodeForMatch(result.barcode);
       setImageStatus({ kind: "done" });
       if (result.name) setManualSearchQuery(result.name);
 
@@ -418,7 +423,69 @@ export function ScannerPanel({ onFill }: { onFill: (fill: ScanFill) => void }) {
           <span>
             ¡Producto detectado en tienda! Abajo puedes elegir cuánto stock agregar y pulsar{" "}
             <strong>Guardar</strong>.
+            {matchReason && imageStatus.kind === "existing" && (
+              <span className="mt-0.5 block font-medium text-amber-800">Motivo: {matchReason}</span>
+            )}
           </span>
+        </div>
+      )}
+
+      {possibleMatches.length > 0 && (
+        <div className="mt-4 rounded-2xl border-2 border-amber-500/60 bg-amber-50 p-4 text-amber-950 shadow-sm">
+          <p className="flex items-center gap-1.5 text-sm font-bold">
+            <AlertTriangle size={16} className="shrink-0 text-amber-600" />
+            ¿Es alguno de estos productos que ya tienes en la tienda?
+          </p>
+          <p className="mt-0.5 text-xs text-amber-900/80">
+            Se parecen a la foto. Si es uno de ellos se suma stock; si no, regístralo como nuevo.
+          </p>
+          <div className="mt-3 grid gap-2">
+            {possibleMatches.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl border border-amber-300 bg-white p-2">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+                  {p.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previewUrl(p.image)} alt="" className="h-full w-full object-contain" />
+                  ) : (
+                    <ImageIcon size={18} className="text-fg-muted" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold text-fg" title={p.name}>{p.name}</p>
+                  <p className="text-[11px] text-fg-muted">
+                    Stock: {p.stock ?? 0} · S/. {p.price ?? "-"}
+                    {p.barcode ? ` · Cód: ${p.barcode}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPossibleMatches([]);
+                    setImageOptions([]);
+                    setSelectedUrls([]);
+                    setMatchReason("Confirmado por ti");
+                    if (imageStatus.kind !== "idle") setImageStatus({ kind: "existing", product: p });
+                    else setBarcodeStatus({ kind: "existing", product: p });
+                    onFill(existingFill(p, scannedBarcodeForMatch));
+                  }}
+                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700"
+                >
+                  Sí, es este
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const ids = possibleMatches.map((p) => p.id);
+              setPossibleMatches([]);
+              onFill({ ignoreIds: ids, pendingReview: false, existingProduct: null });
+            }}
+            className="mt-3 w-full rounded-xl border border-amber-500/60 bg-white px-4 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+          >
+            No, ninguno — es un producto nuevo
+          </button>
         </div>
       )}
 
