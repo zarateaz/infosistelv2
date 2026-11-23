@@ -263,6 +263,12 @@ export const KNOWN_BRANDS = [
 
 // Marcas ordenadas de mayor a menor longitud para evitar que "wd" se coma a "wd purple" o "western digital"
 const SORTED_BRANDS = [...KNOWN_BRANDS].sort((a, b) => b.length - a.length);
+// Pre-normalized once (normalizeText is defined below; this runs lazily on first use)
+let _sortedBrandsNorm: string[] | null = null;
+function getSortedBrandsNorm(): string[] {
+  if (!_sortedBrandsNorm) _sortedBrandsNorm = SORTED_BRANDS.map((b) => normalizeText(b));
+  return _sortedBrandsNorm;
+}
 
 /**
  * Generic technical specifications and standards that must NEVER be treated as hardware model codes.
@@ -435,8 +441,7 @@ export function extractDistinctiveTokens(str: string): string[] {
 export function extractBrand(str: string): string | null {
   const norm = ` ${normalizeText(str)} `;
   let best: { brand: string; pos: number } | null = null;
-  for (const b of SORTED_BRANDS) {
-    const brandNorm = normalizeText(b);
+  for (const brandNorm of getSortedBrandsNorm()) {
     const pos = norm.indexOf(` ${brandNorm} `);
     if (pos === -1) continue;
     if (!best || pos < best.pos) best = { brand: brandNorm, pos };

@@ -289,7 +289,7 @@ export function ProductForm({
               type="number"
               min={0}
               step={0.01}
-              defaultValue={product?.price}
+              defaultValue={product?.price ?? 0}
               required
               className={inputClass}
             />

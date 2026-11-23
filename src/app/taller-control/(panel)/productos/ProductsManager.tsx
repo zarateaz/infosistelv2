@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X, Package, AlertTriangle, XCircle, DollarSign } from "lucide-react";
+import Link from "next/link";
+import { Plus, X, Package, AlertTriangle, XCircle, DollarSign, Copy } from "lucide-react";
 import type { AdminProduct, ProductFormState } from "./actions";
 import { ProductForm } from "./ProductForm";
 import { ProductsView } from "./ProductsView";
@@ -38,6 +39,14 @@ export function ProductsManager({
           </p>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+        <Link
+          href="/taller-control/productos/duplicados"
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-5 py-3 text-sm font-bold text-amber-800 shadow-sm transition-all hover:bg-amber-500/20 active:scale-95 dark:text-amber-300"
+        >
+          <Copy size={18} />
+          Revisar repetidos
+        </Link>
         <button
           type="button"
           onClick={() => setShowAddForm((prev) => !prev)}
@@ -50,6 +59,7 @@ export function ProductsManager({
           {showAddForm ? <X size={18} /> : <Plus size={18} />}
           {showAddForm ? "Cerrar formulario" : "Añadir nuevo producto"}
         </button>
+        </div>
       </div>
 
       {/* Tarjetas de Métricas Rápidas */}

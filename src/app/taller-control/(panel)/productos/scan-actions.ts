@@ -4,10 +4,8 @@ import { z } from "zod";
 import { generateObject } from "ai";
 import { deepseek } from "@ai-sdk/deepseek";
 import { headers } from "next/headers";
-import path from "node:path";
-import { readFile } from "node:fs/promises";
-import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
+import { loadProductThumb } from "@/lib/productThumbs";
 import { checkRateLimit, getClientIP, rateLimitKey } from "@/lib/rateLimit";
 import { searchProductImages } from "@/lib/imageSearch";
 import {
@@ -108,8 +106,6 @@ async function translateListingToSpanish(
   name: string;
   description: string;
   category?: string;
-  suggestedPrice?: number;
-  suggestedCostPrice?: number;
 }> {
   try {
     const { object } = await generateObject({
@@ -133,14 +129,6 @@ async function translateListingToSpanish(
               ? "No se usa — omite este campo."
               : "Categoría del producto en español y en mayúsculas."
           ),
-        suggestedPrice: z
-          .number()
-          .positive()
-          .describe("Precio de venta minorista estimado en Soles peruanos (S/.) en el mercado de Perú."),
-        suggestedCostPrice: z
-          .number()
-          .nonnegative()
-          .describe("Precio de costo mayorista estimado en Soles peruanos (S/.), aprox. 70-75% del precio de venta."),
       }),
       messages: [
         {
@@ -152,7 +140,7 @@ ${
     ? ""
     : `Categorías existentes en el catálogo: ${categories.length > 0 ? categories.join(", ") : "(ninguna)"}.`
 }
-Traduce y estandariza el nombre y la descripción al español para la tienda tecnológica INFOSISTEL en Perú, e incluye un precio de venta y costo estimado en Soles (PEN).`,
+Traduce y estandariza el nombre y la descripción al español para la tienda tecnológica INFOSISTEL en Perú.`,
         },
       ],
     });
@@ -160,8 +148,6 @@ Traduce y estandariza el nombre y la descripción al español para la tienda tec
       name: object.name || title,
       description: object.description,
       category: object.category,
-      suggestedPrice: object.suggestedPrice,
-      suggestedCostPrice: object.suggestedCostPrice,
     };
   } catch (err) {
     console.error("[scan-actions] translateListingToSpanish failed:", err);
@@ -218,8 +204,9 @@ async function lookupExternalUPC(
         name: finalName,
         description: translated.description.slice(0, 500).toUpperCase(),
         category,
-        price: translated.suggestedPrice ? Math.round(translated.suggestedPrice) : undefined,
-        costPrice: translated.suggestedCostPrice ? Math.round(translated.suggestedCostPrice) : undefined,
+        // Precio inicial SIEMPRE en 0: el admin pone el precio real (nada estimado por IA)
+        price: 0,
+        costPrice: 0,
         stock: 1,
         image: downloaded.cover,
         images: downloaded.gallery,
@@ -308,27 +295,6 @@ export interface RecognizeImageResult {
 }
 
 const VISION_MODEL = "deepseek-v4-flash-vision-exp";
-const UPLOAD_DIR = process.env.PRODUCT_IMAGES_DIR || path.join(process.cwd(), "public", "img", "products");
-
-/** Loads a catalog product's local cover photo as a small JPEG for visual comparison. */
-async function loadCandidateThumb(product: ProductSummary): Promise<string | null> {
-  const img = product.image;
-  if (!img || !img.startsWith("/img/products/")) return null;
-  const file = path.basename(img);
-  if (!/^[\w-]+\.(webp|jpe?g|png)$/i.test(file)) return null;
-  try {
-    const buf = await readFile(/*turbopackIgnore: true*/ path.join(UPLOAD_DIR, file));
-    const jpg = await sharp(buf)
-      .resize(384, 384, { fit: "inside", withoutEnlargement: true })
-      .flatten({ background: "#ffffff" })
-      .jpeg({ quality: 70 })
-      .toBuffer();
-    return jpg.toString("base64");
-  } catch {
-    return null;
-  }
-}
-
 interface VisualVerdict {
   /** index into the shortlist, or -1 */
   index: number;
@@ -385,7 +351,7 @@ Decide si la foto corresponde a UNO de esos productos. Reglas estrictas:
 - Si aparece un código de modelo/SKU en la foto y en el catálogo, deben coincidir.
 - Si dudas entre dos variantes o la foto no deja ver el detalle, responde 'probable', nunca 'exacto'.`;
 
-  const thumbs = await Promise.all(shortlist.slice(0, 6).map(loadCandidateThumb));
+  const thumbs = await Promise.all(shortlist.slice(0, 6).map((p) => loadProductThumb(p.image)));
 
   type Part =
     | { type: "text"; text: string }
@@ -510,18 +476,6 @@ export async function recognizeProductImage(
           .describe(
             "Si en la foto aparece impreso un código de barras (EAN-13, UPC o SKU numérico legible), extrae solo los dígitos exactos. Si no hay código de barras legible, déjalo vacío."
           ),
-        suggestedPrice: z
-          .number()
-          .positive()
-          .describe(
-            "Precio de venta al público en Soles peruanos (S/.). Si hay una etiqueta de precio visible en la foto úsala; si no, estima con precisión el precio comercial real en tiendas tecnológicas de Perú."
-          ),
-        suggestedCostPrice: z
-          .number()
-          .nonnegative()
-          .describe(
-            "Precio de costo o compra mayorista en Soles peruanos (S/.). Si no está impreso en la foto, estima el costo mayorista real en Perú (aprox. 70% al 75% del precio de venta)."
-          ),
         detectedStock: z
           .number()
           .int()
@@ -557,7 +511,6 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
   REGLA DE MARCA CRÍTICA: Si la marca en el producto o caja es 'American NET', escribe siempre 'AMERICAN NET' completo (NUNCA solo 'American', para no confundir con aerolíneas u otros rubros).
 - 'category': Categoría exacta en español ${categories.length > 0 ? `(elige entre: ${categories.join(", ")})` : "('LAPTOPS', 'ACCESORIOS', 'ALMACENAMIENTO', 'CABLES Y ADAPTADORES', 'REDES Y CONECTIVIDAD', 'TECLADOS Y MOUSE', 'AUDIO Y SONIDO', 'IMPRESORAS', 'TINTAS Y TÓNERS', 'MONITORES Y PANTALLAS', 'COMPONENTES DE PC', 'CARGADORES Y ENERGÍA', 'SEGURIDAD Y CÁMARAS', 'COMPUTADORAS Y PC')"}.
 - 'description': Redacción comercial y técnica impecable en español para la ficha del producto. NUNCA menciones "la foto muestra" ni "no se ve en la imagen".
-- 'suggestedPrice' y 'suggestedCostPrice': Precios reales en Soles (S/.) para el mercado peruano.
 - 'searchQueries': 3 búsquedas precisas combinando tipo de producto de hardware y marca completa (ej: "American NET adaptador corriente 5V 2.5A", "American NET 5V 2.5A power adapter", etc.). PROHIBIDO escribir solo 'American' o términos genéricos sin producto tecnológico.
 - 'negativeKeywords': Incluye términos que deben filtrarse (ej: 'avion', 'aviones', 'airplane', 'airline', 'airlines', 'boeing', 'flight', 'vuelo', 'aerolinea', 'aeropuerto', 'ropa', 'deporte').`,
             },
@@ -690,22 +643,14 @@ Analiza esta foto de producto/caja/etiqueta con CERO MARGEN DE ERROR y completa 
     // Pre-download top 4 valid images through sharp right away (with uploaded photo as fallback)
     const downloaded = await downloadTopProductImages(candidateUrls, 4, dataUrl);
 
-    const suggestedPrice =
-      object.suggestedPrice && object.suggestedPrice > 0
-        ? Math.round(object.suggestedPrice * 100) / 100
-        : undefined;
-    const suggestedCostPrice =
-      object.suggestedCostPrice !== undefined && object.suggestedCostPrice >= 0
-        ? Math.round(object.suggestedCostPrice * 100) / 100
-        : undefined;
-
     return {
       name: cleanName,
       description: cleanDescription,
       category: categoryInSpanish,
       barcode: cleanBarcode,
-      price: suggestedPrice,
-      costPrice: suggestedCostPrice,
+      // Precio inicial SIEMPRE en 0: el admin pone el precio real (nada estimado por IA)
+      price: 0,
+      costPrice: 0,
       stock: object.detectedStock ?? 1,
       image: downloaded.cover,
       images: downloaded.gallery,
