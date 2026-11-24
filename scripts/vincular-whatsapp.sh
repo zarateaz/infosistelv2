@@ -33,5 +33,10 @@ echo "👉 Apunta la cámara al código QR que aparecerá abajo:"
 echo "=========================================================="
 echo ""
 
+echo "Si prefieres verlo en el navegador de tu PC (el gateway ya no está expuesto a internet):"
+echo "   en tu PC:  ssh -p 2244 -L 3005:127.0.0.1:3005 zarate@187.127.20.171"
+echo "   y abre:    http://localhost:3005/qr"
+echo ""
+
 npx pm2 logs infosistel-whatsapp --lines 40
 

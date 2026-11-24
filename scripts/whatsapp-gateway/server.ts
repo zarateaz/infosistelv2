@@ -357,8 +357,13 @@ function startDailyCron() {
   console.log("[Auto-Reminder] ✅ Programador interno activo: se ejecutará todos los días a las 9:00 AM (Hora Perú) sin necesidad de cron.");
 }
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`[WhatsApp Gateway] Servicio HTTP corriendo en http://0.0.0.0:${PORT}`);
+// SEGURIDAD: el gateway NO tiene contraseña (/send, /qr, /trigger-reminders), así que
+// solo escucha dentro del propio servidor. La web lo llama por 127.0.0.1.
+// Para ver el QR desde tu PC usa un túnel SSH (ver scripts/vincular-whatsapp.sh).
+const HOST = process.env.WHATSAPP_HOST || "127.0.0.1";
+
+server.listen(PORT, HOST, () => {
+  console.log(`[WhatsApp Gateway] Servicio HTTP corriendo en http://${HOST}:${PORT} (solo acceso local)`);
   startWhatsApp().catch((err) => {
     console.error("[WhatsApp Gateway] Error fatal al iniciar WhatsApp:", err);
   });

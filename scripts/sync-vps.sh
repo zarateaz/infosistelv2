@@ -21,6 +21,9 @@ echo ""
 
 cd "$APP_DIR"
 
+echo "➡️  0/6. Respaldo completo antes de actualizar (si falla, NO se despliega)..."
+bash "$APP_DIR/scripts/backup-db.sh" pre-deploy
+
 echo "➡️  1/6. Descargando última versión de GitHub..."
 git pull origin main
 
