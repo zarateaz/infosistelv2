@@ -36,7 +36,8 @@ import {
   whatsappLink,
   directWhatsappLink,
   formatMonthKeyLabel,
-  parsePaidMonths,
+  normalizeClientPayments,
+  getUnpaidMonthKeys,
   getYearMonthsInfo,
   ROUTERS,
   SWITCH_PORTS,
@@ -592,9 +593,16 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                 const isExpanded = expandedClientId === c.id;
 
                 // Mini-tracker para la fila de este cliente (solo desde su mes de inicio)
-                const clientMap = today
-                  ? parsePaidMonths(c.paidMonths, c.startDate, c.nextPaymentDate, c.amount)
-                  : {};
+                const clientMap = today ? normalizeClientPayments(c).map : {};
+                // Meses vencidos reales (incluye años anteriores, que no salen en el mini-tracker)
+                const overdueMonths = today
+                  ? getUnpaidMonthKeys(clientMap, c.startDate, today).filter(
+                      (k) => k < `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+                    )
+                  : [];
+                const overduePrevYears = today
+                  ? overdueMonths.filter((k) => Number(k.slice(0, 4)) < today.getFullYear()).length
+                  : 0;
                 const yearSummary = today
                   ? getYearMonthsInfo(today.getFullYear(), clientMap, today, c.amount, c.startDate)
                   : { months: [], advanceCount: 0 };
@@ -670,6 +678,14 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                             {/* Mini-Tracker interactivo desde el mes de inicio del cliente */}
                             {today && (
                               <div className="mt-2 flex items-center gap-1 flex-wrap">
+                                {overduePrevYears > 0 && (
+                                  <span
+                                    title={`${overduePrevYears} mes(es) sin pagar de años anteriores. Abre "Meses" para verlos.`}
+                                    className="inline-flex items-center rounded bg-red-600 px-1.5 text-[9px] font-black text-white h-4.5"
+                                  >
+                                    +{overduePrevYears} años ant.
+                                  </span>
+                                )}
                                 {visibleMonths.length > 0 ? (
                                   visibleMonths.map((m) => (
                                     <span
@@ -733,6 +749,12 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
                         >
                           {st === "ok" ? `Al día · ${days} d` : dayText(days)}
                         </span>
+                        {overdueMonths.length > 0 && (
+                          <p className="mt-1 text-[10px] font-bold text-red-600 dark:text-red-400">
+                            Debe {overdueMonths.length} mes{overdueMonths.length === 1 ? "" : "es"} · desde{" "}
+                            {formatMonthKeyLabel(overdueMonths[0])}
+                          </p>
+                        )}
                       </td>
 
                       <td className="px-4 py-3.5 text-right whitespace-nowrap">

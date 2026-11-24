@@ -225,6 +225,83 @@ export function calculateNextPaymentDate(
   return `${cy}-${String(cm).padStart(2, "0")}-${String(Math.min(origDay || 1, lastDay)).padStart(2, "0")}`;
 }
 
+export interface ClientPaymentSource {
+  startDate: string;
+  nextPaymentDate: string;
+  paidMonths?: string | null;
+  amount?: number;
+}
+
+/**
+ * Estado de pagos NORMALIZADO de un cliente (única fuente de verdad):
+ *  - `map`: meses marcados; si la fecha guardada quedó ADELANTE de los meses marcados
+ *    (se fijó a mano al editar), los meses intermedios cuentan como pagados
+ *    ("Registrado al inicio"), igual que al crear el cliente.
+ *  - `nextPaymentDate`: primer mes impago desde el inicio, con el día de corte original.
+ * Así la lista, el panel, la vista mes a mes y los avisos de WhatsApp nunca se contradicen.
+ */
+export function normalizeClientPayments(row: ClientPaymentSource): {
+  map: PaidMonthsMap;
+  nextPaymentDate: string;
+} {
+  const amount = row.amount ?? 0;
+  const map: PaidMonthsMap = { ...parsePaidMonths(row.paidMonths, row.startDate, row.nextPaymentDate, amount) };
+  if (!row.startDate || !row.nextPaymentDate) return { map, nextPaymentDate: row.nextPaymentDate };
+
+  let next = calculateNextPaymentDate(row.startDate, row.nextPaymentDate, map);
+  const storedKey = row.nextPaymentDate.slice(0, 7);
+  if (next.slice(0, 7) < storedKey) {
+    let [cy, cm] = next.split("-").map(Number);
+    for (let guard = 0; guard < 600; guard++) {
+      const key = `${cy}-${String(cm).padStart(2, "0")}`;
+      if (key >= storedKey) break;
+      if (map[key]?.status !== "paid") {
+        map[key] = { status: "paid", paidAt: `${key}-01`, amount, note: "Registrado al inicio" };
+      }
+      cm++;
+      if (cm > 12) {
+        cm = 1;
+        cy++;
+      }
+    }
+    next = calculateNextPaymentDate(row.startDate, row.nextPaymentDate, map);
+  }
+  return { map, nextPaymentDate: next };
+}
+
+/** Próxima fecha de pago real (ver normalizeClientPayments). */
+export function effectiveNextPaymentDate(row: ClientPaymentSource): string {
+  return normalizeClientPayments(row).nextPaymentDate;
+}
+
+/**
+ * Meses impagos desde el inicio del cliente hasta el mes `today` inclusive
+ * (incluye años anteriores: es la deuda real completa).
+ */
+export function getUnpaidMonthKeys(
+  paidMonths: PaidMonthsMap,
+  startDate: string,
+  today: Date = new Date()
+): string[] {
+  const [sy, sm] = startDate.split("-").map(Number);
+  if (!sy || !sm) return [];
+  const currentKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const out: string[] = [];
+  let cy = sy;
+  let cm = sm;
+  for (let guard = 0; guard < 600; guard++) {
+    const key = `${cy}-${String(cm).padStart(2, "0")}`;
+    if (key > currentKey) break;
+    if (paidMonths[key]?.status !== "paid") out.push(key);
+    cm++;
+    if (cm > 12) {
+      cm = 1;
+      cy++;
+    }
+  }
+  return out;
+}
+
 export interface MonthUIInfo {
   monthIndex: number; // 0..11
   monthNum: number; // 1..12
@@ -444,12 +521,7 @@ export function buildInternetPaymentHistory(
   const history: InternetHistoryItem[] = [];
 
   for (const client of clients) {
-    const map = parsePaidMonths(
-      client.paidMonths,
-      client.startDate,
-      client.nextPaymentDate,
-      client.amount
-    );
+    const { map } = normalizeClientPayments(client);
 
     // Obtener día de corte del cliente
     const nextPayParts = client.nextPaymentDate ? client.nextPaymentDate.split("-").map(Number) : [];

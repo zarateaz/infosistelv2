@@ -8,7 +8,9 @@ import type { PaymentMethodType } from "@/lib/paymentMethods";
 import { dateToInputValue, parseDateInput, todayInputValue } from "../caja/month";
 import {
   calculateNextPaymentDate,
+  effectiveNextPaymentDate,
   formatMonthKeyLabel,
+  normalizeClientPayments,
   normalizeInternetPaymentMethod,
   parsePaidMonths,
   type InternetClientRow,
@@ -59,6 +61,27 @@ export async function peekNextInternetReceiptNumber(): Promise<string> {
   }
 }
 
+const STALE_MSG =
+  "Este cliente se acaba de actualizar desde otra pantalla o por un aviso automático. Recarga la página e inténtalo de nuevo.";
+
+class StaleClientError extends Error {}
+
+/**
+ * Escritura atómica (compare-and-swap): solo guarda si el historial de meses sigue
+ * siendo el que se leyó. Evita que dos pestañas/usuarios (o el aviso automático de
+ * WhatsApp) se pisen y borren un pago en silencio. Si cambió, se revierte todo
+ * (incluido el ingreso a Caja) y se pide recargar.
+ */
+async function casUpdateClient(
+  tx: Pick<typeof prisma, "internetClient">,
+  id: string,
+  expectedPaidMonths: string | null,
+  data: Record<string, unknown>
+): Promise<void> {
+  const res = await tx.internetClient.updateMany({ where: { id, paidMonths: expectedPaidMonths }, data });
+  if (res.count !== 1) throw new StaleClientError(STALE_MSG);
+}
+
 function buildCashboxDescription(
   clientName: string,
   monthLabel: string,
@@ -92,20 +115,32 @@ function buildCashboxNotes(
 
 export async function getInternetClients(): Promise<InternetClientRow[]> {
   const rows = await prisma.internetClient.findMany({ orderBy: { nextPaymentDate: "asc" } });
-  return rows.map((r) => ({
-    id: r.id,
-    clientCode: r.clientCode,
-    clientName: r.clientName,
-    whatsapp: r.whatsapp,
-    galeria: r.galeria,
-    router: r.router,
-    portNumber: r.portNumber,
-    startDate: dateToInputValue(r.startDate),
-    nextPaymentDate: dateToInputValue(r.nextPaymentDate),
-    amount: r.amount,
-    concept: r.concept,
-    paidMonths: r.paidMonths,
-  }));
+  return rows
+    .map((r) => {
+      const startDate = dateToInputValue(r.startDate);
+      const storedNext = dateToInputValue(r.nextPaymentDate);
+      return {
+        id: r.id,
+        clientCode: r.clientCode,
+        clientName: r.clientName,
+        whatsapp: r.whatsapp,
+        galeria: r.galeria,
+        router: r.router,
+        portNumber: r.portNumber,
+        startDate,
+        // Siempre coherente con los meses marcados (ver effectiveNextPaymentDate).
+        nextPaymentDate: effectiveNextPaymentDate({
+          startDate,
+          nextPaymentDate: storedNext,
+          paidMonths: r.paidMonths,
+          amount: r.amount,
+        }),
+        amount: r.amount,
+        concept: r.concept,
+        paidMonths: r.paidMonths,
+      };
+    })
+    .sort((a, b) => a.nextPaymentDate.localeCompare(b.nextPaymentDate));
 }
 
 /** Normaliza a dígitos con código de país: 9 dígitos => antepone 51 (Perú). */
@@ -230,8 +265,12 @@ export async function markInternetPaid(
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
   const startStr = dateToInputValue(row.startDate);
-  const nextPayStr = dateToInputValue(row.nextPaymentDate);
-  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+  const { map, nextPaymentDate: nextPayStr } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
 
   const [ny, nm] = nextPayStr.split("-").map(Number);
   const key = `${ny}-${String(nm).padStart(2, "0")}`;
@@ -254,51 +293,53 @@ export async function markInternetPaid(
   });
   const newNextPay = parseDateInput(newNextPaymentDateStr) ?? addOneMonthUTC(row.nextPaymentDate);
 
-  await prisma.$transaction(async (tx) => {
-    let cashboxTransactionId: string | undefined = undefined;
+  try {
+    await prisma.$transaction(async (tx) => {
+      let cashboxTransactionId: string | undefined = undefined;
 
-    if (!finalReceiptNumber) {
-      finalReceiptNumber = await getNextInternetReceiptNumber(tx);
-    } else {
-      finalReceiptNumber = finalReceiptNumber.replace(/\D/g, "").slice(-6).padStart(6, "0");
-    }
+      if (!finalReceiptNumber) {
+        finalReceiptNumber = await getNextInternetReceiptNumber(tx);
+      } else {
+        finalReceiptNumber = finalReceiptNumber.replace(/\D/g, "").slice(-6).padStart(6, "0");
+      }
 
-    if (syncToCashbox && payAmount > 0) {
-      const monthLabel = formatMonthKeyLabel(key);
-      const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
-      const notes = buildCashboxNotes(row, options?.note ? `${options.note} · Recibo #${finalReceiptNumber}` : `Recibo #${finalReceiptNumber}`);
+      if (syncToCashbox && payAmount > 0) {
+        const monthLabel = formatMonthKeyLabel(key);
+        const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
+        const notes = buildCashboxNotes(row, options?.note ? `${options.note} · Recibo #${finalReceiptNumber}` : `Recibo #${finalReceiptNumber}`);
 
-      const cashboxTx = await tx.cashboxTransaction.create({
-        data: {
-          date: paidDate,
-          type: "INCOME",
-          amount: payAmount,
-          paymentMethod: payMethod,
-          description,
-          notes,
-        },
-      });
-      cashboxTransactionId = cashboxTx.id;
-    }
+        const cashboxTx = await tx.cashboxTransaction.create({
+          data: {
+            date: paidDate,
+            type: "INCOME",
+            amount: payAmount,
+            paymentMethod: payMethod,
+            description,
+            notes,
+          },
+        });
+        cashboxTransactionId = cashboxTx.id;
+      }
 
-    map[key] = {
-      status: "paid",
-      paidAt: paidAtStr,
-      amount: payAmount,
-      method: payMethod,
-      note: options?.note || "Pago puntual",
-      receiptNumber: finalReceiptNumber,
-      ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
-    };
+      map[key] = {
+        status: "paid",
+        paidAt: paidAtStr,
+        amount: payAmount,
+        method: payMethod,
+        note: options?.note || "Pago puntual",
+        receiptNumber: finalReceiptNumber,
+        ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
+      };
 
-    await tx.internetClient.update({
-      where: { id },
-      data: {
-        paidMonths: JSON.stringify(map),
-        nextPaymentDate: newNextPay,
-      },
+      await casUpdateClient(tx, id, row.paidMonths, {
+          paidMonths: JSON.stringify(map),
+          nextPaymentDate: newNextPay,
+        });
     });
-  });
+  } catch (e) {
+    if (e instanceof StaleClientError) return { ok: false, error: e.message };
+    throw e;
+  }
 
   // Enviar automáticamente agradecimiento y confirmación oficial por WhatsApp
   sendInternetPaymentThankYou({
@@ -347,21 +388,59 @@ export async function deleteInternetClient(id: string): Promise<void> {
   revalidateAllRelatedPaths();
 }
 
-/** Elimina del historial los meses anteriores a la fecha de inicio real del cliente. */
-function prunePaidMonthsBeforeStart(raw: string | null | undefined, startDate: string): string | undefined {
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return undefined;
-    const startKey = startDate.slice(0, 7);
-    const cleaned: PaidMonthsMap = {};
-    for (const [k, v] of Object.entries(parsed as PaidMonthsMap)) {
-      if (k >= startKey) cleaned[k] = v;
-    }
-    return JSON.stringify(cleaned);
-  } catch {
-    return undefined;
+/**
+ * Reconcilia el historial al editar un cliente:
+ *  - quita los meses anteriores a la nueva fecha de inicio,
+ *  - los meses entre el inicio y la "Próxima fecha de pago" del formulario se consideran
+ *    pagados (misma regla que al crear el cliente: "próximo pago" = primer mes que debe),
+ *  - la próxima fecha de pago final SIEMPRE es el primer mes impago (conservando el día de corte).
+ * Así corregir la fecha de inicio quita la deuda falsa al instante y nunca queda desfasado.
+ */
+function reconcilePaidMonthsOnEdit(
+  rawPaidMonths: string | null | undefined,
+  storedStartDate: string | null,
+  storedNextPaymentDate: string | null,
+  startDate: string,
+  formNextPaymentDate: string,
+  amount: number
+): { paidMonths: string; nextPaymentDate: Date } {
+  const source = normalizeClientPayments({
+    startDate: storedStartDate ?? startDate,
+    nextPaymentDate: storedNextPaymentDate ?? formNextPaymentDate,
+    paidMonths: rawPaidMonths,
+    amount,
+  }).map;
+  const startKey = startDate.slice(0, 7);
+  const map: PaidMonthsMap = {};
+  for (const [k, v] of Object.entries(source)) {
+    if (k >= startKey) map[k] = v;
   }
+
+  const formNextKey = formNextPaymentDate.slice(0, 7);
+  let [cy, cm] = startDate.split("-").map(Number);
+  for (let guard = 0; guard < 600; guard++) {
+    const key = `${cy}-${String(cm).padStart(2, "0")}`;
+    if (key >= formNextKey) break;
+    if (map[key]?.status !== "paid") {
+      map[key] = {
+        status: "paid",
+        paidAt: `${key}-01`,
+        amount,
+        note: "Registrado al inicio",
+      };
+    }
+    cm++;
+    if (cm > 12) {
+      cm = 1;
+      cy++;
+    }
+  }
+
+  const nextStr = calculateNextPaymentDate(startDate, formNextPaymentDate, map);
+  return {
+    paidMonths: JSON.stringify(map),
+    nextPaymentDate: parseDateInput(nextStr) ?? parseDateInput(formNextPaymentDate)!,
+  };
 }
 
 export async function updateInternetClient(
@@ -389,20 +468,33 @@ export async function updateInternetClient(
   const start = parseDateInput(startDate);
   const nextPay = parseDateInput(nextPaymentDate);
   if (!start || !nextPay) return { error: "Fechas inválidas." };
+  const ERR_NOT_FOUND = { error: "Cliente no encontrado." };
 
-  const existing = await prisma.internetClient.findUnique({ where: { id }, select: { paidMonths: true } });
-  const prunedPaidMonths = prunePaidMonthsBeforeStart(existing?.paidMonths, startDate);
-
-  await prisma.internetClient.update({
+  const existing = await prisma.internetClient.findUnique({
     where: { id },
+    select: { paidMonths: true, startDate: true, nextPaymentDate: true },
+  });
+  if (!existing) return ERR_NOT_FOUND;
+  const reconciled = reconcilePaidMonthsOnEdit(
+    existing.paidMonths,
+    dateToInputValue(existing.startDate),
+    dateToInputValue(existing.nextPaymentDate),
+    startDate,
+    dateToInputValue(nextPay),
+    rest.amount
+  );
+
+  const saved = await prisma.internetClient.updateMany({
+    where: { id, paidMonths: existing.paidMonths },
     data: {
       ...rest,
       startDate: start,
-      nextPaymentDate: nextPay,
-      ...(prunedPaidMonths !== undefined ? { paidMonths: prunedPaidMonths } : {}),
+      nextPaymentDate: reconciled.nextPaymentDate,
+      paidMonths: reconciled.paidMonths,
     },
   });
-  revalidatePath(PATH);
+  if (saved.count !== 1) return { ...ERR_NOT_FOUND, error: STALE_MSG };
+  revalidateAllRelatedPaths();
   return {};
 }
 
@@ -432,20 +524,33 @@ export async function updateInternetClientDirect(
   if (!start || !nextPay) {
     return { ok: false, error: "Fechas inválidas." };
   }
+  const ERR_NOT_FOUND = { ok: false, error: "Cliente no encontrado." };
 
-  const existing = await prisma.internetClient.findUnique({ where: { id }, select: { paidMonths: true } });
-  const prunedPaidMonths = prunePaidMonthsBeforeStart(existing?.paidMonths, startDate);
-
-  await prisma.internetClient.update({
+  const existing = await prisma.internetClient.findUnique({
     where: { id },
+    select: { paidMonths: true, startDate: true, nextPaymentDate: true },
+  });
+  if (!existing) return ERR_NOT_FOUND;
+  const reconciled = reconcilePaidMonthsOnEdit(
+    existing.paidMonths,
+    dateToInputValue(existing.startDate),
+    dateToInputValue(existing.nextPaymentDate),
+    startDate,
+    dateToInputValue(nextPay),
+    rest.amount
+  );
+
+  const saved = await prisma.internetClient.updateMany({
+    where: { id, paidMonths: existing.paidMonths },
     data: {
       ...rest,
       startDate: start,
-      nextPaymentDate: nextPay,
-      ...(prunedPaidMonths !== undefined ? { paidMonths: prunedPaidMonths } : {}),
+      nextPaymentDate: reconciled.nextPaymentDate,
+      paidMonths: reconciled.paidMonths,
     },
   });
-  revalidatePath(PATH);
+  if (saved.count !== 1) return { ...ERR_NOT_FOUND, error: STALE_MSG };
+  revalidateAllRelatedPaths();
   return { ok: true };
 }
 
@@ -470,8 +575,12 @@ export async function toggleInternetClientMonth(
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
   const startStr = dateToInputValue(row.startDate);
-  const nextPayStr = dateToInputValue(row.nextPaymentDate);
-  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+  const { map, nextPaymentDate: nextPayStr } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
 
   const currentlyPaid = map[yearMonth]?.status === "paid";
   const shouldBePaid = details?.paid !== undefined ? details.paid : !currentlyPaid;
@@ -487,64 +596,66 @@ export async function toggleInternetClientMonth(
 
   let assignedReceiptNumber: string | undefined = undefined;
 
-  await prisma.$transaction(async (tx) => {
-    if (shouldBePaid) {
-      let cashboxTransactionId = existingTxId;
-      assignedReceiptNumber = details?.receiptNumber?.trim()
-        ? details.receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
-        : map[yearMonth]?.receiptNumber || (await getNextInternetReceiptNumber(tx));
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (shouldBePaid) {
+        let cashboxTransactionId = existingTxId;
+        assignedReceiptNumber = details?.receiptNumber?.trim()
+          ? details.receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
+          : map[yearMonth]?.receiptNumber || (await getNextInternetReceiptNumber(tx));
 
-      if (!cashboxTransactionId && syncToCashbox && payAmount > 0) {
-        const monthLabel = formatMonthKeyLabel(yearMonth);
-        const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
-        const notes = buildCashboxNotes(row, details?.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
+        if (!cashboxTransactionId && syncToCashbox && payAmount > 0) {
+          const monthLabel = formatMonthKeyLabel(yearMonth);
+          const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
+          const notes = buildCashboxNotes(row, details?.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
 
-        const cashboxTx = await tx.cashboxTransaction.create({
-          data: {
-            date: paidDate,
-            type: "INCOME",
-            amount: payAmount,
-            paymentMethod: payMethod,
-            description,
-            notes,
-          },
-        });
-        cashboxTransactionId = cashboxTx.id;
+          const cashboxTx = await tx.cashboxTransaction.create({
+            data: {
+              date: paidDate,
+              type: "INCOME",
+              amount: payAmount,
+              paymentMethod: payMethod,
+              description,
+              notes,
+            },
+          });
+          cashboxTransactionId = cashboxTx.id;
+        }
+
+        map[yearMonth] = {
+          status: "paid",
+          paidAt: paidAtStr,
+          amount: payAmount,
+          method: payMethod,
+          note: details?.note ?? map[yearMonth]?.note ?? "Pago registrado",
+          receiptNumber: assignedReceiptNumber,
+          ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
+        };
+      } else {
+        // Revertir pago: si tenía movimiento en Caja, enviarlo a papelera (soft delete)
+        if (existingTxId) {
+          await tx.cashboxTransaction.updateMany({
+            where: { id: existingTxId, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+        }
+        map[yearMonth] = {
+          status: "unpaid",
+        };
       }
 
-      map[yearMonth] = {
-        status: "paid",
-        paidAt: paidAtStr,
-        amount: payAmount,
-        method: payMethod,
-        note: details?.note ?? map[yearMonth]?.note ?? "Pago registrado",
-        receiptNumber: assignedReceiptNumber,
-        ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
-      };
-    } else {
-      // Revertir pago: si tenía movimiento en Caja, enviarlo a papelera (soft delete)
-      if (existingTxId) {
-        await tx.cashboxTransaction.updateMany({
-          where: { id: existingTxId, deletedAt: null },
-          data: { deletedAt: new Date() },
+      const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+      const newNextPayDate = parseDateInput(newNextPaymentDateStr);
+
+      await casUpdateClient(tx, id, row.paidMonths, {
+          paidMonths: JSON.stringify(map),
+          ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
         });
-      }
-      map[yearMonth] = {
-        status: "unpaid",
-      };
-    }
-
-    const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
-    const newNextPayDate = parseDateInput(newNextPaymentDateStr);
-
-    await tx.internetClient.update({
-      where: { id },
-      data: {
-        paidMonths: JSON.stringify(map),
-        ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
-      },
     });
-  });
+  } catch (e) {
+    if (e instanceof StaleClientError) return { ok: false, error: e.message };
+    throw e;
+  }
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
 
@@ -588,8 +699,12 @@ export async function payAdvanceInternetMonths(
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
   const startStr = dateToInputValue(row.startDate);
-  const nextPayStr = dateToInputValue(row.nextPaymentDate);
-  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+  const { map, nextPaymentDate: nextPayStr } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
 
   const todayStr = todayInputValue();
   const paidAtStr = options?.paidAt || todayStr;
@@ -618,61 +733,66 @@ export async function payAdvanceInternetMonths(
   }
 
   const generatedReceipts: string[] = [];
+  const currentKey = todayStr.slice(0, 7);
 
-  await prisma.$transaction(async (tx) => {
-    for (let i = 0; i < keysToPay.length; i++) {
-      const key = keysToPay[i];
-      let cashboxTransactionId: string | undefined = undefined;
-      const receiptNumber = await getNextInternetReceiptNumber(tx);
-      generatedReceipts.push(receiptNumber);
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (let i = 0; i < keysToPay.length; i++) {
+        const key = keysToPay[i];
+        // Solo es "adelanto" si el mes aún no llega; si es atrasado/actual es un pago normal.
+        const kindLabel = key > currentKey ? "Adelanto" : "Pago";
+        let cashboxTransactionId: string | undefined = undefined;
+        const receiptNumber = await getNextInternetReceiptNumber(tx);
+        generatedReceipts.push(receiptNumber);
 
-      if (syncToCashbox && amountPerMonth > 0) {
-        const monthLabel = formatMonthKeyLabel(key);
-        const description = buildCashboxDescription(
-          row.clientName,
-          `${monthLabel} (Adelanto)`,
-          row.clientCode
-        );
-        const noteDetail = options?.note
-          ? `${options.note} (${i + 1}/${keysToPay.length} meses) · Recibo #${receiptNumber}`
-          : `Adelanto (${i + 1}/${keysToPay.length} meses) · Recibo #${receiptNumber}`;
-        const notes = buildCashboxNotes(row, noteDetail);
+        if (syncToCashbox && amountPerMonth > 0) {
+          const monthLabel = formatMonthKeyLabel(key);
+          const description = buildCashboxDescription(
+            row.clientName,
+            key > currentKey ? `${monthLabel} (Adelanto)` : monthLabel,
+            row.clientCode
+          );
+          const noteDetail = options?.note
+            ? `${options.note} (${i + 1}/${keysToPay.length} meses) · Recibo #${receiptNumber}`
+            : `${kindLabel} (${i + 1}/${keysToPay.length} meses) · Recibo #${receiptNumber}`;
+          const notes = buildCashboxNotes(row, noteDetail);
 
-        const cashboxTx = await tx.cashboxTransaction.create({
-          data: {
-            date: paidDate,
-            type: "INCOME",
-            amount: amountPerMonth,
-            paymentMethod: payMethod,
-            description,
-            notes,
-          },
-        });
-        cashboxTransactionId = cashboxTx.id;
+          const cashboxTx = await tx.cashboxTransaction.create({
+            data: {
+              date: paidDate,
+              type: "INCOME",
+              amount: amountPerMonth,
+              paymentMethod: payMethod,
+              description,
+              notes,
+            },
+          });
+          cashboxTransactionId = cashboxTx.id;
+        }
+
+        map[key] = {
+          status: "paid",
+          paidAt: paidAtStr,
+          amount: amountPerMonth,
+          method: payMethod,
+          note: options?.note || `${kindLabel} (${i + 1}/${keysToPay.length} meses)`,
+          receiptNumber,
+          ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
+        };
       }
 
-      map[key] = {
-        status: "paid",
-        paidAt: paidAtStr,
-        amount: amountPerMonth,
-        method: payMethod,
-        note: options?.note || `Adelanto (${i + 1}/${keysToPay.length} meses)`,
-        receiptNumber,
-        ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
-      };
-    }
+      const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+      const newNextPayDate = parseDateInput(newNextPaymentDateStr);
 
-    const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
-    const newNextPayDate = parseDateInput(newNextPaymentDateStr);
-
-    await tx.internetClient.update({
-      where: { id },
-      data: {
-        paidMonths: JSON.stringify(map),
-        ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
-      },
+      await casUpdateClient(tx, id, row.paidMonths, {
+          paidMonths: JSON.stringify(map),
+          ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
+        });
     });
-  });
+  } catch (e) {
+    if (e instanceof StaleClientError) return { ok: false, error: e.message };
+    throw e;
+  }
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
 
@@ -684,7 +804,7 @@ export async function payAdvanceInternetMonths(
       whatsapp: row.whatsapp,
       galeria: row.galeria,
       amount: round2(amountPerMonth * paidSoFar),
-      monthKey: `${paidSoFar} mes(es) adelantados (${keysToPay.join(", ")})`,
+      monthKey: `${paidSoFar} mes(es): ${keysToPay.map(formatMonthKeyLabel).join(", ")}`,
       receiptNumber: generatedReceipts[0] || undefined,
       nextPaymentDate: finalNextPaymentDateStr,
       paymentMethod: payMethod,
@@ -716,8 +836,12 @@ export async function updateInternetMonthDetails(
   if (!row) return { ok: false, error: "Cliente no encontrado." };
 
   const startStr = dateToInputValue(row.startDate);
-  const nextPayStr = dateToInputValue(row.nextPaymentDate);
-  const map: PaidMonthsMap = parsePaidMonths(row.paidMonths, startStr, nextPayStr, row.amount);
+  const { map, nextPaymentDate: nextPayStr } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
   const existingTxId = map[yearMonth]?.cashboxTransactionId;
   const wasPaid = map[yearMonth]?.status === "paid";
   const payAmount = round2(details.amount);
@@ -729,79 +853,81 @@ export async function updateInternetMonthDetails(
 
   let assignedReceiptNumber: string | undefined = undefined;
 
-  await prisma.$transaction(async (tx) => {
-    let finalTxId = existingTxId;
+  try {
+    await prisma.$transaction(async (tx) => {
+      let finalTxId = existingTxId;
 
-    if (details.status === "unpaid") {
-      if (existingTxId) {
-        await tx.cashboxTransaction.updateMany({
-          where: { id: existingTxId, deletedAt: null },
-          data: { deletedAt: new Date() },
-        });
-        finalTxId = undefined;
+      if (details.status === "unpaid") {
+        if (existingTxId) {
+          await tx.cashboxTransaction.updateMany({
+            where: { id: existingTxId, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+          finalTxId = undefined;
+        }
+        map[yearMonth] = {
+          status: "unpaid",
+        };
+      } else {
+        assignedReceiptNumber = details.receiptNumber?.trim()
+          ? details.receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
+          : map[yearMonth]?.receiptNumber || (await getNextInternetReceiptNumber(tx));
+
+        if (existingTxId) {
+          // Actualizar el movimiento existente en Caja
+          await tx.cashboxTransaction.updateMany({
+            where: { id: existingTxId, deletedAt: null },
+            data: {
+              amount: payAmount,
+              paymentMethod: payMethod,
+              date: paidDate,
+              notes: buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`),
+            },
+          });
+        } else if (!wasPaid && syncToCashbox && payAmount > 0) {
+          // Crear nuevo movimiento solo si el mes pasa de "no pagado" a "pagado".
+          // Si ya estaba pagado sin movimiento enlazado (pago histórico registrado a mano
+          // en Caja), editar sus detalles NO debe generar un ingreso duplicado.
+          const monthLabel = formatMonthKeyLabel(yearMonth);
+          const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
+          const notes = buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
+
+          const cashboxTx = await tx.cashboxTransaction.create({
+            data: {
+              date: paidDate,
+              type: "INCOME",
+              amount: payAmount,
+              paymentMethod: payMethod,
+              description,
+              notes,
+            },
+          });
+          finalTxId = cashboxTx.id;
+        }
+
+        map[yearMonth] = {
+          status: "paid",
+          amount: payAmount,
+          method: payMethod,
+          note: details.note,
+          paidAt: paidAtStr,
+          receiptNumber: assignedReceiptNumber,
+          ...(finalTxId ? { cashboxTransactionId: finalTxId } : {}),
+        };
       }
-      map[yearMonth] = {
-        status: "unpaid",
-      };
-    } else {
-      assignedReceiptNumber = details.receiptNumber?.trim()
-        ? details.receiptNumber.trim().replace(/\D/g, "").slice(-6).padStart(6, "0")
-        : map[yearMonth]?.receiptNumber || (await getNextInternetReceiptNumber(tx));
 
-      if (existingTxId) {
-        // Actualizar el movimiento existente en Caja
-        await tx.cashboxTransaction.updateMany({
-          where: { id: existingTxId, deletedAt: null },
-          data: {
-            amount: payAmount,
-            paymentMethod: payMethod,
-            date: paidDate,
-            notes: buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`),
-          },
+      const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+      const newNextPayDate = parseDateInput(newNextPaymentDateStr);
+
+      await casUpdateClient(tx, id, row.paidMonths, {
+          paidMonths: JSON.stringify(map),
+          ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
         });
-      } else if (!wasPaid && syncToCashbox && payAmount > 0) {
-        // Crear nuevo movimiento solo si el mes pasa de "no pagado" a "pagado".
-        // Si ya estaba pagado sin movimiento enlazado (pago histórico registrado a mano
-        // en Caja), editar sus detalles NO debe generar un ingreso duplicado.
-        const monthLabel = formatMonthKeyLabel(yearMonth);
-        const description = buildCashboxDescription(row.clientName, monthLabel, row.clientCode);
-        const notes = buildCashboxNotes(row, details.note ? `${details.note} · Recibo #${assignedReceiptNumber}` : `Recibo #${assignedReceiptNumber}`);
-
-        const cashboxTx = await tx.cashboxTransaction.create({
-          data: {
-            date: paidDate,
-            type: "INCOME",
-            amount: payAmount,
-            paymentMethod: payMethod,
-            description,
-            notes,
-          },
-        });
-        finalTxId = cashboxTx.id;
-      }
-
-      map[yearMonth] = {
-        status: "paid",
-        amount: payAmount,
-        method: payMethod,
-        note: details.note,
-        paidAt: paidAtStr,
-        receiptNumber: assignedReceiptNumber,
-        ...(finalTxId ? { cashboxTransactionId: finalTxId } : {}),
-      };
-    }
-
-    const newNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
-    const newNextPayDate = parseDateInput(newNextPaymentDateStr);
-
-    await tx.internetClient.update({
-      where: { id },
-      data: {
-        paidMonths: JSON.stringify(map),
-        ...(newNextPayDate ? { nextPaymentDate: newNextPayDate } : {}),
-      },
     });
-  });
+  } catch (e) {
+    if (e instanceof StaleClientError) return { ok: false, error: e.message };
+    throw e;
+  }
 
   const finalNextPaymentDateStr = calculateNextPaymentDate(startStr, nextPayStr, map);
 
@@ -822,4 +948,53 @@ export async function updateInternetMonthDetails(
 
   revalidateAllRelatedPaths();
   return { ok: true, newNextPaymentDate: finalNextPaymentDateStr, receiptNumber: assignedReceiptNumber };
+}
+
+/**
+ * Corrige la fecha de inicio del servicio (p. ej. se registró 2025 en vez de 2026).
+ * Quita los meses impagos anteriores al nuevo inicio y recalcula la próxima fecha de pago.
+ * Nunca borra pagos reales: si hay meses pagados antes de esa fecha, se rechaza.
+ */
+export async function correctInternetClientStartDate(
+  id: string,
+  newStartDate: string
+): Promise<{ ok: boolean; error?: string; newNextPaymentDate?: string }> {
+  const start = parseDateInput(newStartDate);
+  if (!start) return { ok: false, error: "Fecha de inicio inválida." };
+
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+
+  const startStr = dateToInputValue(start);
+  const nextPayStr = dateToInputValue(row.nextPaymentDate);
+  const source = normalizeClientPayments({
+    startDate: dateToInputValue(row.startDate),
+    nextPaymentDate: nextPayStr,
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  }).map;
+  const startKey = startStr.slice(0, 7);
+
+  const map: PaidMonthsMap = {};
+  for (const [k, v] of Object.entries(source)) {
+    if (k >= startKey) map[k] = v;
+    else if (v.status === "paid") {
+      return {
+        ok: false,
+        error: `${formatMonthKeyLabel(k)} figura pagado y es anterior a la nueva fecha de inicio. Revísalo antes de corregir.`,
+      };
+    }
+  }
+
+  const newNextStr = calculateNextPaymentDate(startStr, nextPayStr, map);
+  const newNext = parseDateInput(newNextStr) ?? row.nextPaymentDate;
+
+  const saved = await prisma.internetClient.updateMany({
+    where: { id, paidMonths: row.paidMonths },
+    data: { startDate: start, nextPaymentDate: newNext, paidMonths: JSON.stringify(map) },
+  });
+  if (saved.count !== 1) return { ok: false, error: STALE_MSG };
+
+  revalidateAllRelatedPaths();
+  return { ok: true, newNextPaymentDate: newNextStr };
 }

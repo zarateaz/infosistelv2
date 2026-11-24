@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import {
   getYearMonthsInfo,
-  parsePaidMonths,
+  getUnpaidMonthKeys,
+  normalizeClientPayments,
   whatsappLink,
   formatMonthKeyLabel,
   type InternetClientRow,
@@ -27,6 +28,7 @@ import {
   toggleInternetClientMonth,
   payAdvanceInternetMonths,
   updateInternetMonthDetails,
+  correctInternetClientStartDate,
 } from "./internetActions";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { InternetPaymentModal } from "./InternetPaymentModal";
@@ -65,13 +67,36 @@ export function ClientYearlyMonthsView({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // Mapa reactivo de meses
-  const paidMonthsMap = parsePaidMonths(
-    client.paidMonths,
-    client.startDate,
-    client.nextPaymentDate,
-    client.amount
+  const [confirmFixStart, setConfirmFixStart] = useState<string | null>(null);
+
+  // Mapa reactivo de meses (normalizado: misma regla que la lista y los avisos)
+  const { map: paidMonthsMap } = normalizeClientPayments(client);
+
+  // Deuda REAL completa (incluye años anteriores, que no se ven en el año seleccionado)
+  const unpaidKeys = getUnpaidMonthKeys(paidMonthsMap, client.startDate, today);
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const overdueKeys = unpaidKeys.filter((k) => k < currentMonthKey);
+  const overdueOtherYears = overdueKeys.filter((k) => !k.startsWith(`${selectedYear}-`));
+  const overdueYears = Array.from(new Set(overdueOtherYears.map((k) => Number(k.slice(0, 4)))));
+  const overdueTotal = overdueKeys.reduce(
+    (sum, k) => sum + (paidMonthsMap[k]?.amount ?? client.amount),
+    0
   );
+  // Primer mes pagado: candidato a fecha de inicio real (cuando el inicio se registró con año equivocado)
+  const firstPaidKey = Object.keys(paidMonthsMap)
+    .filter((k) => /^\d{4}-\d{2}$/.test(k) && paidMonthsMap[k]?.status === "paid" && k >= client.startDate.slice(0, 7))
+    .sort()[0];
+  const suggestedStart =
+    firstPaidKey && overdueKeys.length > 0 && overdueKeys.every((k) => k < firstPaidKey)
+      ? `${firstPaidKey}-${client.startDate.slice(8, 10) || "01"}`
+      : null;
+  const suggestedStartValid = (() => {
+    if (!suggestedStart) return null;
+    const [y, m, d] = suggestedStart.split("-").map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${y}-${String(m).padStart(2, "0")}-${String(Math.min(d || 1, last)).padStart(2, "0")}`;
+  })();
+  const hasOverdue = overdueKeys.length > 0;
 
   const startYear = Number(client.startDate.slice(0, 4)) || currentRealYear;
 
@@ -94,6 +119,8 @@ export function ClientYearlyMonthsView({
       setConfirmUnmark(null);
       if (res.ok) {
         showToast(`Mes ${m.monthName} desmarcado (revertido y enviado a papelera en Caja si aplicaba)`);
+      } else {
+        showToast(`⚠ ${res.error || "No se pudo desmarcar el mes."}`);
       }
     });
   };
@@ -122,6 +149,8 @@ export function ClientYearlyMonthsView({
       if (res.ok) {
         setEditingMonthKey(null);
         showToast("✓ Detalles del mes y movimiento en Caja actualizados correctamente.");
+      } else {
+        showToast(`⚠ ${res.error || "No se pudieron guardar los cambios."}`);
       }
     });
   };
@@ -148,7 +177,11 @@ export function ClientYearlyMonthsView({
     <div className="rounded-2xl border border-accent/30 bg-bg-surface/95 p-4 sm:p-6 shadow-xl backdrop-blur-md transition-all">
       {/* Toast de retroalimentación flotante en el panel */}
       {toastMsg && (
-        <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md animate-fade-in">
+        <div
+          className={`mb-4 flex items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white shadow-md animate-fade-in ${
+            toastMsg.startsWith("⚠") ? "bg-red-600" : "bg-emerald-600"
+          }`}
+        >
           <span>{toastMsg}</span>
           <button
             type="button"
@@ -223,6 +256,48 @@ export function ClientYearlyMonthsView({
         </div>
       </div>
 
+      {/* Deuda de OTROS años: antes era invisible y el cliente salía como deudor sin explicación */}
+      {overdueOtherYears.length > 0 && (
+        <div className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3.5 text-xs">
+          <p className="flex items-start gap-2 font-bold text-red-700 dark:text-red-300">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <span>
+              Este cliente figura como deudor por {overdueOtherYears.length} mes(es) sin marcar fuera de {selectedYear}:{" "}
+              {overdueOtherYears.length <= 6
+                ? overdueOtherYears.map(formatMonthKeyLabel).join(", ")
+                : `${formatMonthKeyLabel(overdueOtherYears[0])} → ${formatMonthKeyLabel(overdueOtherYears[overdueOtherYears.length - 1])}`}
+              . Deuda total: S/. {overdueTotal.toFixed(2)}.
+            </span>
+          </p>
+          <p className="mt-1 pl-6 text-fg-muted">
+            Si ya los pagó, márcalos en su año. Si el cliente en realidad empezó después, corrige la fecha de inicio
+            (actual: <strong className="text-fg">{client.startDate.split("-").reverse().join("/")}</strong>).
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2 pl-6">
+            {overdueYears.map((y) => (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setSelectedYear(y)}
+                className="rounded-lg bg-red-600 px-3 py-1.5 font-bold text-white hover:bg-red-700"
+              >
+                Ver meses de {y}
+              </button>
+            ))}
+            {suggestedStartValid && (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => setConfirmFixStart(suggestedStartValid)}
+                className="rounded-lg border border-red-500/50 bg-bg-surface px-3 py-1.5 font-bold text-red-700 hover:bg-red-500/10 dark:text-red-300 disabled:opacity-60"
+              >
+                Empezó en {formatMonthKeyLabel(suggestedStartValid.slice(0, 7))}: corregir inicio
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Métricas y Acciones Rápidas Pro */}
       <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-border/50 bg-bg-alt/50 p-3.5">
         <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -251,10 +326,10 @@ export function ClientYearlyMonthsView({
             disabled={isPending}
             onClick={() => handleOpenAdvancePay(2)}
             className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-md hover:from-blue-700 hover:to-indigo-700 active:scale-95 transition-all disabled:opacity-60"
-            title="Paga automáticamente los próximos 2 meses pendientes e ingresa a Caja"
+            title="Paga automáticamente los 2 meses pendientes más antiguos e ingresa a Caja"
           >
             <Zap size={13} className="text-amber-300" />
-            + Pagar 2 meses adelantados
+            {hasOverdue ? "+ Pagar 2 meses pendientes" : "+ Pagar 2 meses adelantados"}
           </button>
 
           <button
@@ -262,7 +337,7 @@ export function ClientYearlyMonthsView({
             disabled={isPending}
             onClick={() => handleOpenAdvancePay(1)}
             className="inline-flex items-center gap-1 rounded-xl border border-border bg-bg-surface px-3 py-1.5 text-xs font-bold text-fg hover:bg-bg-alt active:scale-95 transition-all disabled:opacity-60"
-            title="Paga 1 mes adelantado e ingresa a Caja"
+            title={hasOverdue ? "Paga el mes pendiente más antiguo e ingresa a Caja" : "Paga 1 mes adelantado e ingresa a Caja"}
           >
             + 1 mes
           </button>
@@ -532,7 +607,11 @@ export function ClientYearlyMonthsView({
           client={client}
           isAdvance={true}
           advanceCount={advanceModal.count}
-          monthLabel={`${advanceModal.count} mes(es) por adelantado`}
+          monthLabel={
+            hasOverdue
+              ? `${advanceModal.count} mes(es) pendientes desde ${formatMonthKeyLabel(unpaidKeys[0])}`
+              : `${advanceModal.count} mes(es) por adelantado`
+          }
           initialAmount={client.amount}
           initialMethod="YAPE 1"
           onClose={() => setAdvanceModal(null)}
@@ -549,11 +628,35 @@ export function ClientYearlyMonthsView({
             if (!res.ok) throw new Error(res.error || "No se pudo registrar el pago.");
             if (res.ok) {
               showToast(
-                `🎉 ¡${res.countPaid ?? count} mes(es) pagados por adelantado e ingresados a Caja (${payment.method})!`
+                `🎉 ¡${res.countPaid ?? count} mes(es) pagados e ingresados a Caja (${payment.method})!`
               );
             }
             return { receiptNumbers: res.receiptNumbers, receiptNumber: res.receiptNumbers?.[0] };
           }}
+        />
+      )}
+
+      {confirmFixStart && (
+        <ConfirmDialog
+          title="Corregir fecha de inicio"
+          message={`¿Confirmas que "${client.clientName}" empezó el servicio el ${confirmFixStart.split("-").reverse().join("/")}? Los meses impagos anteriores dejarán de contar como deuda. No se borra ningún pago.`}
+          confirmLabel="Sí, corregir"
+          pendingLabel="Corrigiendo..."
+          pending={isPending}
+          onConfirm={() => {
+            const newStart = confirmFixStart;
+            startTransition(async () => {
+              const res = await correctInternetClientStartDate(client.id, newStart);
+              setConfirmFixStart(null);
+              if (res.ok) {
+                setSelectedYear(Number(newStart.slice(0, 4)) > currentRealYear ? Number(newStart.slice(0, 4)) : currentRealYear);
+                showToast(`✓ Fecha de inicio corregida. Próximo pago: ${res.newNextPaymentDate?.split("-").reverse().join("/")}`);
+              } else {
+                showToast(`⚠ ${res.error || "No se pudo corregir la fecha de inicio."}`);
+              }
+            });
+          }}
+          onCancel={() => setConfirmFixStart(null)}
         />
       )}
 

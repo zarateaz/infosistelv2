@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { parsePaidMonths, type PaidMonthsMap } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
+import { normalizeClientPayments } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
 import { dateToInputValue } from "@/app/taller-control/(panel)/caja/month";
 import { generateReminderMessage } from "@/lib/deepseek";
 
@@ -76,8 +76,14 @@ export async function runAutomatedInternetReminders(options?: {
   };
 
   for (const client of clients) {
-    const nextPayStr = dateToInputValue(client.nextPaymentDate);
     const startStr = dateToInputValue(client.startDate);
+    // Mismo criterio que la pantalla de Cobranza (meses marcados = fuente de verdad)
+    const { map, nextPaymentDate: nextPayStr } = normalizeClientPayments({
+      startDate: startStr,
+      nextPaymentDate: dateToInputValue(client.nextPaymentDate),
+      paidMonths: client.paidMonths,
+      amount: client.amount,
+    });
 
     // Filtrar por teléfono específico si se solicitó en el comando
     const clientPhoneDigits = client.whatsapp.replace(/\D/g, "");
@@ -89,13 +95,6 @@ export async function runAutomatedInternetReminders(options?: {
     const targetUtc = Date.UTC(py, pm - 1, pd);
     const diff = Math.round((targetUtc - nowUtc) / 86_400_000);
 
-    // Mapeo de meses pagados
-    const map: PaidMonthsMap = parsePaidMonths(
-      client.paidMonths,
-      startStr,
-      nextPayStr,
-      client.amount
-    );
 
     // Calcular meses impagos desde inicio hasta el mes actual
     const [sy, sm] = startStr.split("-").map(Number);
@@ -177,6 +176,22 @@ export async function runAutomatedInternetReminders(options?: {
       continue;
     }
 
+    // Re-verificar justo antes de enviar: si mientras corría el envío se registró un
+    // pago o se editó el cliente, NO se le cobra con datos viejos (se reevalúa en la próxima corrida).
+    const fresh = await prisma.internetClient.findUnique({
+      where: { id: client.id },
+      select: { paidMonths: true, nextPaymentDate: true, startDate: true },
+    });
+    if (
+      !fresh ||
+      fresh.paidMonths !== client.paidMonths ||
+      fresh.nextPaymentDate.getTime() !== client.nextPaymentDate.getTime() ||
+      fresh.startDate.getTime() !== client.startDate.getTime()
+    ) {
+      result.skippedPaid++;
+      continue;
+    }
+
     // Generar mensaje personalizado mediante DeepSeek / Plantilla oficial
     const messageText = await generateReminderMessage({
       clientName: client.clientName,
@@ -225,13 +240,10 @@ export async function runAutomatedInternetReminders(options?: {
         continue;
       }
 
-      // Marcar recordatorio como enviado hoy en la base de datos
-      parsedJson._lastReminderDate = todayStr;
-      parsedJson._lastReminderMonthKey = currentMonthKey;
-      await prisma.internetClient.update({
-        where: { id: client.id },
-        data: { paidMonths: JSON.stringify(parsedJson) },
-      });
+      // Marcar recordatorio como enviado hoy. Se relee el registro y se guarda con
+      // compare-and-swap: NUNCA se reescribe el historial con una copia vieja
+      // (antes podía borrar un pago marcado mientras corría el envío).
+      await markReminderSent(client.id, todayStr, currentMonthKey);
 
       result.sentCount++;
       result.details.push({
@@ -330,5 +342,32 @@ export async function sendInternetPaymentThankYou(params: {
   } catch (err: any) {
     console.warn(`[WhatsApp] Gateway no disponible para enviar agradecimiento:`, err?.message);
     return false;
+  }
+}
+
+async function markReminderSent(clientId: string, todayStr: string, monthKey: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const cur = await prisma.internetClient.findUnique({
+      where: { id: clientId },
+      select: { paidMonths: true },
+    });
+    if (!cur) return;
+    let json: Record<string, unknown> = {};
+    if (cur.paidMonths) {
+      try {
+        const parsed = JSON.parse(cur.paidMonths);
+        if (!parsed || typeof parsed !== "object") return; // no tocar datos raros
+        json = parsed;
+      } catch {
+        return; // JSON corrupto: no se sobrescribe para no perder historial
+      }
+    }
+    json._lastReminderDate = todayStr;
+    json._lastReminderMonthKey = monthKey;
+    const res = await prisma.internetClient.updateMany({
+      where: { id: clientId, paidMonths: cur.paidMonths },
+      data: { paidMonths: JSON.stringify(json) },
+    });
+    if (res.count === 1) return;
   }
 }

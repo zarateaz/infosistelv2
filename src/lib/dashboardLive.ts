@@ -8,7 +8,11 @@ import {
   isDebtCategory,
   type DebtRow,
 } from "@/app/taller-control/(panel)/deudas/deudas";
-import { cobranzaState, daysUntil } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
+import {
+  cobranzaState,
+  daysUntil,
+  effectiveNextPaymentDate,
+} from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
 import { dateToInputValue } from "@/app/taller-control/(panel)/caja/month";
 import { fromCents, sharePercentages, toCents } from "@/lib/money";
 
@@ -164,7 +168,7 @@ export async function getDashboardLiveSnapshot(): Promise<DashboardLiveSnapshot>
       include: { payments: true },
     }),
     prisma.internetClient.findMany({
-      select: { id: true, nextPaymentDate: true },
+      select: { id: true, nextPaymentDate: true, startDate: true, paidMonths: true, amount: true },
     }),
     obtenerTodo().catch(() => ({ servicios: [] })),
   ]);
@@ -346,7 +350,12 @@ export async function getDashboardLiveSnapshot(): Promise<DashboardLiveSnapshot>
   const limaTodayDate = new Date(nowY, nowM - 1, nowD);
   let deudoresInternet = 0;
   for (const c of internetRows) {
-    const nextStr = dateToInputValue(c.nextPaymentDate);
+    const nextStr = effectiveNextPaymentDate({
+      startDate: dateToInputValue(c.startDate),
+      nextPaymentDate: dateToInputValue(c.nextPaymentDate),
+      paidMonths: c.paidMonths,
+      amount: c.amount,
+    });
     const st = cobranzaState(daysUntil(nextStr, limaTodayDate));
     if (st !== "ok") deudoresInternet++;
   }
