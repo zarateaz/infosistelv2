@@ -9,8 +9,9 @@ import { StatCard, type StatTint } from "../StatCard";
 
 function adjacentMonth(month: string, delta: number): string {
   const [year, monthNum] = month.split("-").map(Number);
-  const d = new Date(year, monthNum - 1 + delta, 1);
-  return monthKey(d);
+  // Aritmética pura: no depende de la zona horaria del servidor/navegador.
+  const total = year * 12 + (monthNum - 1) + delta;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
 }
 
 export default async function AdminInvoicesPage({

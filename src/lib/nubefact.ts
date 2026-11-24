@@ -13,6 +13,7 @@
  * comprobante real, comparar esto contra Configuración > API dentro de la
  * cuenta de NubeFacT ya activada.
  */
+import { limaParts } from "@/lib/limaTime";
 
 const NUBEFACT_URL = process.env.NUBEFACT_URL || "https://api.nubefact.com/api/v1";
 const IGV_RATE = 0.18;
@@ -69,8 +70,10 @@ export function buildNubefactPayload(input: NubefactPayloadInput) {
   const totalIgv = round2(items.reduce((sum, i) => sum + i.igv, 0));
   const total = round2(totalGravada + totalIgv);
 
-  const fecha = new Date();
-  const fechaDeEmision = `${String(fecha.getDate()).padStart(2, "0")}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${fecha.getFullYear()}`;
+  // Fecha de emisión en hora de Perú: con la del servidor (UTC), una boleta emitida
+  // después de las 7 PM saldría con fecha de mañana y SUNAT la rechazaría.
+  const fecha = limaParts();
+  const fechaDeEmision = `${String(fecha.day).padStart(2, "0")}-${String(fecha.month).padStart(2, "0")}-${fecha.year}`;
 
   return {
     operacion: "generar_comprobante",

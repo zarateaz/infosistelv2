@@ -1,5 +1,6 @@
 "use server";
 
+import { limaParts } from "@/lib/limaTime";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { generateObject } from "ai";
@@ -87,7 +88,7 @@ export interface RecognizeQuotationItemResult {
 }
 
 export async function generateNextQuotationCode(): Promise<string> {
-  const currentYear = new Date().getFullYear();
+  const currentYear = limaParts().year;
   const prefix = `COT-${currentYear}-`;
 
   const lastQuotation = await prisma.quotation.findFirst({

@@ -1,5 +1,6 @@
 "use server";
 
+import { limaMidnight, limaParts } from "@/lib/limaTime";
 import { prisma } from "@/lib/prisma";
 import { fromCents, round2, toCents } from "@/lib/money";
 
@@ -61,12 +62,12 @@ export async function getMonthlySalesReport(
   targetYear?: number,
   targetMonth?: number // 1-12
 ): Promise<MonthlyReportPayload> {
-  const now = new Date();
-  const year = targetYear ?? now.getFullYear();
-  const month = targetMonth ?? now.getMonth() + 1;
+  const now = limaParts(); // mes actual en hora de Perú
+  const year = targetYear ?? now.year;
+  const month = targetMonth ?? now.month;
 
-  const startOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0);
-  const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+  const startOfMonth = limaMidnight(year, month, 1);
+  const endOfMonth = new Date(limaMidnight(year, month + 1, 1).getTime() - 1);
 
   // Fetch all active sales within the month
   const sales = await prisma.sale.findMany({

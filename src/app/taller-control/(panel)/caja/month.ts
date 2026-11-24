@@ -2,6 +2,8 @@
  *  and every export from a "use server" file must be an async Server
  *  Action — a synchronous helper like this one isn't allowed to live
  *  there (Next.js build error: "Server Actions must be async functions"). */
+import { monthKeyLima, todayLima } from "@/lib/limaTime";
+
 
 /** "2026-09" for the given date, defaulting to now, in whichever machine's
  *  local time zone runs this — used only for "what month is it right now"
@@ -9,7 +11,8 @@
  *  month always appears in the month list). Never use this to derive the
  *  month of a STORED transaction date — use monthKeyUTC for that. */
 export function monthKey(date: Date = new Date()): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  // En hora de Perú: el VPS corre en UTC y el día 30 a las 8 PM ya sería "el mes siguiente".
+  return monthKeyLima(date);
 }
 
 /** Same "YYYY-MM" shape as monthKey, but for a stored transaction date —
@@ -27,8 +30,8 @@ export function monthKeyUTC(date: Date): string {
  *  Never use this to redisplay a stored transaction date (see
  *  dateToInputValue) — that's the exact bug this split exists to prevent. */
 export function todayInputValue(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // Siempre el "hoy" de Perú, aunque lo ejecute el servidor (UTC).
+  return todayLima();
 }
 
 /** Converts a STORED transaction date back into "YYYY-MM-DD" — anchored in

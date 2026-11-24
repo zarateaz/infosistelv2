@@ -1,5 +1,6 @@
 "use server";
 
+import { limaMidnight, limaParts } from "@/lib/limaTime";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -24,11 +25,11 @@ function bucket(agg: { _sum: { price: number | null; profit: number | null }; _c
 }
 
 export async function getSaleStats(): Promise<SaleStats> {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfWeek = new Date(startOfDay);
-  startOfWeek.setDate(startOfDay.getDate() - startOfDay.getDay());
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Hoy / semana / mes en hora de Perú (el VPS corre en UTC).
+  const p = limaParts();
+  const startOfDay = limaMidnight(p.year, p.month, p.day);
+  const startOfWeek = limaMidnight(p.year, p.month, p.day - p.weekday);
+  const startOfMonth = limaMidnight(p.year, p.month, 1);
 
   const [day, week, month] = await Promise.all([
     prisma.sale.aggregate({

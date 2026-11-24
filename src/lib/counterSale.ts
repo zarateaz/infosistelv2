@@ -1,3 +1,4 @@
+import { limaParts } from "@/lib/limaTime";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { PaymentMethodType } from "@/lib/paymentMethods";
@@ -63,7 +64,8 @@ function round2(value: number): number {
  *  Evita que una venta de la noche del último día del mes caiga en el mes
  *  siguiente (o anterior) según la zona horaria del servidor. */
 function cashboxDate(now: Date): Date {
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const p = limaParts(now); // día de Perú, no del servidor (UTC)
+  return new Date(Date.UTC(p.year, p.month - 1, p.day));
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

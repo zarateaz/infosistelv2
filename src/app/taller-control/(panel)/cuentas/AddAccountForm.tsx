@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { createReceivable, createPayable, type AccountFormState } from "./actions";
 import { DOCUMENT_TYPES, PAYMENT_METHODS } from "./constants";
 import { AutoGrowInput } from "../AutoGrowInput";
+import { todayLima } from "@/lib/limaTime";
 
 const initialState: AccountFormState = {};
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
@@ -67,7 +68,7 @@ export function AddAccountForm({ kind }: { kind: "cobrar" | "pagar" }) {
             id="issueDate"
             name="issueDate"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={todayLima()}
             required
             className={inputClass}
           />

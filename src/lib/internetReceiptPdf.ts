@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { todayLima } from "@/lib/limaTime";
 import autoTable, { applyPlugin } from "jspdf-autotable";
 import type { InternetHistoryItem } from "@/app/taller-control/(panel)/cobranza-internet/cobranza";
 
@@ -370,6 +371,6 @@ export function generateInternetHistoryReportPDF(
     margin: { left: 14, right: 14, bottom: 16 },
   });
 
-  safeSavePdf(doc, `Reporte_Internet_Lista_INFOSISTEL_${now.toISOString().slice(0, 10)}.pdf`);
+  safeSavePdf(doc, `Reporte_Internet_Lista_INFOSISTEL_${todayLima(now)}.pdf`);
 }
 
