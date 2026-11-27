@@ -30,4 +30,3 @@ Pide escribir `RESTAURAR`, guarda antes el estado actual (`-pre-restauracion`), 
    ```
 4. `bash scripts/restaurar-backup.sh ~/infosistel-v2-data/backups/infosistel-ULTIMO.tar.gz --con-env`
 5. Rota las claves del `.env` (JWT_SECRET cierra todas las sesiones). **No cambies `ENCRYPTION_KEY`** o no podrás leer los datos cifrados.
-6. Vuelve a vincular WhatsApp: `bash scripts/vincular-whatsapp.sh`.

@@ -3,7 +3,7 @@
 #
 # Script maestro de sincronización y despliegue rápido para INFOSISTEL v2 en el VPS.
 # Actualiza código desde Git, compila la aplicación y recarga los procesos en PM2
-# manteniendo el 100% de los datos persistentes (base de datos, fotos y sesión de WhatsApp).
+# manteniendo el 100% de los datos persistentes (base de datos y fotos).
 #
 # Uso en VPS (un solo comando):
 #   bash scripts/sync-vps.sh
@@ -67,7 +67,9 @@ ln -s "$DATA_DIR/uploads/products" .next/standalone/public/img/products
 ln -s "$DATA_DIR/uploads/servicios" .next/standalone/public/img/servicios
 ln -s "$DATA_DIR/uploads/cotizaciones" .next/standalone/public/img/cotizaciones
 
-echo "➡️  6/6. Reiniciando servicios en PM2 (Web + WhatsApp)..."
+echo "➡️  6/6. Reiniciando la web en PM2..."
+# El gateway de WhatsApp se eliminó para siempre: si aún existe en PM2, se borra.
+npx pm2 delete infosistel-whatsapp 2>/dev/null || true
 npx pm2 restart ecosystem.config.js --update-env
 npx pm2 save
 npx pm2 status
@@ -79,10 +81,8 @@ echo "=========================================================="
 sleep 2
 
 WEB_STATUS=$(curl -k -s -o /dev/null -w "%{http_code}" https://infosistel.com.pe/taller-control/login || curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000 || echo "000")
-WA_STATUS=$(curl -s http://127.0.0.1:3005/status 2>/dev/null || echo '{"ok":false}')
 
 echo " • Panel Web (Puerto 3000 / HTTPS): HTTP $WEB_STATUS"
-echo " • WhatsApp Gateway (Puerto 3005): $WA_STATUS"
 echo ""
 echo "✅ ¡Sincronización completada con éxito al 100% (0 margen de error)!"
 echo "=========================================================="

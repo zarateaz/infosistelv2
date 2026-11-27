@@ -63,8 +63,8 @@ read -r -p "Escribe RESTAURAR para continuar: " OK
 echo "➡️  1/4 Guardando el estado actual (pre-restauracion)..."
 bash "$APP_DIR/scripts/backup-db.sh" pre-restauracion
 
-echo "➡️  2/4 Deteniendo la web y WhatsApp..."
-npx pm2 stop infosistel-v2 infosistel-whatsapp >/dev/null
+echo "➡️  2/4 Deteniendo la web..."
+npx pm2 stop infosistel-v2 >/dev/null
 
 echo "➡️  3/4 Restaurando archivos..."
 rm -f "$DB_PATH-wal" "$DB_PATH-shm" "$DB_PATH-journal"

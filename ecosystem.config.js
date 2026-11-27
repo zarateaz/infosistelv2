@@ -22,21 +22,5 @@ module.exports = {
         SERVICIOS_TECNICOS_DIR: "/home/zarate/infosistel-v2-data/servicios-tecnicos",
       },
     },
-    {
-      name: "infosistel-whatsapp",
-      script: "scripts/whatsapp-gateway/server.ts",
-      interpreter: "./node_modules/.bin/tsx",
-      cwd: "./",
-      instances: 1,
-      exec_mode: "fork",
-      autorestart: true,
-      watch: false,
-      max_memory_restart: "400M",
-      env: {
-        NODE_ENV: "production",
-        WHATSAPP_PORT: 3005,
-        WHATSAPP_AUTH_DIR: "/home/zarate/infosistel-v2-data/whatsapp-auth",
-      },
-    },
   ],
 };
