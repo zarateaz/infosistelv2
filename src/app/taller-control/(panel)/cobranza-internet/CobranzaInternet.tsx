@@ -61,6 +61,33 @@ function fmt(dateStr: string) {
   return `${d}/${m}/${y}`;
 }
 
+type SortKey = "registro" | "recientes" | "pago" | "nombre" | "codigo";
+const SORT_LABELS: Record<SortKey, string> = {
+  registro: "Orden de registro (1.º → último)",
+  recientes: "Últimos registrados primero",
+  pago: "Próximo pago (más urgente)",
+  nombre: "Nombre (A → Z)",
+  codigo: "Código (R1-P01…)",
+};
+
+function compareClients(a: InternetClientRow, b: InternetClientRow, sortBy: SortKey): number {
+  const reg = (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.id.localeCompare(b.id);
+  switch (sortBy) {
+    case "recientes":
+      return -reg;
+    case "pago":
+      return a.nextPaymentDate.localeCompare(b.nextPaymentDate) || reg;
+    case "nombre":
+      return a.clientName.localeCompare(b.clientName, "es", { sensitivity: "base" }) || reg;
+    case "codigo":
+      return (
+        (a.clientCode ?? "\uffff").localeCompare(b.clientCode ?? "\uffff", "es", { numeric: true }) || reg
+      );
+    default:
+      return reg;
+  }
+}
+
 function dayText(days: number) {
   if (days < 0) return `venció hace ${-days} día${days === -1 ? "" : "s"}`;
   if (days === 0) return "vence HOY";
@@ -88,6 +115,17 @@ export function CobranzaInternet({ clients: allClients }: { clients: InternetCli
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRouter, setFilterRouter] = useState<string>("ALL");
   const [filterGaleria, setFilterGaleria] = useState<string>("ALL");
+  // Orden de la lista: por defecto en el orden en que se registraron (se recuerda en este navegador).
+  const [sortBy, setSortBy] = useState<SortKey>("registro");
+  useEffect(() => {
+    const saved = localStorage.getItem("cobranza-internet-orden");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- preferencia guardada, solo existe en el navegador
+    if (saved && saved in SORT_LABELS) setSortBy(saved as SortKey);
+  }, []);
+  const changeSort = (v: SortKey) => {
+    setSortBy(v);
+    localStorage.setItem("cobranza-internet-orden", v);
+  };
 
   // Estado para autogenerar código en el formulario
   const [newRouter, setNewRouter] = useState<string>("");
@@ -163,7 +201,9 @@ export function CobranzaInternet({ clients: allClients }: { clients: InternetCli
     );
   };
 
-  const filteredRows = (tab === "deudores" ? alerts : rows).filter((r) => matchesFilters(r.c));
+  const filteredRows = (tab === "deudores" ? alerts : rows)
+    .filter((r) => matchesFilters(r.c))
+    .sort((a, b) => compareClients(a.c, b.c, sortBy));
   const filteredRetired = retiredClients.filter(matchesFilters);
 
   // Auto-desaparecer la notificación flotante luego de 3 segundos exactos
@@ -534,6 +574,22 @@ export function CobranzaInternet({ clients: allClients }: { clients: InternetCli
 
           {/* Filtros rápidos: Router y Galería */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Orden de la lista */}
+            <div className="flex items-center gap-1 text-xs">
+              <span className="text-fg-muted font-bold text-[11px]">Ordenar:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => changeSort(e.target.value as SortKey)}
+                className="rounded-xl border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-fg outline-none"
+              >
+                {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                  <option key={k} value={k}>
+                    {SORT_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Filtro Router */}
             <div className="flex items-center gap-1 text-xs">
               <span className="text-fg-muted font-bold text-[11px]">Router:</span>

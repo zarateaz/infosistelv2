@@ -88,6 +88,8 @@ export interface InternetClientRow {
   amount: number;
   concept: string | null;
   paidMonths?: string | null; // JSON string
+  /** ISO de cuándo se registró en el sistema (para ordenar por orden de registro). */
+  createdAt?: string;
   /** YYYY-MM-DD si el cliente se retiró (null/undefined = activo). */
   retiredAt?: string | null;
   retiredReason?: string | null;

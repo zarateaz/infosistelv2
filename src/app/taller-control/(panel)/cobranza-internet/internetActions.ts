@@ -141,6 +141,7 @@ export async function getInternetClients(): Promise<InternetClientRow[]> {
         amount: r.amount,
         concept: r.concept,
         paidMonths: r.paidMonths,
+        createdAt: r.createdAt.toISOString(),
         retiredAt: r.retiredAt ? dateToInputValue(r.retiredAt) : null,
         retiredReason: r.retiredReason,
         retiredDebtMonths: r.retiredDebtMonths,
