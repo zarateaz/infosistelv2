@@ -23,6 +23,7 @@ import {
   Search,
   Filter,
   FileText,
+  UserMinus,
 } from "lucide-react";
 import {
   createInternetClient,
@@ -48,6 +49,8 @@ import { ClientYearlyMonthsView } from "./ClientYearlyMonthsView";
 import { RouterSwitchMapModal } from "./RouterSwitchMapModal";
 import { InternetPaymentModal } from "./InternetPaymentModal";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { RetireInternetClientModal } from "./RetireInternetClientModal";
+import { RetiredClientsPanel } from "./RetiredClientsPanel";
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-fg-muted";
 const inputClass = "admin-field mt-1.5 w-full rounded-xl px-4 py-2.5 text-sm text-fg";
@@ -65,12 +68,16 @@ function dayText(days: number) {
   return `vence en ${days} días`;
 }
 
-export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) {
+export function CobranzaInternet({ clients: allClients }: { clients: InternetClientRow[] }) {
+  // Activos = cobranza normal. Retirados = se fueron: lista aparte, solo deuda pendiente.
+  const clients = useMemo(() => allClients.filter((c) => !c.retiredAt), [allClients]);
+  const retiredClients = useMemo(() => allClients.filter((c) => c.retiredAt), [allClients]);
   const [state, formAction, isPending] = useActionState(createInternetClient, initialState);
   const [isMutating, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const [dismissed, setDismissed] = useState<boolean>(false);
-  const [tab, setTab] = useState<"all" | "deudores">("all");
+  const [tab, setTab] = useState<"all" | "deudores" | "retirados">("all");
+  const [retiringClient, setRetiringClient] = useState<InternetClientRow | null>(null);
   const [editingClient, setEditingClient] = useState<InternetClientRow | null>(null);
   const [payingClient, setPayingClient] = useState<InternetClientRow | null>(null);
   const [confirmDeleteClient, setConfirmDeleteClient] = useState<InternetClientRow | null>(null);
@@ -106,11 +113,11 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
   // Lista única de galerías para el filtro
   const uniqueGalerias = useMemo(() => {
     const set = new Set<string>();
-    for (const c of clients) {
+    for (const c of allClients) {
       if (c.galeria?.trim()) set.add(c.galeria.trim());
     }
     return Array.from(set).sort();
-  }, [clients]);
+  }, [allClients]);
 
   // Auto-completar código si seleccionan router y puerto
   const handleRouteChange = (rVal: string) => {
@@ -139,34 +146,25 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
     : [];
   const alerts = rows.filter((r) => r.st !== "ok");
 
-  // Filtrar según búsqueda, router, galería y tab
-  const filteredRows = useMemo(() => {
-    let result = tab === "deudores" ? alerts : rows;
+  // Filtros comunes (router, galería, búsqueda) para activos y retirados
+  const matchesFilters = (c: InternetClientRow) => {
+    if (filterRouter !== "ALL" && c.router !== filterRouter) return false;
+    if (filterGaleria !== "ALL" && c.galeria !== filterGaleria) return false;
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return true;
+    return (
+      c.clientName.toLowerCase().includes(term) ||
+      c.whatsapp.includes(term) ||
+      Boolean(c.galeria && c.galeria.toLowerCase().includes(term)) ||
+      Boolean(c.clientCode && c.clientCode.toLowerCase().includes(term)) ||
+      Boolean(c.router && c.router.toLowerCase().includes(term)) ||
+      Boolean(c.concept && c.concept.toLowerCase().includes(term)) ||
+      Boolean(c.retiredReason && c.retiredReason.toLowerCase().includes(term))
+    );
+  };
 
-    if (filterRouter !== "ALL") {
-      result = result.filter((r) => r.c.router === filterRouter);
-    }
-
-    if (filterGaleria !== "ALL") {
-      result = result.filter((r) => r.c.galeria === filterGaleria);
-    }
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter((r) => {
-        return (
-          r.c.clientName.toLowerCase().includes(term) ||
-          r.c.whatsapp.includes(term) ||
-          (r.c.galeria && r.c.galeria.toLowerCase().includes(term)) ||
-          (r.c.clientCode && r.c.clientCode.toLowerCase().includes(term)) ||
-          (r.c.router && r.c.router.toLowerCase().includes(term)) ||
-          (r.c.concept && r.c.concept.toLowerCase().includes(term))
-        );
-      });
-    }
-
-    return result;
-  }, [tab, alerts, rows, filterRouter, filterGaleria, searchTerm]);
+  const filteredRows = (tab === "deudores" ? alerts : rows).filter((r) => matchesFilters(r.c));
+  const filteredRetired = retiredClients.filter(matchesFilters);
 
   // Auto-desaparecer la notificación flotante luego de 3 segundos exactos
   useEffect(() => {
@@ -514,6 +512,17 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
             >
               <AlertTriangle size={13} /> Lista de deudores ({alerts.length})
             </button>
+            <button
+              type="button"
+              onClick={() => setTab("retirados")}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all flex items-center gap-1.5 ${
+                tab === "retirados"
+                  ? "bg-orange-600 text-white shadow-sm"
+                  : "border border-orange-500/40 bg-orange-500/5 text-orange-700 hover:bg-orange-500/10 dark:text-orange-300"
+              }`}
+            >
+              <UserMinus size={13} /> Clientes retirados ({retiredClients.length})
+            </button>
             <Link
               href="/taller-control/internetlista"
               className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-3.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-500/20 dark:text-sky-300 flex items-center gap-1.5 transition-all shadow-2xs"
@@ -575,8 +584,12 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
           </div>
         </div>
 
+        {tab === "retirados" && (
+          <RetiredClientsPanel clients={filteredRetired} totalRetired={retiredClients.length} />
+        )}
+
         {/* Tabla de Clientes con Modo Expandible y Mini-Tracker de 12 Meses */}
-        <div className="mt-4 overflow-x-auto">
+        <div className={`mt-4 overflow-x-auto ${tab === "retirados" ? "hidden" : ""}`}>
           <table className="w-full min-w-[840px] text-left text-sm">
             <thead>
               <tr className="admin-thead text-xs font-bold uppercase tracking-wider text-fg-muted">
@@ -818,6 +831,15 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
 
                           <button
                             type="button"
+                            title="Retirar cliente (se fue): pasa a Clientes retirados con su deuda"
+                            onClick={() => setRetiringClient(c)}
+                            className="rounded-full p-2 text-orange-600 hover:bg-orange-500/10 transition-colors"
+                          >
+                            <UserMinus size={16} />
+                          </button>
+
+                          <button
+                            type="button"
                             title="Eliminar cliente"
                             onClick={() => setConfirmDeleteClient(c)}
                             className="rounded-full p-2 text-red-600 hover:bg-red-500/10"
@@ -921,11 +943,16 @@ export function CobranzaInternet({ clients }: { clients: InternetClientRow[] }) 
         />
       )}
 
+      {/* Retirar cliente (se fue) */}
+      {retiringClient && (
+        <RetireInternetClientModal client={retiringClient} onClose={() => setRetiringClient(null)} />
+      )}
+
       {/* Confirmación de eliminación de cliente */}
       {confirmDeleteClient && (
         <ConfirmDialog
           title="Eliminar cliente de internet"
-          message={`¡Atención! ¿Seguro que deseas eliminar a "${confirmDeleteClient.clientName}"? Se borrará su historial de pagos y su asignación de red. Esta acción no se puede deshacer.`}
+          message={`¡Atención! ¿Seguro que deseas eliminar a "${confirmDeleteClient.clientName}"? Se borrará su historial de pagos y su asignación de red. Esta acción no se puede deshacer. Si el cliente solo se fue, mejor usa "Retirar cliente" (botón naranja): conserva su historial y su deuda.`}
           danger
           confirmLabel="Sí, eliminar"
           pendingLabel="Eliminando..."

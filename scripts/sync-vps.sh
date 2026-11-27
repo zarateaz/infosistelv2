@@ -33,6 +33,8 @@ rm -rf "$APP_DIR/datos" "$APP_DIR/.next/standalone/datos" 2>/dev/null || true
 
 echo "➡️  3/6. Sincronizando Prisma y dependencias..."
 npx prisma generate
+# Columnas nuevas de la BD (idempotente: solo agrega columnas vacías, nunca borra datos)
+node --env-file=.env ./node_modules/.bin/tsx scripts/migrar-clientes-retirados.ts
 
 # Parche Node 26 para whatsapp-rust-bridge si aplica
 node -e '

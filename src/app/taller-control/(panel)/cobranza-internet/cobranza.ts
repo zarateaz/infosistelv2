@@ -88,6 +88,74 @@ export interface InternetClientRow {
   amount: number;
   concept: string | null;
   paidMonths?: string | null; // JSON string
+  /** YYYY-MM-DD si el cliente se retiró (null/undefined = activo). */
+  retiredAt?: string | null;
+  retiredReason?: string | null;
+  /** JSON ["YYYY-MM", ...]: meses que quedó debiendo al retirarse. */
+  retiredDebtMonths?: string | null;
+}
+
+/** Motivos rápidos al retirar un cliente (además se puede escribir otro). */
+export const RETIRE_REASONS = [
+  "Se mudó / cerró su stand",
+  "Cambió de proveedor",
+  "Ya no necesita el servicio",
+  "Retirado por falta de pago",
+  "Problemas con la señal",
+] as const;
+
+export function isRetired(row: Pick<InternetClientRow, "retiredAt">): boolean {
+  return Boolean(row.retiredAt);
+}
+
+/** Meses que el cliente quedó debiendo al retirarse (lista guardada, ordenada y sin repetidos). */
+export function parseRetiredDebtMonths(raw?: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const keys = parsed.filter((k): k is string => typeof k === "string" && /^\d{4}-\d{2}$/.test(k));
+    return Array.from(new Set(keys)).sort();
+  } catch {
+    return [];
+  }
+}
+
+export interface RetiredDebtInfo {
+  /** Meses de la deuda que siguen sin pagar. */
+  pendingMonths: string[];
+  /** Meses de la deuda que ya pagó después de retirarse. */
+  paidMonths: string[];
+  /** Total pendiente en soles. */
+  pendingTotal: number;
+}
+
+/**
+ * Deuda viva de un cliente retirado: de los meses que quedó debiendo, los que aún no paga.
+ * Los pagos se registran en el mismo historial (paidMonths), así que pagar un mes lo
+ * saca de la deuda automáticamente y entra a Caja como cualquier cobro de internet.
+ */
+export function retiredDebtInfo(row: InternetClientRow): RetiredDebtInfo {
+  const owed = parseRetiredDebtMonths(row.retiredDebtMonths);
+  if (owed.length === 0) return { pendingMonths: [], paidMonths: [], pendingTotal: 0 };
+  const { map } = normalizeClientPayments(row);
+  const pendingMonths = owed.filter((k) => map[k]?.status !== "paid");
+  const paidMonths = owed.filter((k) => map[k]?.status === "paid");
+  const pendingTotal = Math.round(pendingMonths.length * (row.amount || 0) * 100) / 100;
+  return { pendingMonths, paidMonths, pendingTotal };
+}
+
+/** Mensaje de WhatsApp para cobrar la deuda pendiente de un cliente que ya se retiró. */
+export function retiredDebtWhatsappLink(row: InternetClientRow, info: RetiredDebtInfo): string {
+  const clean = row.whatsapp.replace(/\D/g, "");
+  const number = clean.length === 9 ? `51${clean}` : clean;
+  const meses = info.pendingMonths.map(formatMonthKeyLabel).join(", ");
+  const msg =
+    `Hola ${row.clientName}, te saludamos de Infosistel Internet. ` +
+    `Según nuestro registro quedó pendiente el pago de ${info.pendingMonths.length} mes(es) del servicio ` +
+    `(${meses}) por un total de S/. ${info.pendingTotal.toFixed(2)}. ` +
+    `¿Nos ayudas a regularizarlo por Yape o en tienda? Muchas gracias.`;
+  return `https://wa.me/${number}?text=${encodeURIComponent(msg)}`;
 }
 
 /** Días hasta la fecha de pago, contando calendario (negativo = vencido). */
@@ -522,6 +590,10 @@ export function buildInternetPaymentHistory(
 
   for (const client of clients) {
     const { map } = normalizeClientPayments(client);
+    // Retirados: no generan meses nuevos después de irse, y solo cuentan como deuda
+    // los meses que quedaron debiendo (los demás impagos se perdonaron al retirarlo).
+    const retiredKey = client.retiredAt ? client.retiredAt.slice(0, 7) : null;
+    const retiredOwed = retiredKey ? new Set(parseRetiredDebtMonths(client.retiredDebtMonths)) : null;
 
     // Obtener día de corte del cliente
     const nextPayParts = client.nextPaymentDate ? client.nextPaymentDate.split("-").map(Number) : [];
@@ -551,9 +623,11 @@ export function buildInternetPaymentHistory(
 
     while (cy < maxYear || (cy === maxYear && cm <= maxMonth)) {
       const yearMonth = `${cy}-${String(cm).padStart(2, "0")}`;
-      if (yearMonth >= startKey) {
-        const rec = map[yearMonth];
-        const isPaid = rec?.status === "paid";
+      const rec = map[yearMonth];
+      const isPaid = rec?.status === "paid";
+      const skipRetired =
+        retiredKey !== null && !isPaid && (yearMonth > retiredKey || !retiredOwed!.has(yearMonth));
+      if (yearMonth >= startKey && !skipRetired) {
 
         const lastDayOfMonth = new Date(Date.UTC(cy, cm, 0)).getUTCDate();
         const dueDayClamped = Math.min(billingDay, lastDayOfMonth);

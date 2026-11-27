@@ -168,6 +168,7 @@ export async function getDashboardLiveSnapshot(): Promise<DashboardLiveSnapshot>
       include: { payments: true },
     }),
     prisma.internetClient.findMany({
+      where: { retiredAt: null },
       select: { id: true, nextPaymentDate: true, startDate: true, paidMonths: true, amount: true },
     }),
     obtenerTodo().catch(() => ({ servicios: [] })),

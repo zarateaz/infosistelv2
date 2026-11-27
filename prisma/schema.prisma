@@ -316,6 +316,11 @@ model InternetClient {
   amount          Float    @default(0)
   concept         String?  // nota/concepto (ej. "Pagó 3 meses por adelantado")
   paidMonths      String?  // JSON-encoded record de meses pagados: { "YYYY-MM": { status: "PAID", paidAt: "...", amount: 30, method: "YAPE", note: "..." } }
+  // Cliente retirado (se fue): null = activo. Al retirarse se libera su puerto, deja de
+  // recibir avisos y solo se le cobra lo que quedó debiendo (retiredDebtMonths).
+  retiredAt         DateTime?
+  retiredReason     String?
+  retiredDebtMonths String?  // JSON ["2026-04","2026-05"]: meses que quedó debiendo al retirarse
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

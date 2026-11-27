@@ -59,7 +59,9 @@ export async function runAutomatedInternetReminders(options?: {
 
   const cleanTargetPhone = options?.targetPhone ? options.targetPhone.replace(/\D/g, "") : null;
 
+  // Los clientes retirados no reciben avisos automáticos de cobro.
   const clients = await prisma.internetClient.findMany({
+    where: { retiredAt: null },
     orderBy: { nextPaymentDate: "asc" },
   });
 
@@ -180,10 +182,11 @@ export async function runAutomatedInternetReminders(options?: {
     // pago o se editó el cliente, NO se le cobra con datos viejos (se reevalúa en la próxima corrida).
     const fresh = await prisma.internetClient.findUnique({
       where: { id: client.id },
-      select: { paidMonths: true, nextPaymentDate: true, startDate: true },
+      select: { paidMonths: true, nextPaymentDate: true, startDate: true, retiredAt: true },
     });
     if (
       !fresh ||
+      fresh.retiredAt !== null ||
       fresh.paidMonths !== client.paidMonths ||
       fresh.nextPaymentDate.getTime() !== client.nextPaymentDate.getTime() ||
       fresh.startDate.getTime() !== client.startDate.getTime()
@@ -294,6 +297,8 @@ export async function sendInternetPaymentThankYou(params: {
   nextPaymentDate?: string;
   paymentMethod?: string;
   gatewayUrl?: string;
+  /** Pago de deuda de un cliente que ya se retiró: sin "próximo vencimiento" ni "servicio activo". */
+  retired?: boolean;
 }): Promise<boolean> {
   const gatewayUrl = params.gatewayUrl || process.env.WHATSAPP_GATEWAY_URL || "http://127.0.0.1:3005";
   const cleanPhone = params.whatsapp.replace(/\D/g, "");
@@ -316,8 +321,10 @@ export async function sendInternetPaymentThankYou(params: {
     `• 📅 *Mes cancelado:* ${params.monthKey}\n` +
     `• 💰 *Monto recibido:* ${amountTxt}\n` +
     `• 💳 *Medio de pago:* ${methodTxt}\n` +
-    `• 📌 *Próximo vencimiento:* ${nextDateTxt}\n\n` +
-    `Tu servicio se encuentra *100% activo y sin interrupciones*. 🚀\n\n` +
+    (params.retired
+      ? `\nCon este pago tu cuenta queda regularizada. ✅\n\n`
+      : `• 📌 *Próximo vencimiento:* ${nextDateTxt}\n\n` +
+        `Tu servicio se encuentra *100% activo y sin interrupciones*. 🚀\n\n`) +
     `_¡Es un honor tenerte como parte de la familia INFOSISTEL! Estamos a tu servicio siempre._ 💙\n\n` +
     `🏢 *INFOSISTEL · Huancayo*\n` +
     `📍 Av. Giráldez 274, 1er Nivel Stand B-10`;

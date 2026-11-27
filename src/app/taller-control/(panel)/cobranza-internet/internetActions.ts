@@ -11,8 +11,10 @@ import {
   effectiveNextPaymentDate,
   formatMonthKeyLabel,
   normalizeClientPayments,
+  getUnpaidMonthKeys,
   normalizeInternetPaymentMethod,
   parsePaidMonths,
+  parseRetiredDebtMonths,
   type InternetClientRow,
   type PaidMonthsMap,
 } from "./cobranza";
@@ -138,6 +140,9 @@ export async function getInternetClients(): Promise<InternetClientRow[]> {
         amount: r.amount,
         concept: r.concept,
         paidMonths: r.paidMonths,
+        retiredAt: r.retiredAt ? dateToInputValue(r.retiredAt) : null,
+        retiredReason: r.retiredReason,
+        retiredDebtMonths: r.retiredDebtMonths,
       };
     })
     .sort((a, b) => a.nextPaymentDate.localeCompare(b.nextPaymentDate));
@@ -263,6 +268,9 @@ export async function markInternetPaid(
 ): Promise<{ ok: boolean; error?: string; newNextPaymentDate?: string; receiptNumber?: string }> {
   const row = await prisma.internetClient.findUnique({ where: { id } });
   if (!row) return { ok: false, error: "Cliente no encontrado." };
+  if (row.retiredAt) {
+    return { ok: false, error: "Este cliente está retirado: cobra su deuda desde la lista de Clientes retirados." };
+  }
 
   const startStr = dateToInputValue(row.startDate);
   const { map, nextPaymentDate: nextPayStr } = normalizeClientPayments({
@@ -997,4 +1005,266 @@ export async function correctInternetClientStartDate(
 
   revalidateAllRelatedPaths();
   return { ok: true, newNextPaymentDate: newNextStr };
+}
+
+/* ───────────────────────── Clientes retirados ───────────────────────── */
+
+/**
+ * Meses impagos del cliente hasta el mes en que se retira (inclusive): son los que
+ * puede quedar debiendo. Se usa para validar lo que manda el formulario de retiro.
+ */
+function unpaidMonthsUntil(
+  row: { startDate: Date; nextPaymentDate: Date; paidMonths: string | null; amount: number },
+  retiredKey: string
+): string[] {
+  const startStr = dateToInputValue(row.startDate);
+  const { map } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
+  const [y, m] = retiredKey.split("-").map(Number);
+  // getUnpaidMonthKeys corta en el mes de `today`: le pasamos el mes de retiro.
+  return getUnpaidMonthKeys(map, startStr, new Date(y, m - 1, 15));
+}
+
+/**
+ * Marca a un cliente como retirado (se fue). Su registro, historial y datos de red
+ * (galería, router, puerto) se conservan para la lista de retirados, pero:
+ *  - deja de aparecer en la cobranza activa y en la lista de deudores,
+ *  - su puerto queda LIBRE en el mapa de routers,
+ *  - ya no recibe avisos automáticos de cobro,
+ *  - solo se le cobra lo que quedó debiendo (`debtMonths`).
+ */
+export async function retireInternetClient(
+  id: string,
+  input: { retiredAt: string; reason?: string; debtMonths: string[] }
+): Promise<{ ok: boolean; error?: string }> {
+  const retiredDate = parseDateInput(input.retiredAt);
+  if (!retiredDate) return { ok: false, error: "Fecha de retiro inválida." };
+  const reason = (input.reason ?? "").trim().slice(0, 200) || null;
+
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+  if (row.retiredAt) return { ok: false, error: "Este cliente ya figura como retirado." };
+
+  const retiredStr = dateToInputValue(retiredDate);
+  if (retiredStr < dateToInputValue(row.startDate)) {
+    return { ok: false, error: "La fecha de retiro no puede ser anterior a la fecha de inicio del servicio." };
+  }
+  const retiredKey = retiredStr.slice(0, 7);
+  const allowed = new Set(unpaidMonthsUntil(row, retiredKey));
+  const debt = Array.from(new Set(input.debtMonths)).sort();
+  const invalid = debt.find((k) => !allowed.has(k));
+  if (invalid) {
+    return {
+      ok: false,
+      error: `${formatMonthKeyLabel(invalid)} no se puede cargar como deuda (ya está pagado o es posterior al retiro). Recarga la página.`,
+    };
+  }
+
+  const saved = await prisma.internetClient.updateMany({
+    where: { id, retiredAt: null, paidMonths: row.paidMonths },
+    data: { retiredAt: retiredDate, retiredReason: reason, retiredDebtMonths: JSON.stringify(debt) },
+  });
+  if (saved.count !== 1) return { ok: false, error: STALE_MSG };
+
+  revalidateAllRelatedPaths();
+  return { ok: true };
+}
+
+/**
+ * Vuelve a activar a un cliente retirado (regresó). Si su puerto ya lo ocupa otro
+ * cliente activo, se reactiva SIN puerto para no pisar al otro y se avisa.
+ * Los meses en que estuvo retirado no se le cobran: su próximo pago parte del mes actual.
+ */
+export async function reactivateInternetClient(
+  id: string
+): Promise<{ ok: boolean; error?: string; warning?: string }> {
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+  if (!row.retiredAt) return { ok: false, error: "Este cliente ya está activo." };
+
+  let warning: string | undefined;
+  const data: Record<string, unknown> = { retiredAt: null, retiredReason: null, retiredDebtMonths: null };
+
+  if (row.router && row.portNumber) {
+    const occupant = await prisma.internetClient.findFirst({
+      where: { id: { not: id }, retiredAt: null, router: row.router, portNumber: row.portNumber },
+      select: { clientName: true },
+    });
+    if (occupant) {
+      data.portNumber = null;
+      warning = `${row.router} puerto ${row.portNumber} ya lo usa ${occupant.clientName}: se reactivó sin puerto, asígnale uno con el lápiz (editar).`;
+    }
+  }
+
+  // Meses del periodo en que estuvo retirado: no son deuda. Se marcan como "sin servicio"
+  // (pagados con monto 0, sin Caja) para que la cobranza no le cobre ese tiempo.
+  const startStr = dateToInputValue(row.startDate);
+  const { map } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
+  const owed = new Set(parseRetiredDebtMonths(row.retiredDebtMonths));
+  const todayStr = todayInputValue();
+  const currentKey = todayStr.slice(0, 7);
+  let [cy, cm] = startStr.split("-").map(Number);
+  for (let guard = 0; guard < 600; guard++) {
+    const key = `${cy}-${String(cm).padStart(2, "0")}`;
+    if (key >= currentKey) break;
+    if (map[key]?.status !== "paid" && !owed.has(key)) {
+      map[key] = { status: "paid", paidAt: todayStr, amount: 0, note: "Sin servicio (cliente retirado)" };
+    }
+    cm++;
+    if (cm > 12) {
+      cm = 1;
+      cy++;
+    }
+  }
+  const nextStr = calculateNextPaymentDate(startStr, dateToInputValue(row.nextPaymentDate), map);
+  data.paidMonths = JSON.stringify(map);
+  data.nextPaymentDate = parseDateInput(nextStr) ?? row.nextPaymentDate;
+
+  const saved = await prisma.internetClient.updateMany({
+    where: { id, paidMonths: row.paidMonths, retiredAt: { not: null } },
+    data,
+  });
+  if (saved.count !== 1) return { ok: false, error: STALE_MSG };
+
+  revalidateAllRelatedPaths();
+  return { ok: true, warning };
+}
+
+/** Perdona (quita) meses de la deuda de un cliente retirado. No toca Caja. */
+export async function forgiveRetiredDebt(
+  id: string,
+  months?: string[]
+): Promise<{ ok: boolean; error?: string }> {
+  const row = await prisma.internetClient.findUnique({
+    where: { id },
+    select: { retiredAt: true, retiredDebtMonths: true },
+  });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+  if (!row.retiredAt) return { ok: false, error: "Este cliente no está retirado." };
+
+  const owed = parseRetiredDebtMonths(row.retiredDebtMonths);
+  const remove = new Set(months ?? owed);
+  const keep = owed.filter((k) => !remove.has(k));
+
+  const saved = await prisma.internetClient.updateMany({
+    where: { id, retiredDebtMonths: row.retiredDebtMonths },
+    data: { retiredDebtMonths: JSON.stringify(keep) },
+  });
+  if (saved.count !== 1) return { ok: false, error: STALE_MSG };
+  revalidateAllRelatedPaths();
+  return { ok: true };
+}
+
+/**
+ * Cobra la deuda de un cliente retirado: marca como pagados los meses pendientes de su
+ * deuda (todos, o los `months` indicados), con recibo correlativo y su ingreso en Caja
+ * por cada mes, igual que un cobro normal de internet.
+ */
+export async function payRetiredDebt(
+  id: string,
+  options: {
+    months?: string[];
+    totalAmount: number;
+    method?: string;
+    note?: string;
+    paidAt?: string;
+    syncToCashbox?: boolean;
+  }
+): Promise<{ ok: boolean; error?: string; receiptNumbers?: string[]; countPaid?: number }> {
+  const row = await prisma.internetClient.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "Cliente no encontrado." };
+  if (!row.retiredAt) return { ok: false, error: "Este cliente no está retirado." };
+
+  const startStr = dateToInputValue(row.startDate);
+  const { map } = normalizeClientPayments({
+    startDate: startStr,
+    nextPaymentDate: dateToInputValue(row.nextPaymentDate),
+    paidMonths: row.paidMonths,
+    amount: row.amount,
+  });
+  const owed = parseRetiredDebtMonths(row.retiredDebtMonths);
+  const wanted = options.months ? new Set(options.months) : null;
+  const keysToPay = owed.filter((k) => map[k]?.status !== "paid" && (!wanted || wanted.has(k)));
+  if (keysToPay.length === 0) return { ok: false, error: "Este cliente no tiene meses pendientes por cobrar." };
+
+  const total = round2(options.totalAmount);
+  if (!Number.isFinite(total) || total <= 0) return { ok: false, error: "Monto inválido." };
+  // Reparte el total entre los meses; el último absorbe los céntimos de redondeo.
+  const perMonth = round2(total / keysToPay.length);
+  const amounts = keysToPay.map((_, i) =>
+    i === keysToPay.length - 1 ? round2(total - perMonth * (keysToPay.length - 1)) : perMonth
+  );
+
+  const todayStr = todayInputValue();
+  const paidAtStr = options.paidAt || todayStr;
+  const paidDate = parseDateInput(paidAtStr) ?? parseDateInput(todayStr)!;
+  const payMethod = normalizeInternetPaymentMethod(options.method);
+  const syncToCashbox = options.syncToCashbox !== false;
+  const receipts: string[] = [];
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (let i = 0; i < keysToPay.length; i++) {
+        const key = keysToPay[i];
+        const amount = amounts[i];
+        const receiptNumber = await getNextInternetReceiptNumber(tx);
+        receipts.push(receiptNumber);
+        const detail = `Deuda de cliente retirado (${i + 1}/${keysToPay.length})`;
+        let cashboxTransactionId: string | undefined;
+        if (syncToCashbox && amount > 0) {
+          const cashboxTx = await tx.cashboxTransaction.create({
+            data: {
+              date: paidDate,
+              type: "INCOME",
+              amount,
+              paymentMethod: payMethod,
+              description: buildCashboxDescription(row.clientName, `${formatMonthKeyLabel(key)} (deuda)`, row.clientCode),
+              notes: buildCashboxNotes(
+                row,
+                `${options.note ? `${options.note} · ` : ""}${detail} · Recibo #${receiptNumber}`
+              ),
+            },
+          });
+          cashboxTransactionId = cashboxTx.id;
+        }
+        map[key] = {
+          status: "paid",
+          paidAt: paidAtStr,
+          amount,
+          method: payMethod,
+          note: options.note || detail,
+          receiptNumber,
+          ...(cashboxTransactionId ? { cashboxTransactionId } : {}),
+        };
+      }
+      await casUpdateClient(tx, id, row.paidMonths, { paidMonths: JSON.stringify(map) });
+    });
+  } catch (e) {
+    if (e instanceof StaleClientError) return { ok: false, error: e.message };
+    throw e;
+  }
+
+  sendInternetPaymentThankYou({
+    clientName: row.clientName,
+    clientCode: row.clientCode,
+    whatsapp: row.whatsapp,
+    galeria: row.galeria,
+    amount: total,
+    monthKey: keysToPay.map(formatMonthKeyLabel).join(", "),
+    receiptNumber: receipts[0],
+    paymentMethod: payMethod,
+    retired: true,
+  }).catch((e) => console.error("[WhatsApp] Error al enviar agradecimiento:", e));
+
+  revalidateAllRelatedPaths();
+  return { ok: true, receiptNumbers: receipts, countPaid: keysToPay.length };
 }
