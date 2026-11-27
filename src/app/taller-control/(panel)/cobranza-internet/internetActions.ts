@@ -26,6 +26,7 @@ function revalidateAllRelatedPaths() {
   try {
     revalidatePath(PATH);
     revalidatePath("/taller-control/internetlista");
+    revalidatePath("/taller-control/clientes-retirados");
     revalidatePath("/taller-control/caja");
     revalidatePath("/taller-control/papelera");
     revalidatePath("/taller-control/reporte-mensual");

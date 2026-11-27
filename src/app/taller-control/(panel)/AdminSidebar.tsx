@@ -34,6 +34,7 @@ import {
   TechServicesIcon,
   UsersAdminIcon,
   DebtsScheduleIcon,
+  RetiredClientsIcon,
 } from "@/components/admin/SidebarIcons";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string; active?: boolean }>> = {
@@ -43,6 +44,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "/taller-control/caja": CashRegisterIcon,
   "/taller-control/cobranza-internet": WifiShieldIcon,
   "/taller-control/internetlista": InvoiceBillIcon,
+  "/taller-control/clientes-retirados": RetiredClientsIcon,
   "/taller-control/inventario": WarehouseInventoryIcon,
   "/taller-control/productos": ProductsPackageIcon,
   "/taller-control/categorias": CategoriesTagsIcon,
@@ -74,6 +76,7 @@ const GROUP_OF: Record<string, string> = {
   "/taller-control/caja": "Ventas",
   "/taller-control/cobranza-internet": "Ventas",
   "/taller-control/internetlista": "Ventas",
+  "/taller-control/clientes-retirados": "Ventas",
   "/taller-control/pedidos": "Ventas",
   "/taller-control/ventas": "Ventas",
   "/taller-control/descuentos": "Inventario",

@@ -1010,3 +1010,28 @@ export function DebtsScheduleIcon({ size = 22, className = "" }: SidebarIconProp
     </svg>
   );
 }
+
+// Clientes retirados: usuario con Wi-Fi tachado y flecha de salida (se fue del servicio)
+export function RetiredClientsIcon({ size = 22, className = "" }: SidebarIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 28 28"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`shrink-0 transition-transform duration-200 group-hover:scale-110 ${className}`}
+    >
+      <defs>
+        <linearGradient id="retired-user" x1="4" y1="6" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FB923C" />
+          <stop offset="1" stopColor="#EA580C" />
+        </linearGradient>
+      </defs>
+      <circle cx="11" cy="10" r="4.5" fill="url(#retired-user)" stroke="#FFFFFF" strokeWidth="1" />
+      <path d="M3.5 24C3.5 19.6 6.8 17 11 17C15.2 17 18.5 19.6 18.5 24" fill="url(#retired-user)" stroke="#FFFFFF" strokeWidth="1" />
+      <circle cx="21" cy="19" r="5.5" fill="#EF4444" stroke="#FFFFFF" strokeWidth="1" />
+      <path d="M18.5 19H23.5M21.8 16.8L24 19L21.8 21.2" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

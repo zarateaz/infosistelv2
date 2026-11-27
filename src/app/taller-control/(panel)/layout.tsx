@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { href: "/taller-control/caja", label: "Caja" },
   { href: "/taller-control/cobranza-internet", label: "Cobranza de Internet" },
   { href: "/taller-control/internetlista", label: "Internet Lista" },
+  { href: "/taller-control/clientes-retirados", label: "Clientes Retirados" },
   { href: "/taller-control/inventario", label: "Inventario" },
   { href: "/taller-control/productos", label: "Productos" },
   { href: "/taller-control/categorias", label: "Categorías" },
